@@ -1,4 +1,5 @@
 """Test basic particle visualization for 5 seconds to demonstrate the system."""
+
 import sys
 import time
 from pathlib import Path
@@ -68,11 +69,11 @@ def test_basic_particle_visualization():
         pygame.quit()
 
     # Verify simulation ran and particles exist
-    population = sim.get_population()
+    expected_columns = ["x", "y", "z", "vx", "vy", "vz", "frozen"]
+    population = sim.get_population(expected_columns)
     assert len(population) == 100, f"Expected 100 particles, got {len(population)}"
 
     # Verify particles have expected columns
-    expected_columns = ["x", "y", "z", "vx", "vy", "vz", "frozen"]
     for col in expected_columns:
         assert col in population.columns, f"Missing column: {col}"
 

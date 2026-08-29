@@ -1,4 +1,5 @@
 """Test PathFreezer component for vessel formation demonstration."""
+
 import sys
 import time
 from pathlib import Path
@@ -66,7 +67,7 @@ def test_path_freezer_vessel_formation():
         pygame.quit()
 
     # Verify simulation ran and created vessels
-    population = sim.get_population()
+    population = sim.get_population(["x", "y", "z", "frozen", "path_id", "parent_id"])
     assert len(population) >= 200, f"Expected at least 200 particles, got {len(population)}"
 
     # Verify we have both active and frozen particles (vessel formation)

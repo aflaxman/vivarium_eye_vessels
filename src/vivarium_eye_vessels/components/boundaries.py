@@ -5,6 +5,8 @@ import pandas as pd
 from vivarium import Component
 from vivarium.framework.engine import Builder
 
+from vivarium_eye_vessels.components.particles import PathFreezer
+
 
 class ForceCalculator(Protocol):
     """Protocol defining the interface for force calculation strategies"""
@@ -40,7 +42,7 @@ class BaseForceComponent(Component):
     """Base class for force-based components with shared caching logic"""
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return ["x", "y", "z", "frozen"]
 
     @property
@@ -56,7 +58,7 @@ class BaseForceComponent(Component):
             builder.value.register_value_modifier(
                 f"particle.force.{axis}",
                 modifier=getattr(self, f"force_{axis}"),
-                requires_columns=self.columns_required,
+                required_resources=self.required_attributes,
             )
 
     def setup_force_calculator(self, config: Dict) -> None:
@@ -74,7 +76,7 @@ class BaseForceComponent(Component):
         cache_key = (current_time, tuple(index))
 
         if cache_key not in self.force_cache:
-            pop = self.population_view.get(index)
+            pop = self.population_view.get(index, self.required_attributes)
             active_particles = pop.query(self.filter_str)
 
             if active_particles.empty:
@@ -82,9 +84,7 @@ class BaseForceComponent(Component):
             else:
                 forces = np.zeros((len(index), 3))
                 active_forces = self.calculate_forces_vectorized(active_particles)
-                forces[
-                    active_particles.index.get_indexer(active_particles.index)
-                ] = active_forces
+                forces[index.get_indexer(active_particles.index)] = active_forces
                 self.force_cache[cache_key] = forces
 
             # Clear old cache entries
@@ -301,8 +301,8 @@ class FrozenRepulsion(BaseForceComponent):
     }
 
     @property
-    def columns_required(self) -> List[str]:
-        return super().columns_required + ["freeze_time", "path_id", "parent_id"]
+    def required_attributes(self) -> List[str]:
+        return super().required_attributes + ["freeze_time", "path_id", "parent_id"]
 
     @property
     def filter_str(self) -> str:
@@ -317,7 +317,7 @@ class FrozenRepulsion(BaseForceComponent):
         self.interaction_radius = float(config.interaction_radius)
         self.freeze_radius = float(config.freeze_radius)
         self.delay = float(config.delay)
-        self.freezer = builder.components.get_component("path_freezer")
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
         """Calculate repulsion forces from frozen particles"""

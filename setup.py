@@ -46,10 +46,12 @@ if __name__ == "__main__":
         "vivarium>=4.1.0",
         "click",
         "loguru",
+        "matplotlib",
         "numpy",
         "pandas",
         "pygame",
         "pyyaml",
+        "scikit-image",
         "scipy",
     ]
 
@@ -95,5 +97,7 @@ if __name__ == "__main__":
         entry_points="""
             [console_scripts]
             make_artifacts=vivarium_eye_vessels.tools.cli:make_artifacts
+            vnv_growth_gif=vivarium_eye_vessels.vnv.animate:main
+            vnv_compare=vivarium_eye_vessels.vnv.compare:main
         """,
     )

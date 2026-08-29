@@ -2,10 +2,12 @@
 vivarium>=4.1.0
 click
 loguru
+matplotlib
 numpy
 pandas
 pygame
 pyyaml
+scikit-image
 scipy
 # Development tools
 pytest

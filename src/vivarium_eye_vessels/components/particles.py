@@ -487,6 +487,10 @@ class PathSplitter(Component):
             "murray_exponent": 3.0,  # r_parent^k = r_major^k + r_minor^k
             "flow_asymmetry": 0.15,  # minor daughter flow fraction in [0.5 - this, 0.5]
             "min_radius": 0.002,  # caliber floor (capillary scale)
+            # Split probability scales as (min_radius / radius) ** this, so wide
+            # trunks run long between branch points while narrow twigs branch at
+            # the full split_probability; 0 restores caliber-independent cadence
+            "caliber_cadence_exponent": 0.0,
         }
     }
 
@@ -542,7 +546,7 @@ class PathSplitter(Component):
 
         if not active.empty:
             to_consider = self.randomness.filter_for_probability(
-                active.index, self.config.split_probability
+                active.index, self.split_probabilities(active)
             )
             not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
             to_split = to_consider[not_too_deep]
@@ -568,6 +572,28 @@ class PathSplitter(Component):
             all_updates = pd.concat(updates, axis=0)
 
             self.particles.update_particles(all_updates)
+
+    def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
+        """Per-tip split probability, reduced for wide-caliber tips.
+
+        Real vessel segments keep a roughly constant length-to-diameter ratio,
+        so trunks run long between branch points while capillaries branch
+        densely. With ``caliber_cadence_exponent`` > 0, the configured
+        ``split_probability`` applies at the ``min_radius`` caliber floor and
+        wider tips split less often, scaled by
+        ``(min_radius / radius) ** caliber_cadence_exponent``. Uncalibered
+        tips (radius <= 0) keep the base probability.
+        """
+        base = float(self.config.split_probability)
+        exponent = float(self.config.caliber_cadence_exponent)
+        if exponent == 0.0:
+            return pd.Series(base, index=active.index)
+
+        radii = active.radius.to_numpy(dtype=float)
+        factors = np.ones(len(radii))
+        calibered = radii > 0
+        factors[calibered] = (float(self.config.min_radius) / radii[calibered]) ** exponent
+        return pd.Series(np.clip(base * factors, 0.0, 1.0), index=active.index)
 
     def split_frozen(self, pop, to_split):
         available = pop[~pop.frozen & (pop.path_id < 0)]

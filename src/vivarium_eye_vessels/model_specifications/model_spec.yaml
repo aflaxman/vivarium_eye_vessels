@@ -48,13 +48,14 @@ configuration:
 
     # Path splitting configuration
     path_splitter:
-        split_interval: 30     # Steps between checking for splits
+        split_interval: 15     # Steps between checking for splits
         split_angle: 60         # Fallback angle when the parent has no caliber
-        split_probability: 0.95  # Probability of eligible path splitting
+        split_probability: 0.95  # Split probability at the min_radius caliber floor
         max_depth: 4
         murray_exponent: 3.0   # r_parent^k = r_major^k + r_minor^k at bifurcations
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
+        caliber_cadence_exponent: 0.6  # Wider tips split less often -> constant-ish L/D
 
     path_extinction:
         force_threshold: 1.2  # Leaves headroom over perfusion_demand.magnitude so tips

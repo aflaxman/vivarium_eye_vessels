@@ -31,6 +31,35 @@ V&V harness gained two caliber metrics: *vessel area density* and the fitted
 `docs/vnv/`). Bifurcation angles now emerge from the radii and concentrate
 inside the 60–90° literature band.
 
+## 1b. Caliber-dependent branching cadence — IMPLEMENTED
+
+Real vessel segments keep a roughly constant length-to-diameter ratio: the
+arcade trunks run a long way between branch points while capillaries branch
+densely. The original splitter checked every tip on the same fixed cadence
+(`split_interval` × `split_probability`), so every segment came out about the
+same length — visible in the V&V segment-length histogram as an over-tall
+spike at the shortest lengths and a deficit through the middle of the
+distribution, which was the clearest visual difference from the HRF data.
+
+*As implemented*: `PathSplitter` scales each tip's split probability by
+`(min_radius / radius) ** caliber_cadence_exponent` — the configured
+`split_probability` applies in full at the capillary caliber floor, and wider
+tips split less often in proportion to their caliber (exponent 1 makes the
+expected inter-branch distance proportional to diameter, i.e. constant L/D;
+0 restores the old caliber-independent cadence). The exponent alone starves
+the network (delayed trunk splits compound into far fewer tips), so it is
+paired with a faster base cadence: the spec sets `caliber_cadence_exponent`
+0.6 with `split_interval` 15 (was 30), so twigs branch more densely than
+before while trunks branch less. At the standard 800-step run the
+Kolmogorov–Smirnov distance between the sim and HRF log segment-length
+distributions fell from 0.099 to 0.053, the median matches HRF exactly
+(22 px), the over-tall shortest-length bin dropped from 2.0× to 1.6× the
+HRF density, and skeleton density rose from 3.03% to 3.39% (HRF:
+3.21 ± 0.29%); as a side benefit the arcade A:V caliber ratio moved from
+0.84 to the clinical 0.67. A new tree-based `tree_segment_length` metric in
+`metrics.json` tracks inter-branch-point distances in simulation units,
+independent of rasterization.
+
 ## 2. Growth toward hypoxia (space colonization) — IMPLEMENTED
 
 Real angiogenesis is VEGF chemotaxis: tissue far from any vessel recruits

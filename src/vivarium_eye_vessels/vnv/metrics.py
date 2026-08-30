@@ -287,6 +287,42 @@ def junction_exponents(pop: pd.DataFrame) -> np.ndarray:
     return np.array(exponents)
 
 
+def tree_segment_lengths(pop: pd.DataFrame) -> np.ndarray:
+    """Arc lengths of vessel segments between consecutive branch points.
+
+    A segment's lower end is a leaf or a branch point (a node with two or
+    more children of any kind, side branches included); its length
+    accumulates every tree edge walking up until the next branch point or
+    the root. Unlike the raster-based branch lengths, these are measured in
+    simulation units directly on the tree, independent of projection,
+    caliber, and raster resolution.
+    """
+    on_path = pop[pop.path_id >= 0]
+    members = on_path.index
+    parents = on_path.parent_id.where(on_path.parent_id.isin(members), -1)
+    child_counts = parents[parents >= 0].value_counts()
+    parent_map = parents.to_dict()
+    coords = {idx: row for idx, row in zip(members, on_path[["x", "y", "z"]].to_numpy(float))}
+
+    lengths = []
+    for start in members:
+        if child_counts.get(start, 0) == 1:
+            continue  # interior continuation node, not a segment's lower end
+        length = 0.0
+        node = start
+        while True:
+            parent = parent_map.get(node, -1)
+            if parent < 0:
+                break
+            length += float(np.linalg.norm(coords[node] - coords[parent]))
+            node = parent
+            if child_counts.get(node, 0) >= 2:
+                break
+        if length > 0:
+            lengths.append(length)
+    return np.array(lengths)
+
+
 def path_tortuosity(pop: pd.DataFrame) -> np.ndarray:
     """Arc-length over chord-length for each root-to-leaf chain of a path.
 

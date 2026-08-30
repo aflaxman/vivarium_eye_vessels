@@ -1,52 +1,58 @@
 {
-  "generated": "2026-08-30T06:27:48",
+  "generated": "2026-08-30T16:04:24",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
   "has_calibers": true,
   "simulation": {
-    "n_particles": 8000,
-    "n_frozen": 7920,
-    "n_segments": 7927,
-    "fractal_dimension": 1.459884051822781,
-    "skeleton_density": 0.030330657958984375,
-    "area_density": 0.07338619232177734,
+    "n_particles": 11000,
+    "n_frozen": 10494,
+    "n_segments": 10504,
+    "fractal_dimension": 1.4857890393345163,
+    "skeleton_density": 0.03389263153076172,
+    "area_density": 0.07197189331054688,
     "branch_length_px": {
-      "n": 910,
-      "median": 23.0,
-      "q25": 10.0,
-      "q75": 44.0
+      "n": 1029,
+      "median": 22.0,
+      "q25": 11.0,
+      "q75": 42.0
+    },
+    "tree_segment_length": {
+      "n": 1040,
+      "median": 0.10144851607879557,
+      "q25": 0.027793899867046546,
+      "q75": 0.2170544730299426
     },
     "branch_tortuosity": {
-      "n": 910,
-      "median": 1.0093912135590357,
-      "q25": 0.939657045805891,
-      "q75": 1.0786387432600122
+      "n": 1029,
+      "median": 1.0119288512538813,
+      "q25": 0.9302605094190635,
+      "q75": 1.0643041683803829
     },
     "path_tortuosity": {
-      "n": 438,
-      "median": 1.0561647605214357,
-      "q25": 1.0106543237216532,
-      "q75": 1.201353158615513
+      "n": 606,
+      "median": 1.0238889578442927,
+      "q25": 1.0047532718564802,
+      "q75": 1.1265606704446676
     },
     "bifurcation_angle_deg": {
-      "n": 271,
-      "median": 74.42678827380838,
-      "q25": 67.27558816208597,
-      "q75": 80.88282216103981
+      "n": 402,
+      "median": 80.09875386292391,
+      "q25": 71.60925305330122,
+      "q75": 100.8440242024397
     },
     "junction_exponent": {
-      "n": 267,
+      "n": 306,
       "median": 3.0,
       "q25": 2.9999999999999996,
-      "q75": 3.0000000000000004
+      "q75": 3.000000000000001
     },
-    "perfused_fraction": 0.9896083133493205,
-    "arterial_supply_fraction": 0.6386890487609912,
-    "venous_drainage_fraction": 0.8808952837729817,
-    "n_artery_segments": 2385,
-    "n_vein_segments": 5060,
-    "artery_vein_caliber_ratio": 0.8420268506943327
+    "perfused_fraction": 0.9800159872102319,
+    "arterial_supply_fraction": 0.7162270183852918,
+    "venous_drainage_fraction": 0.8481215027977618,
+    "n_artery_segments": 4148,
+    "n_vein_segments": 5737,
+    "artery_vein_caliber_ratio": 0.6664754225294682
   },
   "real_hrf": {
     "n_masks": 15,

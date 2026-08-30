@@ -79,6 +79,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_image_metrics = metrics.image_metrics(sim_raster)
     sim_angles = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
+    sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_junction_exponents = metrics.junction_exponents(pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
@@ -270,6 +271,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "skeleton_density": sim_image_metrics["skeleton_density"],
             "area_density": sim_image_metrics["area_density"],
             "branch_length_px": metrics.summarize(sim_image_metrics["branch_length_px"]),
+            "tree_segment_length": metrics.summarize(sim_tree_segment_lengths),
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),

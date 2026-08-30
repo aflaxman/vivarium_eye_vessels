@@ -2,12 +2,12 @@
 
 Usage::
 
-    vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml \\
-        -o docs/vnv/baseline/growth.gif
+    vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 
 Runs the model specification headless (no pygame window) and draws one frame
-every few time steps, so successive model versions can be compared
-qualitatively before/after a change.
+every few time steps. By default the GIF overwrites ``docs/vnv/growth.gif``
+in place, so committing it makes the before/after of a model change visible
+as an image diff in the pull request.
 """
 
 from pathlib import Path
@@ -90,7 +90,9 @@ def render_frame(
 
 @click.command()
 @click.argument("model_spec", type=click.Path(exists=True))
-@click.option("-o", "--output", default="growth.gif", show_default=True, type=click.Path())
+@click.option(
+    "-o", "--output", default="docs/vnv/growth.gif", show_default=True, type=click.Path()
+)
 @click.option("--steps", default=800, show_default=True, help="Total simulation steps.")
 @click.option(
     "--steps-per-frame", default=8, show_default=True, help="Time steps per GIF frame."

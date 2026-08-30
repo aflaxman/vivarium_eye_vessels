@@ -7,10 +7,10 @@ metabolic cost. The enhancements below pull the model toward that, roughly in
 order of impact per unit of effort. Each maps onto a vivarium component, which
 is the point of building this on vivarium in the first place.
 
-Before implementing any of them, run the V&V harness (see
-[Validation & verification](#validation--verification-vv) below) to capture a
-baseline, and re-run it after each change so the effect is visible both in the
-growth animation and in the quantitative metrics.
+After implementing any of them, re-run the V&V harness (see
+[Validation & verification](#validation--verification-vv) below) and commit
+the overwritten `docs/vnv/` outputs, so the effect of the change is visible
+both as an image diff in the pull request and in the quantitative metrics.
 
 ## 1. Vessel calibers via Murray's law
 
@@ -107,15 +107,19 @@ harness under `vivarium_eye_vessels.vnv`:
   figure plus a `metrics.json` for quantitative tracking across model
   versions.
 
-Baseline outputs for the current model live in `docs/vnv/baseline/`. After
-implementing a change, regenerate with:
+The current model's outputs live in the single `docs/vnv/` folder
+(`growth.gif`, `comparison.png`, `metrics.json`). After implementing a
+change, regenerate them in place with:
 
 ```bash
-vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/<tag>/growth.gif
-vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/<tag>/
+vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml
+vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 ```
 
-and compare against the baseline directory.
+(both default to writing into `docs/vnv/`; keep `--steps` at its default of
+800 so runs are comparable). Committing the overwritten files makes each
+model change's before/after visible as a side-by-side image diff in the pull
+request, and prior versions remain retrievable from git history.
 
 *Comparability caveats*: the simulation currently produces centerlines without
 calibers, so image-based metrics are computed on skeletons for both sim and
@@ -124,9 +128,9 @@ sim is projected from a thin ellipsoid; and the sim's spatial scale is
 arbitrary, so scale-dependent metrics (density, segment lengths) are
 normalized to the field of view. The harness is designed to show the
 *direction and size of improvement*, not to claim the current model matches
-reality — expect the baseline to be visibly and measurably far from HRF, most
-obviously in fractal dimension and density (ideas 1, 2, and 4 above are what
-close that gap).
+reality — expect the current model to be visibly and measurably far from HRF,
+most obviously in fractal dimension and density (ideas 1, 2, and 4 above are
+what close that gap).
 
 ## References
 

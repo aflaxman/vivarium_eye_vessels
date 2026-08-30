@@ -2,8 +2,7 @@
 
 Usage::
 
-    vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml \\
-        -o docs/vnv/baseline/
+    vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 
 Runs the model specification headless, computes network metrics on the result,
 computes the same image-based metrics on expert-labeled vessel masks from the
@@ -12,6 +11,10 @@ public HRF dataset (downloaded to a local cache on first use), and writes:
 - ``comparison.png``: side-by-side visual and distributional diagnostics
 - ``metrics.json``: every metric plus run parameters, for quantitative
   tracking across model versions
+
+By default the outputs overwrite ``docs/vnv/`` in place, so committing them
+makes the before/after of a model change visible as image and JSON diffs in
+the pull request.
 """
 
 import datetime
@@ -244,9 +247,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
 @click.command()
 @click.argument("model_spec", type=click.Path(exists=True))
-@click.option(
-    "-o", "--output-dir", default="vnv_output", show_default=True, type=click.Path()
-)
+@click.option("-o", "--output-dir", default="docs/vnv", show_default=True, type=click.Path())
 @click.option("--steps", default=800, show_default=True, help="Total simulation steps.")
 def main(model_spec: str, output_dir: str, steps: int) -> None:
     """Compare MODEL_SPEC's vessel network to real HRF vessel masks."""

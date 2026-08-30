@@ -1,3 +1,10 @@
+**v0.1.1 - 08/29/26**
+
+ - Consolidate V&V outputs into a single ``docs/vnv/`` folder that each
+   model change overwrites in place, so pull requests show before/after
+   image diffs; ``vnv_growth_gif`` and ``vnv_compare`` now default to
+   writing there
+
 **v0.1.0 - 08/29/26**
 
  - Port simulation to the modern vivarium suite (vivarium 4.x, pandas 3.x)

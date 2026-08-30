@@ -37,17 +37,22 @@ configuration:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
             n_vessels: 4               # Number of frozen particles in the circle
+        root_radius: 0.02              # Caliber of the root vessels
 
-    # Path freezing configuration    
+    # Path freezing configuration
     path_freezer:
         freeze_interval: 2  # Steps between freezing positions
+        radius_taper: 0.998  # Gradual caliber taper along each path
 
     # Path splitting configuration
     path_splitter:
         split_interval: 30     # Steps between checking for splits
-        split_angle: 60         # Angle in degrees between split paths
+        split_angle: 60         # Fallback angle when the parent has no caliber
         split_probability: 0.95  # Probability of eligible path splitting
         max_depth: 2
+        murray_exponent: 3.0   # r_parent^k = r_major^k + r_minor^k at bifurcations
+        flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
+        min_radius: 0.002      # Caliber floor (capillary scale)
 
     path_extinction:
         force_threshold: 0.85

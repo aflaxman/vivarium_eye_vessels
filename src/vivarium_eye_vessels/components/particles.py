@@ -26,7 +26,38 @@ PARTICLE_COLUMNS = [
     # addl information relevant to eye vessel structure
     "parent_id",  # tree structure
     "path_id",  # used to hack PathExtinction dynamics so that splits don't go extinct immediately
+    "radius",  # vessel caliber, assigned by Murray's law at bifurcations
 ]
+
+
+def murray_daughter_radii(parent_radius: float, flow_fraction, exponent: float) -> tuple:
+    """Daughter radii for a bifurcation obeying Murray's law.
+
+    Flow splits into ``flow_fraction`` (minor daughter) and ``1 - flow_fraction``
+    (major daughter); with flow proportional to radius**exponent, the radii
+    satisfy r_minor**k + r_major**k == r_parent**k.
+    """
+    minor = parent_radius * flow_fraction ** (1.0 / exponent)
+    major = parent_radius * (1.0 - flow_fraction) ** (1.0 / exponent)
+    return major, minor
+
+
+def murray_bifurcation_angles(parent_radius, major_radius, minor_radius) -> tuple:
+    """Optimal daughter angles (radians, relative to the parent axis).
+
+    Murray's minimum-work principle (Murray 1926) gives, for parent radius r0
+    and daughters r1, r2:
+
+        cos(theta_1) = (r0**4 + r1**4 - r2**4) / (2 r0**2 r1**2)
+        cos(theta_2) = (r0**4 + r2**4 - r1**4) / (2 r0**2 r2**2)
+
+    so the large daughter deviates little from the parent axis and the small
+    daughter comes off at a wider angle.
+    """
+    r0, r1, r2 = parent_radius, major_radius, minor_radius
+    cos_1 = (r0**4 + r1**4 - r2**4) / (2 * r0**2 * r1**2)
+    cos_2 = (r0**4 + r2**4 - r1**4) / (2 * r0**2 * r2**2)
+    return np.arccos(np.clip(cos_1, -1.0, 1.0)), np.arccos(np.clip(cos_2, -1.0, 1.0))
 
 
 class Particle3D(Component):
@@ -44,6 +75,7 @@ class Particle3D(Component):
             "initial_velocity_range": (-0.05, 0.05),
             "terminal_velocity": 0.2,  # Maximum allowed velocity magnitude
             "initial_circle": {"center": [1.5, 0.0, 0.5], "radius": 0.1, "n_vessels": 5},
+            "root_radius": 0.02,  # Caliber of the root vessels at the seed circle
         }
     }
 
@@ -172,6 +204,7 @@ class Particle3D(Component):
         pop["depth"] = -1
         pop["parent_id"] = -1
         pop["path_id"] = -1
+        pop["radius"] = 0.0
 
         self.initialize_circle_positions(pop)
 
@@ -199,6 +232,7 @@ class Particle3D(Component):
                 ]
                 pop.loc[i, "path_id"] = i
                 pop.loc[i, ["depth"]] = 0
+                pop.loc[i, "radius"] = self.config.root_radius
 
     def on_time_step(self, event: Event) -> None:
         """Update positions and velocities of non-frozen particles and track blocking forces."""
@@ -257,6 +291,7 @@ class PathFreezer(Component):
     CONFIGURATION_DEFAULTS = {
         "path_freezer": {
             "freeze_interval": 10,
+            "radius_taper": 1.0,  # caliber multiplier per frozen segment along a path
         }
     }
 
@@ -274,6 +309,7 @@ class PathFreezer(Component):
             "depth",
             "parent_id",
             "path_id",
+            "radius",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -349,6 +385,7 @@ class PathFreezer(Component):
                     "parent_id": active.index.values,
                     "frozen": False,
                     "depth": active.depth.values,
+                    "radius": active.radius.values * self.config.radius_taper,
                 },
                 index=to_freeze.index,
             )
@@ -411,7 +448,13 @@ class PathExtinction(Component):
 
 
 class PathSplitter(Component):
-    """Component for splitting particle paths into two branches."""
+    """Component for splitting particle paths into two branches.
+
+    When the parent vessel has a caliber (radius > 0), daughter calibers are
+    assigned by Murray's law and the branch angles follow from the radii via
+    the minimum-work principle; otherwise the configured ``split_angle`` is
+    used as before.
+    """
 
     CONFIGURATION_DEFAULTS = {
         "path_splitter": {
@@ -419,6 +462,9 @@ class PathSplitter(Component):
             "split_angle": 30,
             "split_probability": 0.5,
             "max_depth": 4,
+            "murray_exponent": 3.0,  # r_parent^k = r_major^k + r_minor^k
+            "flow_asymmetry": 0.15,  # minor daughter flow fraction in [0.5 - this, 0.5]
+            "min_radius": 0.002,  # caliber floor (capillary scale)
         }
     }
 
@@ -437,6 +483,7 @@ class PathSplitter(Component):
             "depth",
             "parent_id",
             "path_id",
+            "radius",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -512,6 +559,9 @@ class PathSplitter(Component):
             0.75 + 0.5 * (self.randomness.get_draw(to_split, "split_angle"))
         )
 
+        # A side branch off a frozen trunk takes the Murray minor-daughter caliber
+        _, side_radii, _, _ = self.split_radii_and_angles(pop, to_split)
+
         # Track updates for frozen originals and new branches
         updates = []
 
@@ -553,12 +603,51 @@ class PathSplitter(Component):
                     "depth": [original.depth + 1],
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
+                    "radius": [side_radii[orig_idx]],
                 },
                 index=[new_branches.iloc[idx].name],
             )
             updates.append(new_branch_1)
 
         return updates
+
+    def split_radii_and_angles(self, pop, to_split):
+        """Murray-law daughter radii and branch angles for each split point.
+
+        Splits with an uncalibered parent (radius <= 0) fall back to the
+        configured ``split_angle`` and inherit zero radius.
+        """
+        parent_radii = pop.loc[to_split, "radius"].astype(float)
+        exponent = float(self.config.murray_exponent)
+        min_radius = float(self.config.min_radius)
+
+        # Minor daughter carries flow fraction f in [0.5 - flow_asymmetry, 0.5]
+        flow_fractions = 0.5 - self.config.flow_asymmetry * self.randomness.get_draw(
+            to_split, "flow_fraction"
+        )
+        major_radii, minor_radii = murray_daughter_radii(
+            parent_radii, flow_fractions, exponent
+        )
+        major_radii = major_radii.clip(lower=min_radius)
+        minor_radii = minor_radii.clip(lower=min_radius)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            murray_major, murray_minor = murray_bifurcation_angles(
+                parent_radii.clip(lower=min_radius), major_radii, minor_radii
+            )
+
+        # Fall back to the configured split angle where the parent has no caliber
+        fallback = np.radians(self.config.split_angle / 2)
+        has_caliber = parent_radii.values > 0
+        angle_major = pd.Series(np.where(has_caliber, murray_major, fallback), index=to_split)
+        angle_minor = pd.Series(np.where(has_caliber, murray_minor, fallback), index=to_split)
+        major_radii = major_radii.where(has_caliber, 0.0)
+        minor_radii = minor_radii.where(has_caliber, 0.0)
+
+        # Retain some stochasticity around the optimal angles
+        noise_1 = 0.75 + 0.5 * self.randomness.get_draw(to_split, "split_angle")
+        noise_2 = 0.75 + 0.5 * self.randomness.get_draw(to_split, "split_angle_2")
+        return major_radii, minor_radii, angle_major * noise_1, angle_minor * noise_2
 
     def split_unfrozen(self, pop, to_split):
         available = pop[~pop.frozen & (pop.path_id < 0)]
@@ -568,9 +657,9 @@ class PathSplitter(Component):
 
         # Sample particles for new branches - two per split point
         new_branches = available.iloc[: (2 * len(to_split))]
-        angle_rad = np.radians(self.config.split_angle / 2)
-        angle_rad_1 = angle_rad * (0.5 + (self.randomness.get_draw(to_split, "split_angle")))
-        angle_rad_2 = angle_rad * (0.5 + (self.randomness.get_draw(to_split, "split_angle")))
+        major_radii, minor_radii, angle_rad_1, angle_rad_2 = self.split_radii_and_angles(
+            pop, to_split
+        )
 
         # Track updates for frozen originals and new branches
         updates = []
@@ -619,6 +708,7 @@ class PathSplitter(Component):
                     "depth": [original.depth],
                     "path_id": [original.path_id],
                     "parent_id": [original.parent_id],
+                    "radius": [original.radius],
                 },
                 index=[orig_idx],
             )
@@ -637,6 +727,7 @@ class PathSplitter(Component):
                     "depth": [original.depth],
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
+                    "radius": [major_radii[orig_idx]],
                 },
                 index=[new_branches.iloc[2 * idx].name],
             )
@@ -655,6 +746,7 @@ class PathSplitter(Component):
                     "depth": [original.depth + 1],
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
+                    "radius": [minor_radii[orig_idx]],
                 },
                 index=[new_branches.iloc[2 * idx + 1].name],
             )
@@ -694,6 +786,7 @@ class PathDLA(Component):
             "final_near_radius": 0.01,
             "dla_start_time": "2000-01-01",  # Start time for DLA freezing
             "dla_end_time": "2001-01-01",  # End time for radius scaling
+            "attach_radius": 0.002,  # caliber assigned to DLA-attached particles
         }
     }
 
@@ -807,6 +900,7 @@ class PathDLA(Component):
                     "depth": 1000,
                     "frozen": False,
                     "freeze_time": pd.NaT,
+                    "radius": self.config.attach_radius,
                 },
                 index=to_freeze.index,
             )

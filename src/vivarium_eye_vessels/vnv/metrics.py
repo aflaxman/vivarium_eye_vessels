@@ -20,8 +20,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy import ndimage
+from scipy.optimize import brentq
 from skimage.draw import line as draw_line
-from skimage.morphology import skeletonize
+from skimage.morphology import binary_dilation, disk, skeletonize
 
 RASTER_SIZE = 1024
 MIN_BRANCH_PIXELS = 5
@@ -33,7 +34,10 @@ MIN_BRANCH_PIXELS = 5
 
 
 def rasterize_network(
-    edges: pd.DataFrame, bounds: tuple[float, float], size: int = RASTER_SIZE
+    edges: pd.DataFrame,
+    bounds: tuple[float, float],
+    size: int = RASTER_SIZE,
+    radii: np.ndarray | None = None,
 ) -> np.ndarray:
     """Rasterize vessel segments into a binary image (x-y projection).
 
@@ -47,6 +51,10 @@ def rasterize_network(
         [-a, a] x [-b, b].
     size
         Output image size in pixels (longest dimension).
+    radii
+        Optional per-segment vessel radii (in simulation units, aligned with
+        ``edges``). When given, segments are drawn with their caliber instead
+        of one pixel wide.
     """
     a, b = bounds
     aspect = b / a
@@ -64,9 +72,25 @@ def rasterize_network(
 
     r0, c0 = to_pixel(edges.x0.values, edges.y0.values)
     r1, c1 = to_pixel(edges.x1.values, edges.y1.values)
-    for i in range(len(edges)):
-        rr, cc = draw_line(r0[i], c0[i], r1[i], c1[i])
-        image[rr, cc] = True
+
+    if radii is None:
+        widths_px = np.ones(len(edges), dtype=int)
+    else:
+        px_per_unit = (width - 1) / (2 * a)
+        widths_px = np.maximum(
+            np.round(2 * np.asarray(radii, dtype=float) * px_per_unit).astype(int), 1
+        )
+
+    # Draw segments in buckets of equal pixel width, thickened by dilation
+    for width_px in np.unique(widths_px):
+        layer = np.zeros_like(image)
+        for i in np.nonzero(widths_px == width_px)[0]:
+            rr, cc = draw_line(r0[i], c0[i], r1[i], c1[i])
+            layer[rr, cc] = True
+        dilation_radius = int(round((width_px - 1) / 2))
+        if dilation_radius > 0:
+            layer = binary_dilation(layer, disk(dilation_radius))
+        image |= layer
     return image
 
 
@@ -166,6 +190,7 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
     return {
         "fractal_dimension": box_counting_dimension(skeleton),
         "skeleton_density": float(skeleton.mean()),
+        "area_density": float(binary.mean()),
         "n_branches": int(len(branches)),
         "branch_length_px": branches.length_px.tolist(),
         "branch_tortuosity": branches.tortuosity.tolist(),
@@ -196,6 +221,33 @@ def bifurcation_angles(pop: pd.DataFrame) -> np.ndarray:
         cos_angle = np.clip(np.dot(v1, v2), -1.0, 1.0)
         angles.append(np.degrees(np.arccos(cos_angle)))
     return np.array(angles)
+
+
+def junction_exponents(pop: pd.DataFrame) -> np.ndarray:
+    """Fitted junction exponents k with r0**k == r1**k + r2**k at bifurcations.
+
+    Murray's law predicts k close to 3. Bifurcations without calibers, or
+    where a daughter is at least as wide as the parent (e.g. from caliber
+    flooring), are skipped since no exponent exists there.
+    """
+    children = pop[pop.parent_id >= 0]
+    children = children[children.parent_id.isin(pop.index)]
+    exponents = []
+    for parent_id, group in children.groupby("parent_id"):
+        if len(group) < 2:
+            continue
+        r0 = float(pop.loc[parent_id, "radius"])
+        r1, r2 = (float(r) for r in group.radius.values[:2])
+        if min(r0, r1, r2) <= 0 or max(r1, r2) >= r0:
+            continue
+
+        def mismatch(k: float) -> float:
+            return (r1 / r0) ** k + (r2 / r0) ** k - 1.0
+
+        if mismatch(0.5) <= 0 or mismatch(15.0) >= 0:
+            continue
+        exponents.append(brentq(mismatch, 0.5, 15.0))
+    return np.array(exponents)
 
 
 def path_tortuosity(pop: pd.DataFrame) -> np.ndarray:

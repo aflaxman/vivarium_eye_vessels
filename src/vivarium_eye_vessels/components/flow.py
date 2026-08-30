@@ -187,6 +187,7 @@ class FlowRemodeler(Component):
             "radius",
             "vessel_type",
             "anastomosis_id",
+            "layer_id",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -283,6 +284,7 @@ class FlowRemodeler(Component):
                     "radius": 0.0,
                     "vessel_type": VESSEL_TYPE_NONE,
                     "anastomosis_id": -1,
+                    "layer_id": -1,
                 },
                 index=pruned,
             )

@@ -6,6 +6,7 @@ components:
         - particles.PathSplitter()
         - particles.PathAnastomosis()
         - flow.FlowRemodeler()
+        - plexus.PlexusLayers()
         # - particles.PathDLA()
         - boundaries.EllipsoidContainment()
         - boundaries.CylinderExclusion()
@@ -60,8 +61,9 @@ configuration:
         caliber_cadence_exponent: 0.6  # Wider tips split less often -> constant-ish L/D
 
     path_extinction:
-        force_threshold: 1.2  # Leaves headroom over perfusion_demand.magnitude so tips
-                              # survive long enough to colonize distant hypoxic tissue
+        force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
+                              # pull, plexus layering, planar crowding repulsion) so
+                              # tips survive long enough to colonize their layer
 
     # Flow-based remodeling: Poiseuille flow on the frozen graph, then prune
     # low-shear terminal segments and drift calibers toward the median shear
@@ -78,9 +80,20 @@ configuration:
         min_radius: 0.001
         max_radius: 0.02
 
+    # Stratified plexuses: superficial arcades, capillary-only deeper layers
+    # connected by diving vessels
+    plexus_layers:
+        layer_z: [0.04, 0.0, -0.04]  # Superficial, intermediate, deep z-planes
+        spring_constant: 6.0         # z-pull toward a vessel's own plexus plane
+        damping: 5.0                 # Damps vertical oscillation around the plane
+        max_force: 0.3               # Cap the pull below the extinction threshold
+        dive_radius: 0.004           # Only capillary-caliber tips dive deeper
+        dive_probability: 0.05       # Per-step chance an eligible tip dives
+
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:
-        capture_radius: 0.03      # Tip-to-target distance that triggers fusion
+        capture_radius: 0.045     # Tip-to-target distance that triggers fusion
+                                  # (wide enough to reach across a plexus gap)
         max_tip_radius: 0.004     # Only capillary-caliber tips anastomose
         max_target_radius: 0.004  # And only onto capillary-caliber segments
         probability: 0.5          # Per-step fusion probability once in range

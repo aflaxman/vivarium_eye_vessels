@@ -1,3 +1,29 @@
+**v0.8.0 - 08/30/26**
+
+ - Layered plexuses (realism roadmap idea 6)
+
+   - New ``layer_id`` particle column: each vessel's home plexus,
+     inherited through freezing, splitting, and DLA
+   - New ``PlexusLayers`` component: a damped Hookean spring holds each
+     active tip near its layer's z-plane (undamped, tips oscillate,
+     saturate the terminal-velocity clamp, and go extinct), and
+     capillary-caliber tips dive one layer deeper with
+     ``dive_probability`` — the frozen transit trail is the diving
+     vessel; wide vessels never dive, so deeper plexuses are
+     capillary-only
+   - Force rebalance for planar crowding: ``path_extinction``
+     ``force_threshold`` 1.2 -> 2.0, anastomosis ``capture_radius``
+     0.03 -> 0.045 (reaches across a plexus gap)
+   - V&V: new ``docs/vnv/plexus.png`` with OCTA-style en-face slabs per
+     layer plus an x-z cross-section; ``plexus_layers`` block in
+     ``metrics.json`` (per-layer counts, calibers, z-adherence, diving
+     vessels)
+   - At the standard 800-step run: plexuses hold 5,079 / 931 / 1,624
+     segments with 173 diving vessels; headline metrics intact (97.9%
+     perfused, skeleton density 2.69%, area density 14.2%, fractal
+     dimension 1.43, arcade A:V ratio 0.68) and anastomosis loops rose
+     from 21 to 39
+
 **v0.7.0 - 08/30/26**
 
  - Flow-based remodeling and pruning (realism roadmap idea 5)

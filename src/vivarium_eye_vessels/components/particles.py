@@ -29,6 +29,7 @@ PARTICLE_COLUMNS = [
     "radius",  # vessel caliber, assigned by Murray's law at bifurcations
     "vessel_type",  # artery/vein identity, inherited down each tree
     "anastomosis_id",  # index of the opposite-tree particle this tip fused with
+    "layer_id",  # which vascular plexus the vessel belongs to (0 = superficial)
 ]
 
 VESSEL_TYPE_NONE = 0
@@ -215,6 +216,7 @@ class Particle3D(Component):
         pop["radius"] = 0.0
         pop["vessel_type"] = VESSEL_TYPE_NONE
         pop["anastomosis_id"] = -1
+        pop["layer_id"] = -1
 
         self.initialize_circle_positions(pop)
 
@@ -242,6 +244,7 @@ class Particle3D(Component):
                 ]
                 pop.loc[i, "path_id"] = i
                 pop.loc[i, ["depth"]] = 0
+                pop.loc[i, "layer_id"] = 0  # roots live in the superficial plexus
                 # Alternate artery/vein arcades around the disc; arteries are narrower
                 if i % 2 == 0:
                     pop.loc[i, "vessel_type"] = VESSEL_TYPE_ARTERY
@@ -329,6 +332,7 @@ class PathFreezer(Component):
             "path_id",
             "radius",
             "vessel_type",
+            "layer_id",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -410,6 +414,7 @@ class PathFreezer(Component):
                     "depth": active.depth.values,
                     "radius": active.radius.values * self.config.radius_taper,
                     "vessel_type": active.vessel_type.values,
+                    "layer_id": active.layer_id.values,
                 },
                 index=to_freeze.index,
             )
@@ -513,6 +518,7 @@ class PathSplitter(Component):
             "path_id",
             "radius",
             "vessel_type",
+            "layer_id",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -658,6 +664,7 @@ class PathSplitter(Component):
                     "parent_id": [orig_idx],
                     "radius": [side_radii[orig_idx]],
                     "vessel_type": [original.vessel_type],
+                    "layer_id": [original.layer_id],
                 },
                 index=[new_branches.iloc[idx].name],
             )
@@ -764,6 +771,7 @@ class PathSplitter(Component):
                     "parent_id": [original.parent_id],
                     "radius": [original.radius],
                     "vessel_type": [original.vessel_type],
+                    "layer_id": [original.layer_id],
                 },
                 index=[orig_idx],
             )
@@ -784,6 +792,7 @@ class PathSplitter(Component):
                     "parent_id": [orig_idx],
                     "radius": [major_radii[orig_idx]],
                     "vessel_type": [original.vessel_type],
+                    "layer_id": [original.layer_id],
                 },
                 index=[new_branches.iloc[2 * idx].name],
             )
@@ -804,6 +813,7 @@ class PathSplitter(Component):
                     "parent_id": [orig_idx],
                     "radius": [minor_radii[orig_idx]],
                     "vessel_type": [original.vessel_type],
+                    "layer_id": [original.layer_id],
                 },
                 index=[new_branches.iloc[2 * idx + 1].name],
             )
@@ -978,6 +988,7 @@ class PathDLA(Component):
             "path_id",
             "parent_id",
             "vessel_type",
+            "layer_id",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -1080,6 +1091,7 @@ class PathDLA(Component):
                     "freeze_time": pd.NaT,
                     "radius": self.config.attach_radius,
                     "vessel_type": frozen.vessel_type.values[attachment_positions],
+                    "layer_id": frozen.layer_id.values[attachment_positions],
                 },
                 index=to_freeze.index,
             )

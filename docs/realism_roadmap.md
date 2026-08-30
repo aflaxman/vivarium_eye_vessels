@@ -183,13 +183,35 @@ Two design points mattered: shear targets are per tree (see above), and
 milder pruning or pruning without adaptation were swept and do worse —
 the two mechanisms work as a pair.
 
-## 6. Layered plexuses
+## 6. Layered plexuses — IMPLEMENTED
 
 Retinal vasculature is stratified — superficial, intermediate, and deep
 capillary plexuses connected by short diving vessels. The thin ellipsoid is
 currently one layer. Quantize z into 2–3 sub-layers with type-dependent layer
 preference and occasional vertical connections, and the model can generate
 synthetic OCT-angiography stacks, not just fundus-style projections.
+
+*As implemented*: a `layer_id` particle column names each vessel's home
+plexus, inherited through freezing, splitting, and DLA like `vessel_type`.
+The `PlexusLayers` component holds every active tip near its layer's
+z-plane (`layer_z`, superficial first) with a *damped* Hookean spring —
+undamped, tips ping-pong through the plane, saturate the terminal-velocity
+clamp, stall, and go extinct — and each step a capillary-caliber tip
+(radius ≤ `dive_radius`) dives one layer deeper with `dive_probability`;
+the frozen trail left during the transit is the diving vessel. Arteries,
+veins, and wide arterioles never dive, so the deeper plexuses are
+capillary-only, matching the anatomy. Flattening a 3D slab onto planes
+concentrates the frozen-repulsion crowding and stacks the layer force onto
+the extinction budget, so `path_extinction.force_threshold` rose to 2.0 and
+the anastomosis `capture_radius` widened to 0.045 (wide enough to reach
+across a plexus gap). At the standard 800-step run the three plexuses hold
+5,079 / 931 / 1,624 segments connected by 173 diving vessels, with the
+established headline metrics intact: 97.9% perfused, skeleton density
+2.69%, vessel area density 14.2%, fractal dimension 1.43, arcade A:V ratio
+0.68, and 41 anastomoses forming 39 loops (up from 21). A new
+`docs/vnv/plexus.png` renders OCTA-style en-face slabs per layer plus an
+x–z cross-section, and `metrics.json` gains a `plexus_layers` block
+(per-layer counts, calibers, z-adherence, diving-vessel count).
 
 ## 7. Smooth, controllable tortuosity
 

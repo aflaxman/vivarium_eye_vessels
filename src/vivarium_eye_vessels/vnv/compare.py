@@ -86,6 +86,110 @@ def overlay_histogram(ax, sim_values, real_values, bins, xlabel: str) -> None:
     style_axis(ax)
 
 
+LAYER_NAMES = ["superficial", "intermediate", "deep"]
+LAYER_COLORS = ["#2a78d6", "#eb6834", "#8a63c9"]
+
+
+def layer_name(layer: int) -> str:
+    return LAYER_NAMES[layer] if layer < len(LAYER_NAMES) else f"layer {layer}"
+
+
+def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None:
+    """En-face slab per plexus plus an x-z cross-section — an OCTA-style view."""
+    from matplotlib.collections import LineCollection
+
+    layers = sorted(int(layer) for layer in edges.layer_id.unique() if layer >= 0)
+    n_panels = len(layers) + 1
+    fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 5.4))
+    fig.patch.set_facecolor("white")
+
+    for column, layer in enumerate(layers):
+        ax = axes[column]
+        in_layer = edges[edges.layer_id == layer]
+        raster = metrics.rasterize_network(in_layer, bounds, radii=in_layer.radius.values)
+        ax.imshow(~raster, cmap="gray", interpolation="nearest")
+        ax.set_title(
+            f"{layer_name(layer)} plexus (z = {layer_z[layer]:+.2f}) — "
+            f"{len(in_layer)} segments",
+            color=INK,
+            fontsize=10,
+        )
+        for spine in ax.spines.values():
+            spine.set_color(LAYER_COLORS[layer % len(LAYER_COLORS)])
+            spine.set_linewidth(2)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Cross-section: the stratification is invisible in the fundus view
+    ax = axes[-1]
+    segments = np.stack(
+        [edges[["x0", "z0"]].to_numpy(float), edges[["x1", "z1"]].to_numpy(float)],
+        axis=1,
+    )
+    colors = [
+        LAYER_COLORS[int(layer) % len(LAYER_COLORS)] if layer >= 0 else MUTED
+        for layer in edges.layer_id
+    ]
+    ax.add_collection(LineCollection(segments, colors=colors, linewidths=0.7, alpha=0.6))
+    for layer in layers:
+        ax.axhline(
+            layer_z[layer],
+            color=LAYER_COLORS[layer % len(LAYER_COLORS)],
+            linewidth=0.8,
+            linestyle="--",
+            alpha=0.7,
+        )
+    a, _ = bounds
+    ax.set_xlim(-a * 1.05, a * 1.05)
+    z_extent = max(abs(min(layer_z)), abs(max(layer_z))) * 2.5
+    ax.set_ylim(-z_extent, z_extent)
+    ax.set_xlabel("x", color=INK, fontsize=9)
+    ax.set_ylabel("z", color=INK, fontsize=9)
+    ax.set_title("Cross-section (x–z): the layers themselves", color=INK, fontsize=10)
+    style_axis(ax)
+
+    fig.suptitle(
+        "Stratified plexuses: en-face slabs and cross-section",
+        color=INK,
+        fontsize=13,
+        y=0.99,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(output_path, dpi=110, facecolor="white")
+    plt.close(fig)
+
+
+def plexus_metrics(pop, edges, layer_z) -> dict:
+    """Per-plexus composition and stratification quality."""
+    vessels = pop[(pop.layer_id >= 0) & (pop.radius > 0)]
+    per_layer = []
+    for layer in sorted(int(layer) for layer in vessels.layer_id.unique()):
+        in_layer = vessels[vessels.layer_id == layer]
+        per_layer.append(
+            {
+                "layer": layer,
+                "name": layer_name(layer),
+                "z_plane": float(layer_z[layer]),
+                "n_segments": int(len(in_layer)),
+                "max_radius": float(in_layer.radius.max()),
+                "median_abs_z_error": float((in_layer.z - layer_z[layer]).abs().median()),
+            }
+        )
+    on_path = pop[pop.layer_id >= 0]
+    children = on_path[on_path.parent_id.isin(on_path.index)]
+    n_diving = int(
+        (
+            children.layer_id.to_numpy()
+            != on_path.layer_id.loc[children.parent_id].to_numpy()
+        ).sum()
+    )
+    return {
+        "layer_z": [float(z) for z in layer_z],
+        "per_layer": per_layer,
+        "n_diving_vessels": n_diving,
+    }
+
+
 def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -113,6 +217,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_graph_cycles = metrics.graph_cycles(pop)
     remodeler = sim.get_component("flow_remodeler")
     sim_n_pruned = int(remodeler.total_pruned) if remodeler is not None else 0
+    plexus = sim.get_component("plexus_layers")
+    sim_plexus = None
+    if plexus is not None and "layer_id" in pop.columns:
+        sim_plexus = plexus_metrics(pop, edges, plexus.layer_z)
+        render_plexus_figure(pop, edges, bounds, plexus.layer_z, output_dir / "plexus.png")
     sim_shear = (
         remodeler.solve_network(sim.get_population(remodeler.required_attributes))
         if remodeler is not None
@@ -364,6 +473,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "n_anastomoses": sim_n_anastomoses,
             "graph_cycles": sim_graph_cycles,
             "n_pruned": sim_n_pruned,
+            "plexus_layers": sim_plexus,
             "wall_shear": (
                 metrics.summarize(sim_shear.shear[sim_shear.shear > 0])
                 if sim_shear is not None

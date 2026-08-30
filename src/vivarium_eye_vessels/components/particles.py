@@ -28,6 +28,7 @@ PARTICLE_COLUMNS = [
     "path_id",  # used to hack PathExtinction dynamics so that splits don't go extinct immediately
     "radius",  # vessel caliber, assigned by Murray's law at bifurcations
     "vessel_type",  # artery/vein identity, inherited down each tree
+    "anastomosis_id",  # index of the opposite-tree particle this tip fused with
 ]
 
 VESSEL_TYPE_NONE = 0
@@ -213,6 +214,7 @@ class Particle3D(Component):
         pop["path_id"] = -1
         pop["radius"] = 0.0
         pop["vessel_type"] = VESSEL_TYPE_NONE
+        pop["anastomosis_id"] = -1
 
         self.initialize_circle_positions(pop)
 
@@ -825,6 +827,125 @@ class PathSplitter(Component):
                 [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc],
             ]
         )
+
+
+def anastomosis_targets(
+    tips: pd.DataFrame,
+    frozen: pd.DataFrame,
+    neighbor_lists,
+    max_target_radius: float,
+) -> pd.Series:
+    """Match each tip to the nearest opposite-tree capillary within reach.
+
+    ``neighbor_lists[i]`` holds positional indices into ``frozen`` for
+    ``tips.iloc[i]`` (as returned by PathFreezer's KDTree query). A frozen
+    particle qualifies as a target when it belongs to the *other* tree
+    (both vessel types positive and different) and its caliber is at most
+    ``max_target_radius`` — capillaries join capillaries, tips don't fuse
+    into trunks. Returns a Series mapping tip index to target index for
+    the tips that found a target.
+    """
+    matches = {}
+    tip_positions = tips[["x", "y", "z"]].to_numpy(dtype=float)
+    for i, neighbors in enumerate(neighbor_lists):
+        if len(neighbors) == 0:
+            continue
+        candidates = frozen.iloc[list(neighbors)]
+        tip_type = tips.vessel_type.iloc[i]
+        candidates = candidates[
+            (candidates.vessel_type > 0)
+            & (candidates.vessel_type != tip_type)
+            & (candidates.radius > 0)
+            & (candidates.radius <= max_target_radius)
+        ]
+        if candidates.empty:
+            continue
+        offsets = candidates[["x", "y", "z"]].to_numpy(dtype=float) - tip_positions[i]
+        distances = np.linalg.norm(offsets, axis=1)
+        matches[tips.index[i]] = candidates.index[int(np.argmin(distances))]
+    return pd.Series(matches, dtype=int)
+
+
+class PathAnastomosis(Component):
+    """Fuses capillary-caliber tips onto the other tree, closing the loops.
+
+    Trees don't perfuse; circuits do (roadmap idea 4). When an active
+    capillary-caliber tip comes within ``capture_radius`` of the *other*
+    tree's capillary-caliber frozen segments, the tip freezes and records
+    the join in the ``anastomosis_id`` column, turning the two trees into
+    one perfusable graph. Uses PathFreezer's KDTree, so eligible targets
+    refresh at the freezer's cadence.
+    """
+
+    CONFIGURATION_DEFAULTS = {
+        "path_anastomosis": {
+            "capture_radius": 0.03,  # tip-to-target distance that triggers fusion
+            "max_tip_radius": 0.004,  # only capillary-caliber tips anastomose
+            "max_target_radius": 0.004,  # and only onto capillary-caliber segments
+            "probability": 0.5,  # per-step fusion probability once in range
+        }
+    }
+
+    @property
+    def required_attributes(self) -> List[str]:
+        return [
+            "x",
+            "y",
+            "z",
+            "frozen",
+            "freeze_time",
+            "path_id",
+            "radius",
+            "vessel_type",
+            "anastomosis_id",
+        ]
+
+    def setup(self, builder: Builder) -> None:
+        self.config = builder.configuration.path_anastomosis
+        self.clock = builder.time.clock()
+        self.randomness = builder.randomness.get_stream("path_anastomosis")
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
+
+    def on_time_step(self, event: Event) -> None:
+        pop = self.population_view.get(event.index, self.required_attributes)
+        tips = pop[
+            ~pop.frozen
+            & (pop.path_id >= 0)
+            & (pop.vessel_type > 0)
+            & (pop.radius > 0)
+            & (pop.radius <= self.config.max_tip_radius)
+        ]
+        if tips.empty:
+            return
+
+        neighbor_lists = self.freezer.query_radius(tips, float(self.config.capture_radius))
+        if neighbor_lists is None:
+            return
+
+        frozen = self.freezer.frozen_particles()
+        targets = anastomosis_targets(
+            tips, frozen, neighbor_lists, float(self.config.max_target_radius)
+        )
+        if targets.empty:
+            return
+
+        to_join = self.randomness.filter_for_probability(
+            targets.index, self.config.probability
+        )
+        if to_join.empty:
+            return
+
+        updates = pd.DataFrame(
+            {
+                "frozen": True,
+                "freeze_time": self.clock(),
+                "path_id": -1,  # the path ends here, like extinction
+                "anastomosis_id": targets[to_join],
+            },
+            index=to_join,
+        )
+        self.particles.update_particles(updates)
 
 
 class PathDLA(Component):

@@ -4,6 +4,7 @@ components:
         - particles.PathFreezer()
         - particles.PathExtinction()
         - particles.PathSplitter()
+        - particles.PathAnastomosis()
         # - particles.PathDLA()
         - boundaries.EllipsoidContainment()
         - boundaries.CylinderExclusion()
@@ -60,6 +61,13 @@ configuration:
     path_extinction:
         force_threshold: 1.2  # Leaves headroom over perfusion_demand.magnitude so tips
                               # survive long enough to colonize distant hypoxic tissue
+
+    # Anastomosis: capillary tips fuse onto the other tree, closing the loops
+    path_anastomosis:
+        capture_radius: 0.03      # Tip-to-target distance that triggers fusion
+        max_tip_radius: 0.004     # Only capillary-caliber tips anastomose
+        max_target_radius: 0.004  # And only onto capillary-caliber segments
+        probability: 0.5          # Per-step fusion probability once in range
 
     # Hypoxia-driven growth: space-colonization attraction toward unperfused tissue
     perfusion_demand:

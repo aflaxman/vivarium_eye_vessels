@@ -1,3 +1,26 @@
+**v0.6.0 - 08/30/26**
+
+ - Anastomosis: capillary loops between the trees (realism roadmap idea 4)
+
+   - New ``PathAnastomosis`` component: an active capillary-caliber tip
+     that comes within ``capture_radius`` of the *other* tree's
+     capillary-caliber frozen segments fuses onto it (with a per-step
+     ``probability``), freezing the tip and recording the join in a new
+     ``anastomosis_id`` particle column — capillaries join capillaries,
+     tips don't fuse into trunks
+   - ``tree_edges``, the rasterizer, the visualizer, and the growth GIF
+     draw the bridges (violet), so the network is rendered and measured
+     as the perfusable graph it now is
+   - New ``graph_cycles`` V&V metric (E - N + C over parent and
+     anastomosis edges) counts independent loops, plus ``n_anastomoses``
+     in ``metrics.json``; both were structurally zero for the tree-only
+     model
+   - Enables flow-based remodeling (roadmap idea 5): Poiseuille flow now
+     has closed circuits to solve on
+   - ``metrics.json`` now records wall-clock runtime (setup, simulation,
+     steps/second) so speed regressions are tracked alongside the network
+     metrics
+
 **v0.5.0 - 08/30/26**
 
  - Caliber-dependent branching cadence (realism roadmap idea 1b)

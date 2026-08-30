@@ -29,6 +29,7 @@ TREE_ATTRIBUTES = [
     "depth",
     "radius",
     "vessel_type",
+    "anastomosis_id",
 ]
 
 
@@ -80,25 +81,40 @@ def tree_edges(pop: pd.DataFrame) -> pd.DataFrame:
 
     Segments connect each particle with a valid parent to that parent's
     position; particles whose parent has left the table are skipped.
+    Anastomoses (tips fused onto the other tree) contribute one extra
+    segment each, from the tip to its ``anastomosis_id`` target, flagged
+    in the ``anastomosis`` column.
     """
+
+    def edge_frame(children: pd.DataFrame, other_ids: pd.Series, anastomosis: bool):
+        others = pop.loc[other_ids]
+        return pd.DataFrame(
+            {
+                "x0": others.x.values,
+                "y0": others.y.values,
+                "z0": others.z.values,
+                "x1": children.x.values,
+                "y1": children.y.values,
+                "z1": children.z.values,
+                "child": children.index.values,
+                "parent": other_ids.values,
+                "radius": children.radius.values,
+                "vessel_type": children.vessel_type.values,
+                "anastomosis": anastomosis,
+            }
+        )
+
     children = pop[pop.parent_id >= 0]
-    valid = children.parent_id.isin(pop.index)
-    children = children[valid]
-    parents = pop.loc[children.parent_id]
-    return pd.DataFrame(
-        {
-            "x0": parents.x.values,
-            "y0": parents.y.values,
-            "z0": parents.z.values,
-            "x1": children.x.values,
-            "y1": children.y.values,
-            "z1": children.z.values,
-            "child": children.index.values,
-            "parent": children.parent_id.values,
-            "radius": children.radius.values,
-            "vessel_type": children.vessel_type.values,
-        }
-    )
+    children = children[children.parent_id.isin(pop.index)]
+    frames = [edge_frame(children, children.parent_id, anastomosis=False)]
+
+    if "anastomosis_id" in pop.columns:
+        joined = pop[pop.anastomosis_id >= 0]
+        joined = joined[joined.anastomosis_id.isin(pop.index)]
+        if not joined.empty:
+            frames.append(edge_frame(joined, joined.anastomosis_id, anastomosis=True))
+
+    return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
 
 def run_steps(sim: InteractiveContext, n_steps: int, callback=None, every: int = 1) -> None:

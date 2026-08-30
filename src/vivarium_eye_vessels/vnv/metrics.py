@@ -299,6 +299,40 @@ def junction_exponents(pop: pd.DataFrame) -> np.ndarray:
     return np.array(exponents)
 
 
+def graph_cycles(pop: pd.DataFrame) -> int:
+    """Number of independent cycles in the vessel graph (E - N + C).
+
+    Parent-child edges alone form a forest (zero cycles); every anastomosis
+    that joins two already-connected components adds exactly one cycle, so
+    this counts the loops that make the network perfusable rather than
+    tree-like.
+    """
+    in_table = pop.parent_id.isin(pop.index)
+    edges = list(zip(pop.index[in_table], pop.parent_id[in_table]))
+    if "anastomosis_id" in pop.columns:
+        joined = pop.anastomosis_id.isin(pop.index) & (pop.anastomosis_id >= 0)
+        edges.extend(zip(pop.index[joined], pop.anastomosis_id[joined]))
+    if not edges:
+        return 0
+
+    nodes = {node for edge in edges for node in edge}
+    parent = {node: node for node in nodes}
+
+    def find(node):
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    components = len(nodes)
+    for a, b in edges:
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_a] = root_b
+            components -= 1
+    return len(edges) - len(nodes) + components
+
+
 def tree_segment_lengths(pop: pd.DataFrame) -> np.ndarray:
     """Arc lengths of vessel segments between consecutive branch points.
 

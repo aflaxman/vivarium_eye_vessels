@@ -27,6 +27,7 @@ from vivarium_eye_vessels.vnv import simulation
 VESSEL_COLOR = "#2a78d6"  # categorical slot 1: the simulation's identity color
 ARTERY_COLOR = "#e34948"  # categorical slot 8
 VEIN_COLOR = "#2a78d6"  # categorical slot 1
+ANASTOMOSIS_COLOR = "#8a63c9"  # violet: capillary bridges between the trees
 TIP_COLOR = "#16324f"
 INK = "#333333"
 MUTED = "#767676"
@@ -58,6 +59,11 @@ def render_frame(
         if "vessel_type" in edges.columns and (edges.vessel_type > 0).any():
             type_colors = {1: ARTERY_COLOR, 2: VEIN_COLOR}
             colors = [type_colors.get(int(t), VESSEL_COLOR) for t in edges.vessel_type]
+            if "anastomosis" in edges.columns:
+                colors = [
+                    ANASTOMOSIS_COLOR if joined else color
+                    for color, joined in zip(colors, edges.anastomosis)
+                ]
         else:
             colors = VESSEL_COLOR
         ax.add_collection(

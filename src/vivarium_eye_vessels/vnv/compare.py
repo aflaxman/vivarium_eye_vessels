@@ -19,6 +19,7 @@ the pull request.
 
 import datetime
 import json
+import time
 from pathlib import Path
 
 import click
@@ -89,10 +90,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Simulate ---
+    setup_start = time.perf_counter()
     sim = simulation.build_headless_simulation(model_spec)
+    setup_seconds = time.perf_counter() - setup_start
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
+    run_start = time.perf_counter()
     simulation.run_steps(sim, steps)
+    simulation_seconds = time.perf_counter() - run_start
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
 
@@ -104,6 +109,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_angles = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
     sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
+    sim_n_anastomoses = int((pop.anastomosis_id >= 0).sum())
+    sim_graph_cycles = metrics.graph_cycles(pop)
     sim_junction_exponents = metrics.junction_exponents(pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
@@ -291,7 +298,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
         f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%      "
-        f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)"
+        f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)      "
+        f"Loops: {sim_graph_cycles}"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -313,6 +321,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         "steps": steps,
         "raster_size": metrics.RASTER_SIZE,
         "has_calibers": has_calibers,
+        # Wall-clock runtime on the machine that generated this file; useful
+        # for tracking the trend across model versions, not as an absolute
+        "runtime": {
+            "setup_seconds": round(setup_seconds, 2),
+            "simulation_seconds": round(simulation_seconds, 2),
+            "steps_per_second": round(steps / simulation_seconds, 2),
+        },
         "simulation": {
             "n_particles": int(len(pop)),
             "n_frozen": int(pop.frozen.sum()),
@@ -339,6 +354,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "n_artery_segments": int(len(arteries)),
             "n_vein_segments": int(len(veins)),
             "artery_vein_caliber_ratio": sim_avr,
+            "n_anastomoses": sim_n_anastomoses,
+            "graph_cycles": sim_graph_cycles,
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),

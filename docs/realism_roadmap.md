@@ -104,7 +104,7 @@ gained per-tree coverage metrics and the arcade A:V caliber ratio; the
 tree-based metrics now measure only *true* bifurcations (same-path
 continuation children are excluded).
 
-## 4. Anastomosis: close the loops
+## 4. Anastomosis: close the loops — IMPLEMENTED
 
 Trees don't perfuse; circuits do. Real retinal capillaries form a mesh
 connecting the arterial and venous trees. `PathDLA` already gestures at this
@@ -112,6 +112,25 @@ connecting the arterial and venous trees. `PathDLA` already gestures at this
 active tip of one tree comes within a capillary radius of the *other* tree's
 terminal segments, freeze a connecting segment. This produces a perfusable
 graph and enables flow-based remodeling (below).
+
+*As implemented*: the `PathAnastomosis` component fuses an active
+capillary-caliber tip (radius ≤ `max_tip_radius`) onto the other tree when
+it comes within `capture_radius` of an opposite-type frozen segment of
+capillary caliber (≤ `max_target_radius`) — capillaries join capillaries,
+tips don't fuse into trunks. The tip freezes with `probability` per step
+once in range, and the join is recorded in a new `anastomosis_id` particle
+column, so the result is a real graph edge: `tree_edges`, the rasterizer,
+the visualizer, and the growth GIF all draw the bridges (violet in the
+renders), and idea 5's flow solve has a closed circuit to work on. A new
+`graph_cycles` V&V metric (E − N + C over parent and anastomosis edges)
+counts the independent loops, which is exactly the number the tree-only
+model could never move off zero. At the standard 800-step run the spec
+settings (`capture_radius` 0.03, caliber caps 0.004, `probability` 0.5)
+produce 40 anastomoses forming 37 independent loops, with the idea-1b
+headline metrics essentially unchanged (skeleton density 3.33%, 98.7%
+perfused, KS to the HRF length distribution 0.068) — wider capture radii
+or caliber caps were swept and actually produce *fewer* loops, because
+early fusions kill tips and shrink the network before it interdigitates.
 
 ## 5. Flow-based remodeling and pruning
 
@@ -168,6 +187,10 @@ harness under `vivarium_eye_vessels.vnv`:
   metrics on expert-labeled vessel masks from the public HRF dataset
   (downloaded on first use), and writes a side-by-side diagnostic figure
   plus a `metrics.json` for quantitative tracking across model versions.
+  `metrics.json` also records wall-clock runtime (setup, simulation,
+  steps/second) so speed regressions surface alongside the network metrics;
+  compare runtimes only within the same machine, and expect them to scale
+  with network size.
 
 The current model's outputs live in the single `docs/vnv/` folder
 (`growth.gif`, `comparison.png`, `metrics.json`). After implementing a

@@ -21,6 +21,7 @@ class ParticleVisualizer3D(Component):
             "path_color": (100, 100, 255),
             "artery_color": (227, 73, 72),
             "vein_color": (42, 120, 214),
+            "anastomosis_color": (138, 99, 201),
             "frozen_color": (255, 100, 100),
             "ellipsoid_color": (50, 150, 50),
             "cylinder_color": (100, 100, 255),
@@ -54,6 +55,7 @@ class ParticleVisualizer3D(Component):
             "path_id",
             "radius",
             "vessel_type",
+            "anastomosis_id",
         ]
 
     def setup(self, builder: Builder):
@@ -763,6 +765,23 @@ class ParticleVisualizer3D(Component):
                     width = path_widths[idx]
                     color = type_colors.get(int(vessel_types[idx]), self.config["path_color"])
                     pygame.draw.line(surface, color, start_pos, end_pos, width)
+
+        # Anastomoses: capillary bridges fusing the two trees
+        anastomosis_ids = population["anastomosis_id"].values
+        for idx, target_id in enumerate(anastomosis_ids):
+            if target_id >= 0:
+                try:
+                    target_index = population.index.get_loc(target_id)
+                except KeyError:
+                    continue
+                if mask[target_index] and mask[idx]:
+                    pygame.draw.line(
+                        surface,
+                        self.config["anastomosis_color"],
+                        screen_points[idx],
+                        screen_points[target_index],
+                        1,
+                    )
 
     def _draw_particles(
         self,

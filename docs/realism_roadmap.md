@@ -132,7 +132,7 @@ perfused, KS to the HRF length distribution 0.068) — wider capture radii
 or caliber caps were swept and actually produce *fewer* loops, because
 early fusions kill tips and shrink the network before it interdigitates.
 
-## 5. Flow-based remodeling and pruning
+## 5. Flow-based remodeling and pruning — IMPLEMENTED
 
 The strongest realism lever in the literature (Pries & Secomb's adaptation
 model): over-produce segments, solve Poiseuille flow on the frozen graph (a
@@ -142,6 +142,46 @@ this. The schema is already waiting: the `unfreeze_time` column exists and is
 unused — pruning is what it was born for. A `FlowRemodeler` component running
 on a slow cadence (every N steps, like `PathSplitter`) fits the event system
 naturally.
+
+*As implemented*: the `FlowRemodeler` component (see
+[docs/poiseuille_flow.md](poiseuille_flow.md) for the physics from first
+principles) treats every frozen segment and anastomosis bridge as a resistor
+of conductance r⁴/L, fixes artery roots at `artery_pressure` and vein roots
+at `vein_pressure`, gives every node a small `leak_fraction` conductance to
+tissue (so dead-end twigs carry a trickle instead of exactly zero), and
+solves Kirchhoff's current law as one sparse linear system per
+`remodel_interval`. Each segment's wall shear |Q|/r³ then drives two
+adaptations: *pruning* — terminal segments (degree-1 graph ends, so the
+network is never cut mid-branch) with shear below
+`shear_threshold_fraction` × their own tree's median are recycled back into
+the free particle pool, stamping the long-dormant `unfreeze_time` column —
+and *caliber adaptation* — every segment's radius drifts by
+`adaptation_rate` toward the caliber that would put its shear at its own
+tree's median, so high-flow trunks thicken and low-flow twigs thin. Shear
+targets are per tree because arteries genuinely run at higher wall shear
+than veins; a global target thickens arteries until the clinical A:V
+caliber ratio inverts. The anastomosis loops from
+idea 4 carry real artery-to-vein flow and are naturally protected by their
+high shear; the low-shear dead-end clutter that the diameter-stratified V&V
+flagged (~20× too many capillary-scale branches) is exactly what gets eaten
+back, tip by tip, pass after pass.
+
+At the standard 800-step run the spec settings (`shear_threshold_fraction`
+0.5, `adaptation_rate` 0.15) prune 3,281 segments over the run while the
+network keeps growing (7,137 frozen segments remain, 98.9% perfused): the
+capillary-scale share of skeleton branches falls from 66% to 27% (HRF:
+6.5%), vessel area density jumps from 7.2% to 15.1% as vessels thicken
+(HRF: 11.9 ± 1.0% — we overshoot now instead of undershooting), skeleton
+fractal dimension moves from 1.49 to 1.43 (HRF: 1.35), and the arcade A:V
+caliber ratio holds at 0.66 (clinical ~0.67). Costs, stated plainly: the
+aggregate segment-length median drifts from 22 to 29 px (HRF: 22) as the
+shortest clutter branches are removed, and the junction exponent is no
+longer the imposed k = 3.00 — adapted radii give an *emergent* median
+k ≈ 2.2 (n = 41), which is in fact closer to what fundus measurements
+report for human retina (means around 2.2–2.6) than the theoretical 3.
+Two design points mattered: shear targets are per tree (see above), and
+milder pruning or pruning without adaptation were swept and do worse —
+the two mechanisms work as a pair.
 
 ## 6. Layered plexuses
 

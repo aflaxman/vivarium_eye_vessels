@@ -5,6 +5,7 @@ components:
         - particles.PathExtinction()
         - particles.PathSplitter()
         - particles.PathAnastomosis()
+        - flow.FlowRemodeler()
         # - particles.PathDLA()
         - boundaries.EllipsoidContainment()
         - boundaries.CylinderExclusion()
@@ -61,6 +62,21 @@ configuration:
     path_extinction:
         force_threshold: 1.2  # Leaves headroom over perfusion_demand.magnitude so tips
                               # survive long enough to colonize distant hypoxic tissue
+
+    # Flow-based remodeling: Poiseuille flow on the frozen graph, then prune
+    # low-shear terminal segments and drift calibers toward the median shear
+    # (see docs/poiseuille_flow.md)
+    flow_remodeler:
+        remodel_interval: 25
+        start_time: '2025-01-08'   # Let the arcades establish before pruning begins
+        artery_pressure: 1.0
+        vein_pressure: -1.0
+        tissue_pressure: 0.0
+        leak_fraction: 0.01        # Per-node tissue leak vs. median segment conductance
+        shear_threshold_fraction: 0.5  # Prune terminal segments below this x median shear
+        adaptation_rate: 0.15      # Caliber drift toward the median-shear radius
+        min_radius: 0.001
+        max_radius: 0.02
 
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:

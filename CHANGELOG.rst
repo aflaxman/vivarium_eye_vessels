@@ -1,3 +1,19 @@
+**v0.3.0 - 08/30/26**
+
+ - Hypoxia-driven growth via space colonization (realism roadmap idea 2)
+
+   - New ``PerfusionDemand`` force component: a lattice of tissue demand
+     sites inside the ellipsoid; hypoxic sites (no frozen vessel within
+     ``perfusion_radius``) each recruit their nearest growth tip, pulling
+     tips toward unperfused territory until the tissue is colonized
+   - ``model_spec.yaml`` enables it (``magnitude`` 0.3), deepens branching
+     (``max_depth`` 4), and raises ``path_extinction.force_threshold`` to
+     1.2 so tips survive long enough to colonize distant tissue
+   - New ``perfused_fraction`` V&V metric; at 800 steps coverage rose from
+     68.8% to 97.5%, vessel area density from 3.93% to 7.81%, and skeleton
+     fractal dimension from 1.21 to 1.41 (HRF reference: 1.35 +/- 0.02)
+   - Replace deprecated ``skimage.morphology.binary_dilation`` usage
+
 **v0.2.0 - 08/29/26**
 
  - Vessel calibers via Murray's law (realism roadmap idea 1)

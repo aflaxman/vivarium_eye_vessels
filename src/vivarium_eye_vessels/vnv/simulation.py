@@ -56,11 +56,17 @@ def build_headless_simulation(spec_path: str | Path) -> InteractiveContext:
 
 def get_ellipsoid_bounds(sim: InteractiveContext) -> tuple[float, float]:
     """Get the (a, b) semi-axes of the containment ellipsoid, if configured."""
+    a, b, _ = get_ellipsoid_semi_axes(sim)
+    return a, b
+
+
+def get_ellipsoid_semi_axes(sim: InteractiveContext) -> tuple[float, float, float]:
+    """Get the (a, b, c) semi-axes of the containment ellipsoid, if configured."""
     try:
         config = sim.configuration.ellipsoid_containment
-        return float(config.a), float(config.b)
+        return float(config.a), float(config.b), float(config.c)
     except AttributeError:
-        return 2.0, 2.0
+        return 2.0, 2.0, 2.0
 
 
 def get_network(sim: InteractiveContext) -> pd.DataFrame:

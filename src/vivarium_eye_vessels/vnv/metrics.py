@@ -21,8 +21,9 @@ import numpy as np
 import pandas as pd
 from scipy import ndimage
 from scipy.optimize import brentq
+from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
-from skimage.morphology import binary_dilation, disk, skeletonize
+from skimage.morphology import dilation, disk, skeletonize
 
 RASTER_SIZE = 1024
 MIN_BRANCH_PIXELS = 5
@@ -89,9 +90,30 @@ def rasterize_network(
             layer[rr, cc] = True
         dilation_radius = int(round((width_px - 1) / 2))
         if dilation_radius > 0:
-            layer = binary_dilation(layer, disk(dilation_radius))
+            layer = dilation(layer, disk(dilation_radius))
         image |= layer
     return image
+
+
+def perfused_fraction(
+    pop: pd.DataFrame,
+    semi_axes,
+    site_spacing: float,
+    perfusion_radius: float,
+) -> float:
+    """Fraction of tissue demand sites within perfusion_radius of a frozen vessel.
+
+    The direct measure of how completely the network colonizes its territory
+    (roadmap idea 2). Mirrors the PerfusionDemand component's site lattice.
+    """
+    from vivarium_eye_vessels.components.boundaries import generate_demand_sites
+
+    sites = generate_demand_sites(np.asarray(semi_axes, dtype=float), site_spacing)
+    frozen = pop[pop.frozen][["x", "y", "z"]].to_numpy(dtype=float)
+    if len(frozen) == 0 or len(sites) == 0:
+        return 0.0
+    distances, _ = cKDTree(frozen).query(sites, k=1)
+    return float((distances <= perfusion_radius).mean())
 
 
 def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:

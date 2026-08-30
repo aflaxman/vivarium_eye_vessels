@@ -161,11 +161,13 @@ harness under `vivarium_eye_vessels.vnv`:
   from any model specification, for qualitative before/after comparison.
 - `vnv_compare` runs a model specification to completion, computes network
   metrics (box-counting fractal dimension, skeleton vessel density, segment
-  length distribution, per-branch tortuosity, bifurcation angles), computes
-  the same image-based metrics on expert-labeled vessel masks from the public
-  HRF dataset (downloaded on first use), and writes a side-by-side diagnostic
-  figure plus a `metrics.json` for quantitative tracking across model
-  versions.
+  length distribution — aggregate and stratified by local vessel diameter,
+  which is recovered from the distance transform along the skeleton so real
+  masks without explicit calibers are measured the same way as the sim —
+  per-branch tortuosity, bifurcation angles), computes the same image-based
+  metrics on expert-labeled vessel masks from the public HRF dataset
+  (downloaded on first use), and writes a side-by-side diagnostic figure
+  plus a `metrics.json` for quantitative tracking across model versions.
 
 The current model's outputs live in the single `docs/vnv/` folder
 (`growth.gif`, `comparison.png`, `metrics.json`). After implementing a

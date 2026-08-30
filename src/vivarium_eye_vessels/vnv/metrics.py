@@ -170,12 +170,16 @@ def box_counting_dimension(image: np.ndarray) -> float:
     return float(-coeffs[0])
 
 
-def skeleton_branches(skeleton: np.ndarray) -> pd.DataFrame:
+def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) -> pd.DataFrame:
     """Decompose a skeleton into branches between junctions.
 
     Junction pixels (3+ skeleton neighbors) are removed; each remaining
     connected component is one branch. Returns per-branch pixel counts
-    (length) and endpoint chord distances (for tortuosity).
+    (length) and endpoint chord distances (for tortuosity). When the
+    ``binary`` vessel image is given, each branch also gets a ``diameter_px``:
+    twice the mean distance-transform value along the branch (the medial-axis
+    width estimate), which recovers local caliber even from masks that carry
+    no explicit radii.
     """
     skeleton = skeleton.astype(bool)
     kernel = np.ones((3, 3), dtype=int)
@@ -184,6 +188,7 @@ def skeleton_branches(skeleton: np.ndarray) -> pd.DataFrame:
     junctions = skeleton & (neighbor_count >= 3)
     branches = skeleton & ~junctions
 
+    edt = None if binary is None else ndimage.distance_transform_edt(binary)
     labels, n_labels = ndimage.label(branches, structure=np.ones((3, 3)))
     records = []
     for slc, label in zip(ndimage.find_objects(labels), range(1, n_labels + 1)):
@@ -204,9 +209,15 @@ def skeleton_branches(skeleton: np.ndarray) -> pd.DataFrame:
             chord = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0)))
         if chord < 1:
             continue
-        records.append({"length_px": n_pixels, "chord_px": chord})
+        record = {"length_px": n_pixels, "chord_px": chord}
+        if edt is not None:
+            offset = np.array([s.start for s in slc])
+            rows, cols = (coords + offset).T
+            record["diameter_px"] = float(2.0 * edt[rows, cols].mean())
+        records.append(record)
 
-    frame = pd.DataFrame(records, columns=["length_px", "chord_px"])
+    columns = ["length_px", "chord_px"] + ([] if edt is None else ["diameter_px"])
+    frame = pd.DataFrame(records, columns=columns)
     frame["tortuosity"] = frame.length_px / frame.chord_px
     return frame
 
@@ -214,7 +225,7 @@ def skeleton_branches(skeleton: np.ndarray) -> pd.DataFrame:
 def image_metrics(binary: np.ndarray) -> dict[str, Any]:
     """All image-based metrics for one binary vessel image."""
     skeleton = skeletonize(binary)
-    branches = skeleton_branches(skeleton)
+    branches = skeleton_branches(skeleton, binary)
     return {
         "fractal_dimension": box_counting_dimension(skeleton),
         "skeleton_density": float(skeleton.mean()),
@@ -222,6 +233,7 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
         "n_branches": int(len(branches)),
         "branch_length_px": branches.length_px.tolist(),
         "branch_tortuosity": branches.tortuosity.tolist(),
+        "branch_diameter_px": branches.diameter_px.tolist(),
     }
 
 

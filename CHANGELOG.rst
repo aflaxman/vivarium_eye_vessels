@@ -19,6 +19,11 @@
    - New tree-based ``tree_segment_length`` metric in ``metrics.json``:
      inter-branch-point distances in simulation units, independent of
      rasterization
+   - New diameter-stratified segment lengths: per-branch diameter is
+     recovered from the distance transform along the skeleton (so real
+     masks without explicit calibers are measured the same way as the
+     sim), and lengths are compared within capillary / mid / wide strata —
+     a new figure row and ``branch_length_by_diameter`` in ``metrics.json``
    - Side benefit: the arcade A:V caliber ratio moved from 0.84 to 0.67,
      matching the clinical target
 

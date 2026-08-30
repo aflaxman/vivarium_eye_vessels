@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-30T16:04:24",
+  "generated": "2026-08-30T16:52:14",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
@@ -16,6 +16,29 @@
       "median": 22.0,
       "q25": 11.0,
       "q75": 42.0
+    },
+    "branch_length_by_diameter": {
+      "diameter_le_2px": {
+        "n": 678,
+        "median": 21.0,
+        "q25": 10.0,
+        "q75": 38.0,
+        "share": 0.6588921282798834
+      },
+      "diameter_2_4px": {
+        "n": 177,
+        "median": 26.0,
+        "q25": 15.0,
+        "q75": 47.0,
+        "share": 0.17201166180758018
+      },
+      "diameter_gt_4px": {
+        "n": 174,
+        "median": 22.0,
+        "q25": 12.0,
+        "q75": 48.0,
+        "share": 0.16909620991253643
+      }
     },
     "tree_segment_length": {
       "n": 1040,
@@ -73,6 +96,29 @@
       "median": 22.0,
       "q25": 13.0,
       "q75": 37.0
+    },
+    "branch_length_by_diameter": {
+      "diameter_le_2px": {
+        "n": 516,
+        "median": 14.0,
+        "q25": 9.0,
+        "q75": 22.0,
+        "share": 0.06468597216998871
+      },
+      "diameter_2_4px": {
+        "n": 4706,
+        "median": 23.0,
+        "q25": 14.0,
+        "q75": 38.0,
+        "share": 0.5899460950231917
+      },
+      "diameter_gt_4px": {
+        "n": 2755,
+        "median": 22.0,
+        "q25": 12.0,
+        "q75": 39.0,
+        "share": 0.3453679328068196
+      }
     },
     "branch_tortuosity": {
       "n": 7977,

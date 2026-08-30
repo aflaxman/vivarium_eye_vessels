@@ -1,6 +1,7 @@
-""" This script updates the README.rst file with the latest information about
+"""This script updates the README.rst file with the latest information about
 the project. It is intended to be run from the github "update README" workflow.
 """
+
 import json
 import re
 

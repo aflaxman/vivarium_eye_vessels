@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -9,32 +9,34 @@ from vivarium.framework.engine import Builder
 from vivarium.framework.event import Event
 from vivarium.framework.population import SimulantData
 
+PARTICLE_COLUMNS = [
+    # location
+    "x",
+    "y",
+    "z",
+    # velocity
+    "vx",
+    "vy",
+    "vz",
+    # "freeze" information used to form eye vessels
+    "frozen",
+    "freeze_time",
+    "unfreeze_time",
+    "depth",
+    # addl information relevant to eye vessel structure
+    "parent_id",  # tree structure
+    "path_id",  # used to hack PathExtinction dynamics so that splits don't go extinct immediately
+]
+
 
 class Particle3D(Component):
-    """Base component for managing 3D particle positions, velocities, and forces."""
+    """Base component for managing 3D particle positions, velocities, and forces.
 
-    @property
-    def columns_created(self) -> List[str]:
-        return [
-            # location
-            "x",
-            "y",
-            "z",
-            # velocity
-            "vx",
-            "vy",
-            "vz",
-            # "freeze" information
-            # used to form eye vessels
-            "frozen",
-            "freeze_time",
-            "unfreeze_time",
-            "depth",
-            # addl information relevant to
-            # eye vessel structure
-            "parent_id",  # tree structure
-            "path_id",  # used to hack PathExtinction dynamics so that splits don't go extinct immediately
-        ]
+    Under vivarium 4, only the component that creates a column may write to it,
+    so this component owns all particle state and exposes :meth:`update_particles`
+    for sibling components (PathFreezer, PathSplitter, etc.) to route their
+    state changes through.
+    """
 
     CONFIGURATION_DEFAULTS = {
         "particles": {
@@ -63,9 +65,14 @@ class Particle3D(Component):
         )
 
         self.randomness = builder.randomness.get_stream("particle.particles_3d")
+        builder.population.register_initializer(
+            initializer=self.on_initialize_simulants,
+            columns=PARTICLE_COLUMNS,
+            required_resources=[self.randomness],
+        )
         self.setup_scale(builder)
 
-    def setup_scale(self, builder):
+    def setup_scale(self, builder: Builder) -> None:
         has_ellipsoid = "ellipsoid_containment" in builder.components.list_components()
 
         if has_ellipsoid:
@@ -95,7 +102,7 @@ class Particle3D(Component):
         self.force_magnitude = builder.value.register_value_producer(
             "particle.force.magnitude",
             source=self.get_force_magnitude,
-            requires_values=["particle.force.x", "particle.force.y", "particle.force.z"],
+            required_resources=[self.force_x, self.force_y, self.force_z],
         )
 
     def get_force_magnitude(self, index: pd.Index) -> pd.Series:
@@ -104,6 +111,29 @@ class Particle3D(Component):
         fy = self.force_y(index)
         fz = self.force_z(index)
         return np.sqrt(fx**2 + fy**2 + fz**2)
+
+    def get_particles(self, index: pd.Index) -> pd.DataFrame:
+        """Get the full particle state table for the given index."""
+        return self.population_view.get(index, PARTICLE_COLUMNS)
+
+    def update_particles(self, updates: pd.DataFrame) -> None:
+        """Write particle state updates on behalf of this or a sibling component.
+
+        Only this component may write the particle columns, so components that
+        change particle state (freezing, splitting, extinction) construct a
+        DataFrame of new values indexed by simulant and pass it here.
+        """
+        # Coerce datetime columns to the state table's resolution (pandas 3
+        # infers datetime64[us] for new frames, but the table uses ns).
+        datetime_columns = [
+            col for col in ("freeze_time", "unfreeze_time") if col in updates.columns
+        ]
+        if datetime_columns:
+            updates = updates.copy()
+            for col in datetime_columns:
+                updates[col] = updates[col].astype("datetime64[ns]")
+        columns = list(updates.columns)
+        self.population_view.update(columns, lambda current: updates)
 
     def on_initialize_simulants(self, simulant_data: SimulantData) -> None:
         """Initialize particles with positions, velocities, and path tracking information."""
@@ -145,7 +175,7 @@ class Particle3D(Component):
 
         self.initialize_circle_positions(pop)
 
-        self.population_view.update(pop)
+        self.population_view.initialize(pop)
 
     def initialize_circle_positions(self, pop: pd.DataFrame) -> None:
         # Initialize active vessel in circle position
@@ -172,7 +202,7 @@ class Particle3D(Component):
 
     def on_time_step(self, event: Event) -> None:
         """Update positions and velocities of non-frozen particles and track blocking forces."""
-        pop = self.population_view.get(event.index)
+        pop = self.get_particles(event.index)
         active_particles = pop[~pop.frozen]
 
         if not active_particles.empty:
@@ -180,42 +210,44 @@ class Particle3D(Component):
 
     def update_positions(self, particles: pd.DataFrame) -> None:
         """Update positions and velocities based on forces and random changes."""
+        updates = particles[["x", "y", "z", "vx", "vy", "vz"]].copy()
+
         # Update positions based on current velocities
         for pos, vel in [("x", "vx"), ("y", "vy"), ("z", "vz")]:
-            particles.loc[:, pos] = particles[pos] + self.step_size * particles[vel]
+            updates[pos] = updates[pos] + self.step_size * updates[vel]
 
         # Get max velocity change from pipeline
-        max_velocity_change = self.max_velocity_change(particles.index)
+        max_velocity_change = self.max_velocity_change(updates.index)
 
         # Get current forces from pipelines
-        fx = self.force_x(particles.index)
-        fy = self.force_y(particles.index)
-        fz = self.force_z(particles.index)
+        fx = self.force_x(updates.index)
+        fy = self.force_y(updates.index)
+        fz = self.force_z(updates.index)
 
         # Update velocities with random changes and forces
         for i, (v, f) in enumerate(zip(["vx", "vy", "vz"], [fx, fy, fz])):
             # Random velocity change
             dv = (
-                (self.randomness.get_draw(particles.index, additional_key=f"d{v}") - 0.5)
+                (self.randomness.get_draw(updates.index, additional_key=f"d{v}") - 0.5)
                 * 2
                 * max_velocity_change
                 * self.scale[i]
             )
 
             # Add force contribution to velocity
-            particles.loc[:, v] += (dv + f) * self.step_size
+            updates[v] += (dv + f) * self.step_size
 
         # Apply terminal velocity constraint
-        velocity_vectors = particles[["vx", "vy", "vz"]].to_numpy() / self.scale
+        velocity_vectors = updates[["vx", "vy", "vz"]].to_numpy() / self.scale
         velocities_magnitude = np.linalg.norm(velocity_vectors, axis=1)
         over_limit = velocities_magnitude > self.terminal_velocity
 
         if np.any(over_limit):
             # Scale down velocity components to satisfy terminal velocity
             scale_factors = self.terminal_velocity / velocities_magnitude[over_limit]
-            particles.loc[over_limit, ["vx", "vy", "vz"]] *= scale_factors[:, np.newaxis]
+            updates.loc[over_limit, ["vx", "vy", "vz"]] *= scale_factors[:, np.newaxis]
 
-        self.population_view.update(particles)
+        self.update_particles(updates)
 
 
 class PathFreezer(Component):
@@ -229,7 +261,7 @@ class PathFreezer(Component):
     }
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return [
             "x",
             "y",
@@ -253,6 +285,7 @@ class PathFreezer(Component):
         self._current_tree = None
         self._current_frozen = None
         self.simulant_creator = builder.population.get_simulant_creator()
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
     def add_particles(self):
         self.simulant_creator(self.particles_to_add)
@@ -260,7 +293,7 @@ class PathFreezer(Component):
     def on_time_step(self, event: Event) -> None:
         self.step_count += 1
         if self.step_count % self.config.freeze_interval == 0:
-            pop = self.population_view.get(event.index)
+            pop = self.population_view.get(event.index, self.required_attributes)
             self.freeze_particles(pop)
             self.update_tree(pop)
 
@@ -291,9 +324,8 @@ class PathFreezer(Component):
         return self._current_tree.query_ball_point(positions, radius)
 
     def get_population(self, indices: List[int]) -> pd.DataFrame:
-        pos = self._current_frozen.reindex(indices)
-        pos = pos.dropna(how="all")
-        return pos
+        """Get frozen particles by their positional indices in the KDTree."""
+        return self._current_frozen.iloc[list(indices)]
 
     def freeze_particles(self, pop: pd.DataFrame) -> None:
         """Create frozen path points and continue paths with new particles."""
@@ -305,24 +337,27 @@ class PathFreezer(Component):
         if len(available) >= len(active):
             to_freeze = available.iloc[: len(active)]
 
-            to_freeze = to_freeze.assign(
-                x=active.x.values,
-                y=active.y.values,
-                z=active.z.values,
-                vx=active.vx.values,
-                vy=active.vy.values,
-                vz=active.vz.values,
-                path_id=active.path_id.values,
-                parent_id=active.index.values,
-                frozen=False,
-                depth=active.depth.values,
+            continuations = pd.DataFrame(
+                {
+                    "x": active.x.values,
+                    "y": active.y.values,
+                    "z": active.z.values,
+                    "vx": active.vx.values,
+                    "vy": active.vy.values,
+                    "vz": active.vz.values,
+                    "path_id": active.path_id.values,
+                    "parent_id": active.index.values,
+                    "frozen": False,
+                    "depth": active.depth.values,
+                },
+                index=to_freeze.index,
             )
+            self.particles.update_particles(continuations)
 
-            self.population_view.update(to_freeze)
-
-        active.loc[:, "frozen"] = True
-        active.loc[:, "freeze_time"] = self.clock()
-        self.population_view.update(active)
+        frozen_originals = pd.DataFrame(
+            {"frozen": True, "freeze_time": self.clock()}, index=active.index
+        )
+        self.particles.update_particles(frozen_originals)
 
         if len(available) < len(active) * 3:
             self.add_particles()
@@ -338,13 +373,14 @@ class PathExtinction(Component):
     }
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return ["frozen", "freeze_time", "path_id", "vx", "vy", "vz"]
 
     def setup(self, builder: Builder) -> None:
         self.config = builder.configuration.path_extinction
         self.force_threshold = self.config.force_threshold
         self.clock = builder.time.clock()
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
         # Get force pipelines
         self.force_magnitude = builder.value.get_value("particle.force.magnitude")
@@ -353,7 +389,7 @@ class PathExtinction(Component):
         self.force_z = builder.value.get_value("particle.force.z")
 
     def on_time_step(self, event: Event) -> None:
-        pop = self.population_view.get(event.index)
+        pop = self.population_view.get(event.index, self.required_attributes)
         active = pop[~pop.frozen & (pop.path_id >= 0)]
 
         if active.empty:
@@ -363,10 +399,15 @@ class PathExtinction(Component):
         to_freeze = active[force_values > self.force_threshold]
 
         if not to_freeze.empty:
-            to_freeze.loc[:, "frozen"] = True
-            to_freeze.loc[:, "freeze_time"] = self.clock()
-            to_freeze.loc[:, "path_id"] = -1  # Mark as end of path
-            self.population_view.update(to_freeze)
+            updates = pd.DataFrame(
+                {
+                    "frozen": True,
+                    "freeze_time": self.clock(),
+                    "path_id": -1,  # Mark as end of path
+                },
+                index=to_freeze.index,
+            )
+            self.particles.update_particles(updates)
 
 
 class PathSplitter(Component):
@@ -382,7 +423,7 @@ class PathSplitter(Component):
     }
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return [
             "x",
             "y",
@@ -407,6 +448,7 @@ class PathSplitter(Component):
         self.randomness = builder.randomness.get_stream("path_splitter")
         self.clock = builder.time.clock()
         self.simulant_creator = builder.population.get_simulant_creator()
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
     def add_particles(self):
         self.simulant_creator(self.particles_to_add)
@@ -414,7 +456,7 @@ class PathSplitter(Component):
     def on_time_step(self, event: Event) -> None:
         self.step_count += 1
         if self.step_count % self.config.split_interval == 0:
-            pop = self.population_view.get(event.index)
+            pop = self.population_view.get(event.index, self.required_attributes)
             self.split_paths(pop)
 
     def split_paths(self, pop: pd.DataFrame) -> None:
@@ -453,7 +495,7 @@ class PathSplitter(Component):
             # Combine all updates with consistent dtypes
             all_updates = pd.concat(updates, axis=0)
 
-            self.population_view.update(all_updates)
+            self.particles.update_particles(all_updates)
 
     def split_frozen(self, pop, to_split):
         available = pop[~pop.frozen & (pop.path_id < 0)]
@@ -656,7 +698,7 @@ class PathDLA(Component):
     }
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return [
             "x",
             "y",
@@ -673,7 +715,8 @@ class PathDLA(Component):
         self.config = builder.configuration.path_dla
         self.randomness = builder.randomness.get_stream("path_dla")
         self.clock = builder.time.clock()
-        self.freezer = builder.components.get_component("path_freezer")
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
         # Convert times to pandas Timestamps
         self.dla_start_time = pd.Timestamp(self.config.dla_start_time)
@@ -718,7 +761,7 @@ class PathDLA(Component):
         """Perform DLA freezing with current near radius if after start time."""
         if self.clock() >= self.dla_start_time:
             self.near_radius = self.get_current_near_radius()
-            pop = self.population_view.get(event.index)
+            pop = self.population_view.get(event.index, self.required_attributes)
             self.dla_freeze(pop)
 
     def update_tree(self, pop):
@@ -753,14 +796,18 @@ class PathDLA(Component):
         freeze_condition = stickiness_probabilities < self.config.stickiness
         freeze_mask = near_particles & freeze_condition
 
-        to_freeze = not_frozen[freeze_mask].copy()
+        to_freeze = not_frozen[freeze_mask]
         if not to_freeze.empty:
-            to_freeze["parent_id"] = frozen.index[
-                [indices[0] for indices in near_frozen_indices[freeze_mask]]
-            ]
-            to_freeze["path_id"] = 1
-            to_freeze["depth"] = 1000
-            to_freeze["frozen"] = False
-            to_freeze["freeze_time"] = pd.NaT  # self.clock()
-
-            self.population_view.update(to_freeze)
+            updates = pd.DataFrame(
+                {
+                    "parent_id": frozen.index[
+                        [indices[0] for indices in near_frozen_indices[freeze_mask]]
+                    ],
+                    "path_id": 1,
+                    "depth": 1000,
+                    "frozen": False,
+                    "freeze_time": pd.NaT,
+                },
+                index=to_freeze.index,
+            )
+            self.particles.update_particles(updates)

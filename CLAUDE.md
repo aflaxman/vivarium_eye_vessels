@@ -41,17 +41,21 @@ This sim does not use artifacts, actually
 - **visualizer.py**: 3D visualization using pygame for real-time particle rendering
 - **observers.py**: Data collection and output management
 
-### Key Vivarium Patterns
+### Key Vivarium Patterns (vivarium 4.x)
 
-1. **Component Architecture**: All components inherit from `vivarium.Component` with standard lifecycle methods (`setup()`, `columns_created`, `columns_required`)
+1. **Component Architecture**: All components inherit from `vivarium.Component` with standard lifecycle methods (`setup()`, `on_time_step()`, etc.)
 
 2. **Configuration Structure**: Model specifications in YAML format define component parameters, with `CONFIGURATION_DEFAULTS` in each component class
 
-3. **Population Management**: Particles are treated as simulants with tabular data (position, velocity, frozen state, parent relationships)
+3. **Population Management**: Particles are treated as simulants with tabular data (position, velocity, frozen state, parent relationships). `Particle3D` registers all particle columns via `builder.population.register_initializer(...)` and initializes them with `population_view.initialize(...)`
 
-4. **Event-Driven Updates**: Components respond to time step events to update particle states and apply forces
+4. **Private Columns**: vivarium 4 only allows the component that created a column to write it. `Particle3D` owns all particle state and exposes `update_particles(updates)`; sibling components (PathFreezer, PathSplitter, PathExtinction, PathDLA) obtain it via `builder.components.get_components_by_type(Particle3D)[0]` and route their writes through it
 
-5. **Builder Pattern**: Use `Builder` object in `setup()` methods to register value sources, event listeners, and population views
+5. **Explicit Attribute Reads**: `population_view.get(index, attributes)` requires an explicit attribute list; components declare theirs in a `required_attributes` property
+
+6. **Event-Driven Updates**: Components respond to time step events to update particle states and apply forces
+
+7. **Builder Pattern**: Use `Builder` object in `setup()` methods to register value pipelines (`register_value_producer`/`register_value_modifier` with `required_resources`), event listeners, and simulant initializers
 
 ### Data Structure
 

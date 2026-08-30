@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -35,7 +36,7 @@ class ParticleVisualizer3D(Component):
     }
 
     @property
-    def columns_required(self) -> List[str]:
+    def required_attributes(self) -> List[str]:
         return [
             "x",
             "y",
@@ -114,7 +115,7 @@ class ParticleVisualizer3D(Component):
         event : Event
             The event that triggered the function call.
         """
-        population = self.population_view.get(event.index)
+        population = self.population_view.get(event.index, self.required_attributes)
 
         # Draw one final frame
         self.screen.fill(self.config["background_color"])
@@ -167,6 +168,11 @@ class ParticleVisualizer3D(Component):
 
     def _wait_for_exit(self) -> None:
         """Run an event loop until the user exits."""
+        if os.environ.get("SDL_VIDEODRIVER") == "dummy":
+            # Headless run (e.g. CI): there is no window for a user to close.
+            pygame.quit()
+            return
+
         running = True
         while running:
             for event in pygame.event.get():
@@ -398,7 +404,7 @@ class ParticleVisualizer3D(Component):
                     self.screen.blit(label, (end_proj[0] + 5, end_proj[1] - 5))
 
     def on_time_step(self, event: Event) -> None:
-        population = self.population_view.get(event.index)
+        population = self.population_view.get(event.index, self.required_attributes)
         if population.empty:
             return
 

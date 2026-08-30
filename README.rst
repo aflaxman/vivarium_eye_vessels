@@ -71,7 +71,7 @@ Once you have conda installed, you should open up your normal shell
 You'll then make an environment, clone this repository, then install
 all necessary requirements as follows::
 
-  :~$ conda create --name=vivarium_eye_vessels python=3.11 git git-lfs
+  :~$ conda create --name=vivarium_eye_vessels python=3.13 git git-lfs
   ...conda will download python and base dependencies...
   :~$ conda activate vivarium_eye_vessels
   (vivarium_eye_vessels) :~$ git clone https://github.com/ihmeuw/vivarium_eye_vessels.git
@@ -80,7 +80,7 @@ all necessary requirements as follows::
   (vivarium_eye_vessels) :~$ pip install -e .
   ...pip will install vivarium and other requirements...
 
-Supported Python versions: 3.10, 3.11
+Supported Python versions: 3.11, 3.12, 3.13
 
 Note the ``-e`` flag that follows pip install. This will install the python
 package in-place, which is important for making the model specifications later.
@@ -170,6 +170,21 @@ The ``-v`` flag will log verbosely, so you will get log messages every time
 step. For more ways to run simulations, see the tutorials at
 https://vivarium.readthedocs.io/en/latest/tutorials/running_a_simulation/index.html
 and https://vivarium.readthedocs.io/en/latest/tutorials/exploration.html
+
+Validation and Verification
+---------------------------
+
+The ``vivarium_eye_vessels.vnv`` subpackage compares simulated vessel
+networks to expert-labeled vessel masks from the public HRF dataset, both
+visually and quantitatively (fractal dimension, skeleton density, segment
+lengths, tortuosity, bifurcation angles)::
+
+   (vivarium_eye_vessels) :~$ vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/mychange/growth.gif
+   (vivarium_eye_vessels) :~$ vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/mychange/
+
+Baseline outputs live in ``docs/vnv/baseline/``; regenerate after model
+changes and compare. See ``docs/realism_roadmap.md`` for the planned model
+enhancements these diagnostics are designed to track.
 
 Demonstrations
 ~~~~~~~~~~~~~~

@@ -43,22 +43,28 @@ if __name__ == "__main__":
         long_description = f.read()
 
     install_requirements = [
-        "gbd_mapping>=4.1.2",
-        "vivarium>=3.2.10",
-        "vivarium_public_health>=3.1.3",
+        "vivarium>=4.1.0",
         "click",
-        "jinja2",
         "loguru",
+        "matplotlib",
         "numpy",
         "pandas",
+        "pygame",
         "pyyaml",
+        "scikit-image",
         "scipy",
-        "tables",
     ]
 
     setup_requires = ["setuptools_scm"]
 
-    data_requirements = ["vivarium_inputs[data]>=5.2.2"]
+    # This simulation does not use GBD artifacts; these extras only support the
+    # cookiecutter artifact/cluster tooling under tools/ and data/.
+    data_requirements = [
+        "gbd_mapping>=4.1.2",
+        "vivarium_public_health>=6.0.0",
+        "vivarium_inputs[data]>=5.2.2",
+        "tables",
+    ]
     cluster_requirements = ["vivarium_cluster_tools>=2.1.1"]
     test_requirements = ["pytest"]
     lint_requirements = ["black", "isort"]
@@ -91,5 +97,7 @@ if __name__ == "__main__":
         entry_points="""
             [console_scripts]
             make_artifacts=vivarium_eye_vessels.tools.cli:make_artifacts
+            vnv_growth_gif=vivarium_eye_vessels.vnv.animate:main
+            vnv_compare=vivarium_eye_vessels.vnv.compare:main
         """,
     )

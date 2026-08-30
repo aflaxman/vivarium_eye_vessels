@@ -2,6 +2,7 @@ from typing import Dict, List, Protocol
 
 import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 from vivarium import Component
 from vivarium.framework.engine import Builder
 
@@ -361,3 +362,113 @@ class FrozenRepulsion(BaseForceComponent):
             forces[i] = np.sum(directions * force_magnitudes[:, np.newaxis], axis=0)
 
         return forces
+
+
+#######################################
+# Hypoxia-driven growth (roadmap 2)   #
+#######################################
+
+
+def generate_demand_sites(semi_axes: np.ndarray, spacing: float) -> np.ndarray:
+    """Lattice of tissue demand sites inside the containment ellipsoid.
+
+    Each site represents a patch of tissue that needs perfusion; sites outside
+    the ellipsoid are discarded.
+    """
+    a, b, c = (float(v) for v in semi_axes)
+    xs = np.arange(-a, a + spacing / 2, spacing)
+    ys = np.arange(-b, b + spacing / 2, spacing)
+    zs = np.arange(-c, c + spacing / 2, spacing)
+    grid = np.stack(np.meshgrid(xs, ys, zs, indexing="ij"), axis=-1).reshape(-1, 3)
+    inside = ((grid[:, 0] / a) ** 2 + (grid[:, 1] / b) ** 2 + (grid[:, 2] / c) ** 2) <= 1.0
+    return grid[inside]
+
+
+def colonization_forces(
+    tip_positions: np.ndarray,
+    hypoxic_sites: np.ndarray,
+    influence_radius: float,
+    magnitude: float,
+) -> np.ndarray:
+    """Space-colonization attraction of growth tips toward hypoxic tissue.
+
+    Following Runions et al. (2005), each hypoxic site recruits only its
+    nearest growth tip (within ``influence_radius``); each tip is pulled in
+    the normalized mean direction of the sites it won, scaled by
+    ``magnitude``. Because a site pulls exactly one tip, tips naturally
+    spread apart and fill unperfused territory instead of clustering.
+    """
+    forces = np.zeros_like(tip_positions, dtype=float)
+    if len(tip_positions) == 0 or len(hypoxic_sites) == 0:
+        return forces
+
+    tip_tree = cKDTree(tip_positions)
+    distances, nearest_tip = tip_tree.query(hypoxic_sites, k=1)
+    in_range = (distances <= influence_radius) & (distances > 1e-12)
+    if not np.any(in_range):
+        return forces
+
+    offsets = hypoxic_sites[in_range] - tip_positions[nearest_tip[in_range]]
+    unit_vectors = offsets / distances[in_range, np.newaxis]
+    np.add.at(forces, nearest_tip[in_range], unit_vectors)
+
+    norms = np.linalg.norm(forces, axis=1)
+    pulled = norms > 1e-12
+    forces[pulled] = magnitude * forces[pulled] / norms[pulled, np.newaxis]
+    return forces
+
+
+class PerfusionDemand(BaseForceComponent):
+    """Attracts vessel growth tips toward under-perfused tissue.
+
+    A stand-in for hypoxia-driven VEGF signaling: tissue sites farther than
+    ``perfusion_radius`` from any frozen vessel are hypoxic, and each hypoxic
+    site recruits its nearest active growth tip. Uses PathFreezer's KDTree of
+    frozen particles, so perfusion state refreshes at the freezer's cadence.
+    """
+
+    CONFIGURATION_DEFAULTS = {
+        "perfusion_demand": {
+            "site_spacing": 0.1,
+            "perfusion_radius": 0.15,
+            "influence_radius": 2.0,
+            "magnitude": 0.3,
+        }
+    }
+
+    @property
+    def required_attributes(self) -> List[str]:
+        return ["x", "y", "z", "frozen", "path_id"]
+
+    @property
+    def filter_str(self) -> str:
+        return "not frozen and path_id >= 0"
+
+    def setup(self, builder: Builder) -> None:
+        super().setup(builder)
+        config = builder.configuration.perfusion_demand
+        self.perfusion_radius = float(config.perfusion_radius)
+        self.influence_radius = float(config.influence_radius)
+        self.magnitude = float(config.magnitude)
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+
+        if "ellipsoid_containment" in builder.components.list_components():
+            ellipsoid = builder.configuration.ellipsoid_containment
+            semi_axes = np.array([ellipsoid.a, ellipsoid.b, ellipsoid.c], dtype=float)
+        else:
+            semi_axes = np.ones(3)
+        self.sites = generate_demand_sites(semi_axes, float(config.site_spacing))
+
+    def hypoxic_sites(self) -> np.ndarray:
+        """Demand sites currently farther than perfusion_radius from any vessel."""
+        neighbor_lists = self.freezer.query_radius(self.sites, self.perfusion_radius)
+        if neighbor_lists is None:
+            return self.sites
+        unperfused = np.array([len(neighbors) == 0 for neighbors in neighbor_lists])
+        return self.sites[unperfused]
+
+    def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
+        tips = particles[["x", "y", "z"]].to_numpy(dtype=float)
+        return colonization_forces(
+            tips, self.hypoxic_sites(), self.influence_radius, self.magnitude
+        )

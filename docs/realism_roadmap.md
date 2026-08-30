@@ -31,16 +31,27 @@ V&V harness gained two caliber metrics: *vessel area density* and the fitted
 `docs/vnv/`). Bifurcation angles now emerge from the radii and concentrate
 inside the 60–90° literature band.
 
-## 2. Growth toward hypoxia (space colonization)
+## 2. Growth toward hypoxia (space colonization) — IMPLEMENTED
 
 Real angiogenesis is VEGF chemotaxis: tissue far from any vessel recruits
-growth toward it. The elegant version here is a "space colonization" force —
-the model already keeps a KDTree of frozen particles, so a `PerfusionDemand`
-component can attract each active tip toward the direction of greatest
-distance from existing vessels (sampled on a coarse lattice inside the
-ellipsoid). Tips then fan out naturally, fill territory evenly, and terminate
-when no unperfused tissue remains — a principled, emergent replacement for
-`PathExtinction`'s force threshold and much of the repulsion tuning.
+growth toward it.
+
+*As implemented*: the `PerfusionDemand` force component lays a lattice of
+tissue demand sites inside the containment ellipsoid (`site_spacing`); a site
+is hypoxic while no frozen vessel lies within `perfusion_radius` (checked
+against PathFreezer's KDTree). Following Runions et al.'s space-colonization
+rule, each hypoxic site recruits only its *nearest* active growth tip (within
+`influence_radius`), and each tip is pulled with strength `magnitude` in the
+mean direction of the sites it won — so tips spread apart and fill
+unperfused territory instead of clustering, and the force fades away as the
+tissue becomes perfused. Keep `magnitude` below `path_extinction`'s
+`force_threshold`, which was raised to 1.2 in `model_spec.yaml` so tips
+survive long enough to colonize distant tissue. A new `perfused_fraction`
+V&V metric measures coverage directly. At the standard 800-step run the
+network went from 68.8% to 97.5% tissue perfused, vessel area density from
+3.93% to 7.81% (HRF: 11.93 ± 1.03%), skeleton density from 0.96% to 2.48%
+(HRF: 3.21%), and skeleton fractal dimension from 1.21 to 1.41 (HRF:
+1.35 ± 0.02).
 
 ## 3. Paired arterial and venous trees
 
@@ -133,9 +144,9 @@ are 2D projections of a curved surface while the sim is projected from a thin
 ellipsoid; and the sim's spatial scale is arbitrary, so scale-dependent
 metrics (density, segment lengths) are normalized to the field of view. The
 harness is designed to show the *direction and size of improvement*, not to
-claim the current model matches reality — expect the current model to remain
-measurably far from HRF in fractal dimension and density (ideas 2 and 4 above
-are what close that gap).
+claim the current model matches reality — the remaining density gap versus
+HRF is capillary-bed structure, which idea 4 (anastomosis) and finer-scale
+branching are what close.
 
 ## References
 

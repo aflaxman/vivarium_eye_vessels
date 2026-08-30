@@ -28,7 +28,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from skimage.morphology import binary_dilation, disk, skeletonize
+from skimage.morphology import dilation, disk, skeletonize
 
 from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
 
@@ -67,6 +67,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # --- Simulate ---
     sim = simulation.build_headless_simulation(model_spec)
     bounds = simulation.get_ellipsoid_bounds(sim)
+    semi_axes = simulation.get_ellipsoid_semi_axes(sim)
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
@@ -79,6 +80,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_angles = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
     sim_junction_exponents = metrics.junction_exponents(pop)
+    sim_perfused_fraction = metrics.perfused_fraction(
+        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
+    )
 
     # --- Real reference data ---
     mask_paths = reference_data.fetch_hrf_masks()
@@ -106,7 +110,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     def displayable(thin_image: np.ndarray) -> np.ndarray:
         # 1px skeletons disappear when matplotlib downsamples; thicken for display only
-        return binary_dilation(thin_image, disk(2))
+        return dilation(thin_image, disk(2))
 
     ax = axes[0, 0]
     sim_display = sim_raster if has_calibers else displayable(sim_raster)
@@ -218,7 +222,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     )
     area_line = (
         f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
-        f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%"
+        f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
+        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -252,6 +257,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
+            "perfused_fraction": sim_perfused_fraction,
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),

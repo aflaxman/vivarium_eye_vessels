@@ -9,6 +9,7 @@ components:
         - boundaries.CylinderExclusion()
         - boundaries.PointRepulsion()
         - boundaries.FrozenRepulsion()
+        - boundaries.PerfusionDemand()
         - visualizer.ParticleVisualizer3D()
         - observers.SaveParticles()
 
@@ -49,13 +50,21 @@ configuration:
         split_interval: 30     # Steps between checking for splits
         split_angle: 60         # Fallback angle when the parent has no caliber
         split_probability: 0.95  # Probability of eligible path splitting
-        max_depth: 2
+        max_depth: 4
         murray_exponent: 3.0   # r_parent^k = r_major^k + r_minor^k at bifurcations
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
 
     path_extinction:
-        force_threshold: 0.85
+        force_threshold: 1.2  # Leaves headroom over perfusion_demand.magnitude so tips
+                              # survive long enough to colonize distant hypoxic tissue
+
+    # Hypoxia-driven growth: space-colonization attraction toward unperfused tissue
+    perfusion_demand:
+        site_spacing: 0.1        # Lattice spacing of tissue demand sites
+        perfusion_radius: 0.15   # Tissue within this distance of a vessel is perfused
+        influence_radius: 2.0    # Hypoxic sites recruit growth tips within this distance
+        magnitude: 0.3           # Attraction strength (keep below the extinction threshold)
 
     frozen_repulsion:
         force_type: hookean

@@ -1,3 +1,36 @@
+**v0.7.0 - 08/30/26**
+
+ - Flow-based remodeling and pruning (realism roadmap idea 5)
+
+   - New ``FlowRemodeler`` component: solves Poiseuille flow on the frozen
+     graph as a resistor network (conductance r^4/L per segment and
+     anastomosis bridge, artery/vein roots as fixed-pressure terminals, a
+     per-node tissue leak) via one sparse Kirchhoff solve per
+     ``remodel_interval``
+   - Wall shear |Q|/r^3 drives remodeling: low-shear *terminal* segments
+     (degree-1 graph ends, so the network is never cut mid-branch) are
+     pruned and recycled into the free particle pool, stamping the
+     previously unused ``unfreeze_time`` column; every caliber drifts by
+     ``adaptation_rate`` toward the median-shear radius (trunks thicken,
+     twigs thin)
+   - New ``docs/poiseuille_flow.md``: the physics from first principles —
+     the Hagen-Poiseuille law, the r^4 punchline, the Ohm/Kirchhoff
+     circuit analogy, wall shear as the vessel's own sensor, and how
+     Murray's law emerges from uniform shear
+   - V&V: ``n_pruned`` and ``wall_shear`` summaries in ``metrics.json``,
+     pruned count in the figure headline
+   - Shear targets are per tree (arteries genuinely run at higher wall
+     shear than veins) and the depth-0 arcades are exempt from adaptation
+     (their calibers are upstream boundary conditions); both were needed
+     to keep the clinical A:V caliber ratio, which holds at 0.66
+   - At the standard 800-step run: 3,281 segments pruned, capillary-scale
+     branch share 66% -> 27% (HRF 6.5%), vessel area density 7.2% -> 15.1%
+     (HRF 11.9%), fractal dimension 1.49 -> 1.43 (HRF 1.35), tissue 98.9%
+     perfused; the junction exponent becomes emergent (median k ~ 2.2,
+     close to measured human values) instead of the imposed 3.0, and the
+     aggregate length median drifts to 29 px (HRF 22) as clutter is
+     removed
+
 **v0.6.0 - 08/30/26**
 
  - Anastomosis: capillary loops between the trees (realism roadmap idea 4)

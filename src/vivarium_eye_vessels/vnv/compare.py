@@ -111,6 +111,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_n_anastomoses = int((pop.anastomosis_id >= 0).sum())
     sim_graph_cycles = metrics.graph_cycles(pop)
+    remodeler = sim.get_component("flow_remodeler")
+    sim_n_pruned = int(remodeler.total_pruned) if remodeler is not None else 0
+    sim_shear = (
+        remodeler.solve_network(sim.get_population(remodeler.required_attributes))
+        if remodeler is not None
+        else None
+    )
     sim_junction_exponents = metrics.junction_exponents(pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
@@ -299,7 +306,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
         f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%      "
         f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)      "
-        f"Loops: {sim_graph_cycles}"
+        f"Loops: {sim_graph_cycles}      Pruned: {sim_n_pruned}"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -356,6 +363,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "artery_vein_caliber_ratio": sim_avr,
             "n_anastomoses": sim_n_anastomoses,
             "graph_cycles": sim_graph_cycles,
+            "n_pruned": sim_n_pruned,
+            "wall_shear": (
+                metrics.summarize(sim_shear.shear[sim_shear.shear > 0])
+                if sim_shear is not None
+                else metrics.summarize([])
+            ),
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),

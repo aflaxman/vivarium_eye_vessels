@@ -38,6 +38,30 @@ INK = "#333333"
 MUTED = "#767676"
 GRID = "#e6e6e6"
 LITERATURE_ANGLE_RANGE = (60, 90)  # healthy retinal bifurcations (Masters 2004)
+DIAMETER_BIN_EDGES = (2.0, 4.0)  # px: capillary (<=2), mid (2-4], wide (>4)
+DIAMETER_BIN_TITLES = {
+    "diameter_le_2px": "diameter ≤ 2 px (capillary)",
+    "diameter_2_4px": "diameter 2–4 px",
+    "diameter_gt_4px": "diameter > 4 px (arcades)",
+}
+
+
+def stratify_by_diameter(lengths, diameters) -> dict[str, np.ndarray]:
+    """Branch lengths split into capillary / mid / wide diameter strata.
+
+    Diameters come from the distance transform along the skeleton, so the
+    same stratification applies to the sim raster and to real masks that
+    carry no explicit calibers. The capillary bin is closed at 2 px because
+    that is the transform's floor: a single-pixel line measures exactly 2.
+    """
+    lengths = np.asarray(lengths, dtype=float)
+    diameters = np.asarray(diameters, dtype=float)
+    lo, hi = DIAMETER_BIN_EDGES
+    return {
+        "diameter_le_2px": lengths[diameters <= lo],
+        "diameter_2_4px": lengths[(diameters > lo) & (diameters <= hi)],
+        "diameter_gt_4px": lengths[diameters > hi],
+    }
 
 
 def style_axis(ax) -> None:
@@ -79,6 +103,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_image_metrics = metrics.image_metrics(sim_raster)
     sim_angles = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
+    sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_junction_exponents = metrics.junction_exponents(pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
@@ -105,6 +130,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     real_per_mask = []
     real_lengths: list[float] = []
     real_tortuosity: list[float] = []
+    real_diameters: list[float] = []
     example_binary = None
     for path in mask_paths:
         binary = metrics.binarize_mask(reference_data.load_mask(path))
@@ -114,14 +140,20 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         m["file"] = path.name
         real_lengths.extend(m.pop("branch_length_px"))
         real_tortuosity.extend(m.pop("branch_tortuosity"))
+        real_diameters.extend(m.pop("branch_diameter_px"))
         real_per_mask.append(m)
+
+    sim_strata = stratify_by_diameter(
+        sim_image_metrics["branch_length_px"], sim_image_metrics["branch_diameter_px"]
+    )
+    real_strata = stratify_by_diameter(real_lengths, real_diameters)
 
     real_fd = np.array([m["fractal_dimension"] for m in real_per_mask])
     real_density = np.array([m["skeleton_density"] for m in real_per_mask])
     real_area_density = np.array([m["area_density"] for m in real_per_mask])
 
     # --- Figure ---
-    fig, axes = plt.subplots(2, 3, figsize=(15, 9))
+    fig, axes = plt.subplots(3, 3, figsize=(15, 13.5))
     fig.patch.set_facecolor("white")
 
     def displayable(thin_image: np.ndarray) -> np.ndarray:
@@ -230,6 +262,25 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             fontsize=8,
         )
 
+    # Row 3: segment lengths stratified by local vessel diameter, measured the
+    # same way on both images (distance transform along the skeleton)
+    for column, key in enumerate(DIAMETER_BIN_TITLES):
+        ax = axes[2, column]
+        overlay_histogram(
+            ax,
+            sim_strata[key],
+            real_strata[key],
+            length_bins,
+            "skeleton branch length (px)",
+        )
+        ax.set_xscale("log")
+        ax.set_title(
+            f"{DIAMETER_BIN_TITLES[key]} — sim n={len(sim_strata[key])},"
+            f" HRF n={len(real_strata[key])}",
+            color=INK,
+            fontsize=10,
+        )
+
     headline = (
         f"Fractal dimension (skeleton): sim {sim_image_metrics['fractal_dimension']:.2f}  vs  "
         f"HRF {real_fd.mean():.2f} ± {real_fd.std():.2f}      "
@@ -248,9 +299,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fontsize=13,
         y=0.995,
     )
-    fig.text(0.5, 0.955, headline, ha="center", color=INK, fontsize=10)
-    fig.text(0.5, 0.93, area_line, ha="center", color=INK, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.915))
+    fig.text(0.5, 0.968, headline, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.951, area_line, ha="center", color=INK, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     figure_path = output_dir / "comparison.png"
     fig.savefig(figure_path, dpi=110, facecolor="white")
     plt.close(fig)
@@ -270,6 +321,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "skeleton_density": sim_image_metrics["skeleton_density"],
             "area_density": sim_image_metrics["area_density"],
             "branch_length_px": metrics.summarize(sim_image_metrics["branch_length_px"]),
+            "branch_length_by_diameter": {
+                key: {
+                    **metrics.summarize(values),
+                    "share": len(values) / max(len(sim_image_metrics["branch_length_px"]), 1),
+                }
+                for key, values in sim_strata.items()
+            },
+            "tree_segment_length": metrics.summarize(sim_tree_segment_lengths),
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
@@ -296,6 +355,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
                 "std": float(real_area_density.std()),
             },
             "branch_length_px": metrics.summarize(real_lengths),
+            "branch_length_by_diameter": {
+                key: {
+                    **metrics.summarize(values),
+                    "share": len(values) / max(len(real_lengths), 1),
+                }
+                for key, values in real_strata.items()
+            },
             "branch_tortuosity": metrics.summarize(real_tortuosity),
             "per_mask": real_per_mask,
         },

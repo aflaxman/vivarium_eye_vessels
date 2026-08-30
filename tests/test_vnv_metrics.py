@@ -27,6 +27,27 @@ def test_skeleton_branches_straight_line():
     np.testing.assert_allclose(branches.tortuosity.iloc[0], 1.0, atol=0.05)
 
 
+def test_skeleton_branch_diameter_recovers_bar_width():
+    from skimage.morphology import skeletonize
+
+    image = np.zeros((64, 128), dtype=bool)
+    image[28:37, 8:120] = True  # a 9-px-thick horizontal bar
+    branches = metrics.skeleton_branches(skeletonize(image), image)
+    assert len(branches) == 1
+    assert 7.0 < branches.diameter_px.iloc[0] < 11.0
+
+
+def test_stratify_by_diameter_bins():
+    from vivarium_eye_vessels.vnv.compare import stratify_by_diameter
+
+    # A 1-px skeleton line measures diameter exactly 2.0, so the capillary
+    # bin is closed at 2 px
+    strata = stratify_by_diameter([10.0, 20.0, 30.0, 40.0], [1.0, 2.0, 3.9, 5.0])
+    np.testing.assert_allclose(strata["diameter_le_2px"], [10.0, 20.0])
+    np.testing.assert_allclose(strata["diameter_2_4px"], [30.0])
+    np.testing.assert_allclose(strata["diameter_gt_4px"], [40.0])
+
+
 def test_rasterize_network_draws_segments():
     edges = pd.DataFrame(
         {

@@ -1,3 +1,32 @@
+**v0.5.0 - 08/30/26**
+
+ - Caliber-dependent branching cadence (realism roadmap idea 1b)
+
+   - ``PathSplitter`` scales each tip's split probability by
+     ``(min_radius / radius) ** caliber_cadence_exponent``, so wide trunks
+     run long between branch points while capillary-caliber twigs branch at
+     the full ``split_probability`` (exponent 0 restores the old
+     caliber-independent cadence)
+   - ``model_spec.yaml`` pairs exponent 0.6 with a faster base cadence
+     (``split_interval`` 15, was 30) so twigs branch more densely while
+     trunks branch less
+   - Targets the segment-length distribution — the clearest visual gap
+     against the HRF reference: at 800 steps the KS distance to the HRF
+     log-length distribution fell from 0.099 to 0.053, the median matches
+     HRF exactly (22 px), the shortest-length spike dropped from 2.0x to
+     1.6x the HRF density, and skeleton density rose from 3.03% to 3.39%
+     (HRF: 3.21%)
+   - New tree-based ``tree_segment_length`` metric in ``metrics.json``:
+     inter-branch-point distances in simulation units, independent of
+     rasterization
+   - New diameter-stratified segment lengths: per-branch diameter is
+     recovered from the distance transform along the skeleton (so real
+     masks without explicit calibers are measured the same way as the
+     sim), and lengths are compared within capillary / mid / wide strata —
+     a new figure row and ``branch_length_by_diameter`` in ``metrics.json``
+   - Side benefit: the arcade A:V caliber ratio moved from 0.84 to 0.67,
+     matching the clinical target
+
 **v0.4.0 - 08/30/26**
 
  - Paired arterial and venous trees (realism roadmap idea 3)

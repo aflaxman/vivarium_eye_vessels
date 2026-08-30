@@ -38,7 +38,8 @@ configuration:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
             n_vessels: 4               # Number of frozen particles in the circle
-        root_radius: 0.02              # Caliber of the root vessels
+        root_radius: 0.02              # Caliber of the root (vein) vessels
+        artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
 
     # Path freezing configuration
     path_freezer:
@@ -71,6 +72,7 @@ configuration:
         spring_constant: 1.5  # Spring constant for Hooke's law (force/distance)
         interaction_radius: 0.15
         delay: 1 # days
+        cross_type_factor: 0.25  # Weak artery-vein repulsion -> interdigitating arcades
 
     path_dla:
         dla_start_time: '2025-02-01'

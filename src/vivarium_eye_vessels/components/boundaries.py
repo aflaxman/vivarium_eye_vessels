@@ -287,7 +287,14 @@ class PointRepulsion(BaseForceComponent):
 
 
 class FrozenRepulsion(BaseForceComponent):
-    """Component that repels active particles from frozen particles using spatial indexing"""
+    """Component that repels active particles from frozen particles using spatial indexing.
+
+    When particles carry artery/vein identities, repulsion from the *other*
+    tree's frozen vessels is scaled by ``cross_type_factor``. A factor below 1
+    lets arteries and veins tolerate each other's proximity while still
+    avoiding their own tree, which produces the interdigitating arcade
+    pattern of the retina.
+    """
 
     CONFIGURATION_DEFAULTS = {
         "frozen_repulsion": {
@@ -298,12 +305,18 @@ class FrozenRepulsion(BaseForceComponent):
             "min_distance": 0.01,
             "spring_constant": 0.1,
             "delay": 1.0,  # days frozen before exerting force on particles in same path
+            "cross_type_factor": 1.0,  # repulsion multiplier between artery and vein
         }
     }
 
     @property
     def required_attributes(self) -> List[str]:
-        return super().required_attributes + ["freeze_time", "path_id", "parent_id"]
+        return super().required_attributes + [
+            "freeze_time",
+            "path_id",
+            "parent_id",
+            "vessel_type",
+        ]
 
     @property
     def filter_str(self) -> str:
@@ -318,6 +331,7 @@ class FrozenRepulsion(BaseForceComponent):
         self.interaction_radius = float(config.interaction_radius)
         self.freeze_radius = float(config.freeze_radius)
         self.delay = float(config.delay)
+        self.cross_type_factor = float(config.cross_type_factor)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
@@ -355,11 +369,16 @@ class FrozenRepulsion(BaseForceComponent):
                 directions = displacements / distances[:, np.newaxis]
             directions = np.nan_to_num(directions)
 
-            # Calculate and sum forces from all frozen neighbors
+            # Calculate and sum forces from all frozen neighbors, with weaker
+            # repulsion from the other tree (artery vs. vein)
             force_magnitudes = self.force_calculator.calculate_force_magnitude(
                 self.interaction_radius - distances
             )
-            forces[i] = np.sum(directions * force_magnitudes[:, np.newaxis], axis=0)
+            same_type = frozen.vessel_type.to_numpy() == particles.iloc[i].vessel_type
+            type_factors = np.where(same_type, 1.0, self.cross_type_factor)
+            forces[i] = np.sum(
+                directions * (force_magnitudes * type_factors)[:, np.newaxis], axis=0
+            )
 
         return forces
 
@@ -425,6 +444,12 @@ class PerfusionDemand(BaseForceComponent):
     ``perfusion_radius`` from any frozen vessel are hypoxic, and each hypoxic
     site recruits its nearest active growth tip. Uses PathFreezer's KDTree of
     frozen particles, so perfusion state refreshes at the freezer's cadence.
+
+    When vessels carry artery/vein identities, demand is computed per tree:
+    tissue needs both arterial supply and venous drainage, so a site keeps
+    recruiting artery tips until an artery is nearby regardless of how well
+    it is drained, and vice versa. This keeps the two trees in balance —
+    neither can win territory for both.
     """
 
     CONFIGURATION_DEFAULTS = {
@@ -438,7 +463,7 @@ class PerfusionDemand(BaseForceComponent):
 
     @property
     def required_attributes(self) -> List[str]:
-        return ["x", "y", "z", "frozen", "path_id"]
+        return ["x", "y", "z", "frozen", "path_id", "vessel_type"]
 
     @property
     def filter_str(self) -> str:
@@ -459,16 +484,31 @@ class PerfusionDemand(BaseForceComponent):
             semi_axes = np.ones(3)
         self.sites = generate_demand_sites(semi_axes, float(config.site_spacing))
 
-    def hypoxic_sites(self) -> np.ndarray:
-        """Demand sites currently farther than perfusion_radius from any vessel."""
-        neighbor_lists = self.freezer.query_radius(self.sites, self.perfusion_radius)
-        if neighbor_lists is None:
+    def hypoxic_sites(self, vessel_type: int | None = None) -> np.ndarray:
+        """Demand sites farther than perfusion_radius from any (typed) vessel.
+
+        With ``vessel_type`` given, only frozen vessels of that type count as
+        perfusing; with None, any frozen vessel does.
+        """
+        frozen = self.freezer.frozen_particles()
+        if frozen is None or frozen.empty:
             return self.sites
-        unperfused = np.array([len(neighbors) == 0 for neighbors in neighbor_lists])
-        return self.sites[unperfused]
+        if vessel_type is not None:
+            frozen = frozen[frozen.vessel_type == vessel_type]
+            if frozen.empty:
+                return self.sites
+        tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
+        distances, _ = tree.query(self.sites, k=1)
+        return self.sites[distances > self.perfusion_radius]
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
         tips = particles[["x", "y", "z"]].to_numpy(dtype=float)
-        return colonization_forces(
-            tips, self.hypoxic_sites(), self.influence_radius, self.magnitude
-        )
+        tip_types = particles["vessel_type"].to_numpy()
+        forces = np.zeros_like(tips)
+        for vessel_type in np.unique(tip_types):
+            selected = tip_types == vessel_type
+            hypoxic = self.hypoxic_sites(int(vessel_type) if vessel_type > 0 else None)
+            forces[selected] = colonization_forces(
+                tips[selected], hypoxic, self.influence_radius, self.magnitude
+            )
+        return forces

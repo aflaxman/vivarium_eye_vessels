@@ -100,19 +100,25 @@ def perfused_fraction(
     semi_axes,
     site_spacing: float,
     perfusion_radius: float,
+    vessel_type: int | None = None,
 ) -> float:
     """Fraction of tissue demand sites within perfusion_radius of a frozen vessel.
 
     The direct measure of how completely the network colonizes its territory
     (roadmap idea 2). Mirrors the PerfusionDemand component's site lattice.
+    With ``vessel_type`` given, only frozen vessels of that type count (e.g.
+    arterial supply coverage vs. venous drainage coverage).
     """
     from vivarium_eye_vessels.components.boundaries import generate_demand_sites
 
     sites = generate_demand_sites(np.asarray(semi_axes, dtype=float), site_spacing)
-    frozen = pop[pop.frozen][["x", "y", "z"]].to_numpy(dtype=float)
-    if len(frozen) == 0 or len(sites) == 0:
+    frozen = pop[pop.frozen]
+    if vessel_type is not None:
+        frozen = frozen[frozen.vessel_type == vessel_type]
+    frozen_positions = frozen[["x", "y", "z"]].to_numpy(dtype=float)
+    if len(frozen_positions) == 0 or len(sites) == 0:
         return 0.0
-    distances, _ = cKDTree(frozen).query(sites, k=1)
+    distances, _ = cKDTree(frozen_positions).query(sites, k=1)
     return float((distances <= perfusion_radius).mean())
 
 
@@ -224,15 +230,28 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
 #######################
 
 
-def bifurcation_angles(pop: pd.DataFrame) -> np.ndarray:
-    """Angles (degrees) between daughter segments at tree bifurcations."""
+def true_bifurcations(pop: pd.DataFrame):
+    """Yield (parent, daughters) at true bifurcations of the vessel tree.
+
+    A parent's same-path continuation child (created by PathFreezer, with the
+    parent's own path id and nearly its radius) is not a daughter branch, so
+    it is excluded; only parents with two or more new-path daughters count.
+    Sprout points — a continuation plus one side branch — are therefore
+    skipped rather than fit as if they were bifurcations.
+    """
     children = pop[pop.parent_id >= 0]
     children = children[children.parent_id.isin(pop.index)]
-    angles = []
     for parent_id, group in children.groupby("parent_id"):
-        if len(group) < 2:
-            continue
         parent = pop.loc[parent_id]
+        daughters = group[group.path_id != parent.path_id]
+        if len(daughters) >= 2:
+            yield parent, daughters
+
+
+def bifurcation_angles(pop: pd.DataFrame) -> np.ndarray:
+    """Angles (degrees) between daughter segments at true tree bifurcations."""
+    angles = []
+    for parent, group in true_bifurcations(pop):
         vectors = group[["x", "y", "z"]].values - parent[["x", "y", "z"]].values.astype(float)
         norms = np.linalg.norm(vectors, axis=1)
         valid = norms > 1e-12
@@ -246,19 +265,15 @@ def bifurcation_angles(pop: pd.DataFrame) -> np.ndarray:
 
 
 def junction_exponents(pop: pd.DataFrame) -> np.ndarray:
-    """Fitted junction exponents k with r0**k == r1**k + r2**k at bifurcations.
+    """Fitted junction exponents k with r0**k == r1**k + r2**k at true bifurcations.
 
     Murray's law predicts k close to 3. Bifurcations without calibers, or
     where a daughter is at least as wide as the parent (e.g. from caliber
     flooring), are skipped since no exponent exists there.
     """
-    children = pop[pop.parent_id >= 0]
-    children = children[children.parent_id.isin(pop.index)]
     exponents = []
-    for parent_id, group in children.groupby("parent_id"):
-        if len(group) < 2:
-            continue
-        r0 = float(pop.loc[parent_id, "radius"])
+    for parent, group in true_bifurcations(pop):
+        r0 = float(parent.radius)
         r1, r2 = (float(r) for r in group.radius.values[:2])
         if min(r0, r1, r2) <= 0 or max(r1, r2) >= r0:
             continue

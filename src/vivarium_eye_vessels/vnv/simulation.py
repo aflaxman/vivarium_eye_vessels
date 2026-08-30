@@ -28,6 +28,7 @@ TREE_ATTRIBUTES = [
     "parent_id",
     "depth",
     "radius",
+    "vessel_type",
 ]
 
 
@@ -95,6 +96,7 @@ def tree_edges(pop: pd.DataFrame) -> pd.DataFrame:
             "child": children.index.values,
             "parent": children.parent_id.values,
             "radius": children.radius.values,
+            "vessel_type": children.vessel_type.values,
         }
     )
 

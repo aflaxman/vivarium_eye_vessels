@@ -83,6 +83,22 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
     )
+    sim_arterial_supply = metrics.perfused_fraction(
+        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15, vessel_type=1
+    )
+    sim_venous_drainage = metrics.perfused_fraction(
+        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15, vessel_type=2
+    )
+    arteries = pop[(pop.vessel_type == 1) & (pop.path_id >= 0) & (pop.radius > 0)]
+    veins = pop[(pop.vessel_type == 2) & (pop.path_id >= 0) & (pop.radius > 0)]
+    # Clinical AVR is measured on the major arcades near the disc, so compare
+    # the depth-0 trunks rather than averaging over capillary-scale tails
+    arcade_arteries = arteries[arteries.depth == 0]
+    arcade_veins = veins[veins.depth == 0]
+    if len(arcade_arteries) and len(arcade_veins):
+        sim_avr = float(arcade_arteries.radius.mean() / arcade_veins.radius.mean())
+    else:
+        sim_avr = float("nan")
 
     # --- Real reference data ---
     mask_paths = reference_data.fetch_hrf_masks()
@@ -223,7 +239,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     area_line = (
         f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
-        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%"
+        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%      "
+        f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -258,6 +275,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
             "perfused_fraction": sim_perfused_fraction,
+            "arterial_supply_fraction": sim_arterial_supply,
+            "venous_drainage_fraction": sim_venous_drainage,
+            "n_artery_segments": int(len(arteries)),
+            "n_vein_segments": int(len(veins)),
+            "artery_vein_caliber_ratio": sim_avr,
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),

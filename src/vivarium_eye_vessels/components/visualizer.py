@@ -19,6 +19,8 @@ class ParticleVisualizer3D(Component):
             "background_color": (0, 0, 0),
             "particle_color": (255, 255, 255),
             "path_color": (100, 100, 255),
+            "artery_color": (227, 73, 72),
+            "vein_color": (42, 120, 214),
             "frozen_color": (255, 100, 100),
             "ellipsoid_color": (50, 150, 50),
             "cylinder_color": (100, 100, 255),
@@ -51,6 +53,7 @@ class ParticleVisualizer3D(Component):
             "parent_id",
             "path_id",
             "radius",
+            "vessel_type",
         ]
 
     def setup(self, builder: Builder):
@@ -739,6 +742,11 @@ class ParticleVisualizer3D(Component):
         path_widths = self._calculate_path_widths(population)
 
         parent_ids = population["parent_id"].values
+        vessel_types = population["vessel_type"].values
+        type_colors = {
+            1: self.config["artery_color"],
+            2: self.config["vein_color"],
+        }
 
         for idx, parent_id in enumerate(parent_ids):
             if pd.notna(parent_id):
@@ -753,9 +761,8 @@ class ParticleVisualizer3D(Component):
                     start_pos = screen_points[parent_index]
                     end_pos = screen_points[idx]
                     width = path_widths[idx]
-                    pygame.draw.line(
-                        surface, self.config["path_color"], start_pos, end_pos, width
-                    )
+                    color = type_colors.get(int(vessel_types[idx]), self.config["path_color"])
+                    pygame.draw.line(surface, color, start_pos, end_pos, width)
 
     def _draw_particles(
         self,

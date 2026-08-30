@@ -53,13 +53,27 @@ network went from 68.8% to 97.5% tissue perfused, vessel area density from
 (HRF: 3.21%), and skeleton fractal dimension from 1.21 to 1.41 (HRF:
 1.35 ± 0.02).
 
-## 3. Paired arterial and venous trees
+## 3. Paired arterial and venous trees — IMPLEMENTED
 
 The retina has interdigitating artery and vein trees entering at the optic
 disc, with an artery:vein caliber ratio around 2:3 (a standard clinical
-biomarker). Add a `vessel_type` to paths: same-type repulsion strong,
-cross-type repulsion weak. The characteristic alternating A/V arcade pattern
-falls out, and renders can color the trees like a fundus photo.
+biomarker).
+
+*As implemented*: a `vessel_type` particle column, seeded as alternating
+artery/vein arcades around the disc (artery roots at
+`particles.artery_caliber_ratio` × the vein `root_radius`) and inherited down
+each tree through freezing, splitting, and DLA attachment. `FrozenRepulsion`
+scales cross-tree repulsion by `cross_type_factor` (0.25 in the spec), so
+arteries and veins tolerate each other's proximity while avoiding their own
+tree — the interdigitating arcade pattern. `PerfusionDemand` became
+type-aware: tissue needs both arterial supply and venous drainage, so each
+tree is recruited separately and neither can win territory for both; and
+`PathSplitter` re-sprouts any tree whose active tips all died (angiogenic
+sprouting), closing the ratchet that let one tree take over. The visualizer
+and growth GIF color the trees like a fundus photo, and the V&V harness
+gained per-tree coverage metrics and the arcade A:V caliber ratio; the
+tree-based metrics now measure only *true* bifurcations (same-path
+continuation children are excluded).
 
 ## 4. Anastomosis: close the loops
 

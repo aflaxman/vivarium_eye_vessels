@@ -1,3 +1,21 @@
+**v0.4.0 - 08/30/26**
+
+ - Paired arterial and venous trees (realism roadmap idea 3)
+
+   - New ``vessel_type`` particle column: alternating artery/vein roots at
+     the seed circle (arteries at ``particles.artery_caliber_ratio`` of the
+     vein caliber), inherited through freezing, splitting, and DLA
+   - ``FrozenRepulsion`` scales artery-vein repulsion by
+     ``cross_type_factor`` so the trees interdigitate
+   - ``PerfusionDemand`` is type-aware: tissue needs arterial supply and
+     venous drainage separately, keeping the trees in balance
+   - ``PathSplitter`` re-sprouts any tree whose active tips all died,
+     instead of only when every tip in the simulation was gone
+   - Visualizer and growth GIF color arteries red and veins blue
+   - V&V: per-tree coverage fractions and the arcade A:V caliber ratio in
+     metrics.json; bifurcation angles and junction exponents now measure
+     only true bifurcations (continuation children excluded)
+
 **v0.3.0 - 08/30/26**
 
  - Hypoxia-driven growth via space colonization (realism roadmap idea 2)

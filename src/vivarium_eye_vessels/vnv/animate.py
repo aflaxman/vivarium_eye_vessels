@@ -25,6 +25,8 @@ from PIL import Image
 from vivarium_eye_vessels.vnv import simulation
 
 VESSEL_COLOR = "#2a78d6"  # categorical slot 1: the simulation's identity color
+ARTERY_COLOR = "#e34948"  # categorical slot 8
+VEIN_COLOR = "#2a78d6"  # categorical slot 1
 TIP_COLOR = "#16324f"
 INK = "#333333"
 MUTED = "#767676"
@@ -53,8 +55,13 @@ def render_frame(
             linewidths = np.maximum(2 * edges.radius.values * px_per_unit * 72 / 100, 0.4)
         else:
             linewidths = 1.0
+        if "vessel_type" in edges.columns and (edges.vessel_type > 0).any():
+            type_colors = {1: ARTERY_COLOR, 2: VEIN_COLOR}
+            colors = [type_colors.get(int(t), VESSEL_COLOR) for t in edges.vessel_type]
+        else:
+            colors = VESSEL_COLOR
         ax.add_collection(
-            LineCollection(segments, colors=VESSEL_COLOR, linewidths=linewidths, alpha=0.9)
+            LineCollection(segments, colors=colors, linewidths=linewidths, alpha=0.9)
         )
 
     tips = pop[~pop.frozen & (pop.path_id >= 0)]

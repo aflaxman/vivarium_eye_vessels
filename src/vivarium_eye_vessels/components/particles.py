@@ -27,7 +27,12 @@ PARTICLE_COLUMNS = [
     "parent_id",  # tree structure
     "path_id",  # used to hack PathExtinction dynamics so that splits don't go extinct immediately
     "radius",  # vessel caliber, assigned by Murray's law at bifurcations
+    "vessel_type",  # artery/vein identity, inherited down each tree
 ]
+
+VESSEL_TYPE_NONE = 0
+VESSEL_TYPE_ARTERY = 1
+VESSEL_TYPE_VEIN = 2
 
 
 def murray_daughter_radii(parent_radius: float, flow_fraction, exponent: float) -> tuple:
@@ -75,7 +80,9 @@ class Particle3D(Component):
             "initial_velocity_range": (-0.05, 0.05),
             "terminal_velocity": 0.2,  # Maximum allowed velocity magnitude
             "initial_circle": {"center": [1.5, 0.0, 0.5], "radius": 0.1, "n_vessels": 5},
-            "root_radius": 0.02,  # Caliber of the root vessels at the seed circle
+            "root_radius": 0.02,  # Caliber of the root (vein) vessels at the seed circle
+            # Arteries are narrower than veins; the clinical artery:vein ratio is ~2:3
+            "artery_caliber_ratio": 0.67,
         }
     }
 
@@ -205,6 +212,7 @@ class Particle3D(Component):
         pop["parent_id"] = -1
         pop["path_id"] = -1
         pop["radius"] = 0.0
+        pop["vessel_type"] = VESSEL_TYPE_NONE
 
         self.initialize_circle_positions(pop)
 
@@ -232,7 +240,15 @@ class Particle3D(Component):
                 ]
                 pop.loc[i, "path_id"] = i
                 pop.loc[i, ["depth"]] = 0
-                pop.loc[i, "radius"] = self.config.root_radius
+                # Alternate artery/vein arcades around the disc; arteries are narrower
+                if i % 2 == 0:
+                    pop.loc[i, "vessel_type"] = VESSEL_TYPE_ARTERY
+                    pop.loc[i, "radius"] = (
+                        self.config.root_radius * self.config.artery_caliber_ratio
+                    )
+                else:
+                    pop.loc[i, "vessel_type"] = VESSEL_TYPE_VEIN
+                    pop.loc[i, "radius"] = self.config.root_radius
 
     def on_time_step(self, event: Event) -> None:
         """Update positions and velocities of non-frozen particles and track blocking forces."""
@@ -310,6 +326,7 @@ class PathFreezer(Component):
             "parent_id",
             "path_id",
             "radius",
+            "vessel_type",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -339,6 +356,10 @@ class PathFreezer(Component):
             self._current_tree = None
         else:
             self._current_tree = cKDTree(self._current_frozen[["x", "y", "z"]].values)
+
+    def frozen_particles(self):
+        """The frozen-particle table backing the KDTree, or None before any freeze."""
+        return self._current_frozen
 
     def get_neighbor_pairs(self, radius: float):
         """Get all pairs of frozen particles within radius using efficient pair query."""
@@ -386,6 +407,7 @@ class PathFreezer(Component):
                     "frozen": False,
                     "depth": active.depth.values,
                     "radius": active.radius.values * self.config.radius_taper,
+                    "vessel_type": active.vessel_type.values,
                 },
                 index=to_freeze.index,
             )
@@ -484,6 +506,7 @@ class PathSplitter(Component):
             "parent_id",
             "path_id",
             "radius",
+            "vessel_type",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -507,36 +530,38 @@ class PathSplitter(Component):
             self.split_paths(pop)
 
     def split_paths(self, pop: pd.DataFrame) -> None:
-        """Split eligible paths into two branches, freezing the original particle."""
-        # Get active particles that have valid path_ids
-        mode = "split_unfrozen"
+        """Split active tips into branches, and re-sprout trees with no tips.
+
+        Active tips split in place (freezing the original). Separately, any
+        vessel type whose tree has no active tip left sprouts new branches off
+        its own frozen vessels — without this, a tree whose tips all went
+        extinct could never grow again while the other tree keeps splitting.
+        """
+        updates = []
         active = pop[~pop.frozen & (pop.path_id >= 0)]
-        if active.empty:
-            active_index = self.randomness.filter_for_probability(
-                pop[pop.frozen].index, 0.01, "active_empty"
+
+        if not active.empty:
+            to_consider = self.randomness.filter_for_probability(
+                active.index, self.config.split_probability
             )
-            mode = "split_frozen"
-        else:
-            active_index = active.index
+            not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
+            to_split = to_consider[not_too_deep]
+            if not to_split.empty:
+                updates.extend(self.split_unfrozen(pop, to_split) or [])
 
-        # Determine which paths will split
-        to_consider = self.randomness.filter_for_probability(
-            active_index, self.config.split_probability
-        )
-
-        not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
-        to_split = to_consider[not_too_deep]
-
-        if to_split.empty:
-            return
-
-        # Find available particles for new branches - need two per split
-        if mode == "split_unfrozen":
-            updates = self.split_unfrozen(pop, to_split)
-        elif mode == "split_frozen":
-            updates = self.split_frozen(pop, to_split)
-        else:
-            assert 0, f"mode {mode} not implemented"
+        # Per-type re-sprouting from frozen vessels (angiogenic sprouting)
+        frozen_on_path = pop[pop.frozen & (pop.path_id >= 0)]
+        for vessel_type in np.unique(frozen_on_path.vessel_type):
+            if (active.vessel_type == vessel_type).any():
+                continue
+            candidates = frozen_on_path[frozen_on_path.vessel_type == vessel_type]
+            to_consider = self.randomness.filter_for_probability(
+                candidates.index, 0.01, f"active_empty_{vessel_type}"
+            )
+            not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
+            to_split = to_consider[not_too_deep]
+            if not to_split.empty:
+                updates.extend(self.split_frozen(pop, to_split) or [])
 
         if updates:
             # Combine all updates with consistent dtypes
@@ -604,6 +629,7 @@ class PathSplitter(Component):
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
                     "radius": [side_radii[orig_idx]],
+                    "vessel_type": [original.vessel_type],
                 },
                 index=[new_branches.iloc[idx].name],
             )
@@ -709,6 +735,7 @@ class PathSplitter(Component):
                     "path_id": [original.path_id],
                     "parent_id": [original.parent_id],
                     "radius": [original.radius],
+                    "vessel_type": [original.vessel_type],
                 },
                 index=[orig_idx],
             )
@@ -728,6 +755,7 @@ class PathSplitter(Component):
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
                     "radius": [major_radii[orig_idx]],
+                    "vessel_type": [original.vessel_type],
                 },
                 index=[new_branches.iloc[2 * idx].name],
             )
@@ -747,6 +775,7 @@ class PathSplitter(Component):
                     "path_id": [self.next_path_id],
                     "parent_id": [orig_idx],
                     "radius": [minor_radii[orig_idx]],
+                    "vessel_type": [original.vessel_type],
                 },
                 index=[new_branches.iloc[2 * idx + 1].name],
             )
@@ -801,6 +830,7 @@ class PathDLA(Component):
             "depth",
             "path_id",
             "parent_id",
+            "vessel_type",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -891,16 +921,18 @@ class PathDLA(Component):
 
         to_freeze = not_frozen[freeze_mask]
         if not to_freeze.empty:
+            attachment_positions = [
+                indices[0] for indices in near_frozen_indices[freeze_mask]
+            ]
             updates = pd.DataFrame(
                 {
-                    "parent_id": frozen.index[
-                        [indices[0] for indices in near_frozen_indices[freeze_mask]]
-                    ],
+                    "parent_id": frozen.index[attachment_positions],
                     "path_id": 1,
                     "depth": 1000,
                     "frozen": False,
                     "freeze_time": pd.NaT,
                     "radius": self.config.attach_radius,
+                    "vessel_type": frozen.vessel_type.values[attachment_positions],
                 },
                 index=to_freeze.index,
             )

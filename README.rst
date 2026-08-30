@@ -179,11 +179,12 @@ networks to expert-labeled vessel masks from the public HRF dataset, both
 visually and quantitatively (fractal dimension, skeleton density, segment
 lengths, tortuosity, bifurcation angles)::
 
-   (vivarium_eye_vessels) :~$ vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/mychange/growth.gif
-   (vivarium_eye_vessels) :~$ vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml -o docs/vnv/mychange/
+   (vivarium_eye_vessels) :~$ vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml
+   (vivarium_eye_vessels) :~$ vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 
-Baseline outputs live in ``docs/vnv/baseline/``; regenerate after model
-changes and compare. See ``docs/realism_roadmap.md`` for the planned model
+Both tools overwrite the current model's outputs in ``docs/vnv/`` in place;
+commit them with a model change so the before/after appears as an image diff
+in the pull request. See ``docs/realism_roadmap.md`` for the planned model
 enhancements these diagnostics are designed to track.
 
 Demonstrations

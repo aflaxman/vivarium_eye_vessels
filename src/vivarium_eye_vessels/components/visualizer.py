@@ -32,6 +32,7 @@ class ParticleVisualizer3D(Component):
             "ellipsoid_points": 20,
             "movement_speed": 0.05,
             "manual_rotation_step": 0.05,
+            "vessel_width_scale": 150,  # pixels of path width per unit of vessel radius
         }
     }
 
@@ -49,6 +50,7 @@ class ParticleVisualizer3D(Component):
             "depth",
             "parent_id",
             "path_id",
+            "radius",
         ]
 
     def setup(self, builder: Builder):
@@ -632,10 +634,19 @@ class ParticleVisualizer3D(Component):
             self.screen.blit(surface, pos)
 
     def _calculate_path_widths(self, population: pd.DataFrame) -> None:
-        """Calculate branching counts and path widths for all paths using optimized methods."""
-        path_widths = np.where(
-            population["parent_id"] >= 0, np.maximum(5 - population["depth"], 2), 0
-        )
+        """Calculate path widths from vessel calibers, falling back to tree depth."""
+        radii = population["radius"].to_numpy()
+        if np.any(radii > 0):
+            scale = self.config.get("vessel_width_scale", 150)
+            path_widths = np.where(
+                population["parent_id"] >= 0,
+                np.clip(np.round(radii * scale), 1, 8).astype(int),
+                0,
+            )
+        else:
+            path_widths = np.where(
+                population["parent_id"] >= 0, np.maximum(5 - population["depth"], 2), 0
+            )
 
         return path_widths
 

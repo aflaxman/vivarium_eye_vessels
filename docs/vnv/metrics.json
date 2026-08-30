@@ -1,48 +1,60 @@
 {
-  "generated": "2026-08-29T17:55:45",
+  "generated": "2026-08-29T21:12:01",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
+  "has_calibers": true,
   "simulation": {
     "n_particles": 2500,
-    "n_frozen": 2329,
-    "n_segments": 2326,
-    "fractal_dimension": 1.2040035958755144,
-    "skeleton_density": 0.009212493896484375,
+    "n_frozen": 2479,
+    "n_segments": 2478,
+    "fractal_dimension": 1.2096156204751076,
+    "skeleton_density": 0.009575843811035156,
+    "area_density": 0.039318084716796875,
     "branch_length_px": {
-      "n": 157,
-      "median": 40.0,
-      "q25": 13.0,
+      "n": 148,
+      "median": 51.0,
+      "q25": 16.75,
       "q75": 82.0
     },
     "branch_tortuosity": {
-      "n": 157,
-      "median": 1.002711606759635,
-      "q25": 0.9433439687408928,
-      "q75": 1.0490994977110422
+      "n": 148,
+      "median": 0.9952616240323156,
+      "q25": 0.9256618379066373,
+      "q75": 1.0463759014663279
     },
     "path_tortuosity": {
-      "n": 92,
-      "median": 1.0141669323062554,
-      "q25": 1.002953394905162,
-      "q75": 1.1007842522397553
+      "n": 96,
+      "median": 1.0207288972884565,
+      "q25": 1.0039077744316616,
+      "q75": 1.0837804648157274
     },
     "bifurcation_angle_deg": {
-      "n": 94,
-      "median": 76.06880349281064,
-      "q25": 55.24880286340283,
-      "q75": 86.77587078507504
+      "n": 87,
+      "median": 77.18130568248326,
+      "q25": 70.68471194785535,
+      "q75": 90.36268061723135
+    },
+    "junction_exponent": {
+      "n": 88,
+      "median": 3.0000000000000004,
+      "q25": 2.9999999999999996,
+      "q75": 12.444776529472591
     }
   },
   "real_hrf": {
     "n_masks": 15,
     "fractal_dimension": {
       "mean": 1.3535523212482796,
-      "std": 0.024215152206258635
+      "std": 0.024215152206258632
     },
     "skeleton_density": {
       "mean": 0.032118674548070304,
       "std": 0.002912877545011046
+    },
+    "area_density": {
+      "mean": 0.11934683909843415,
+      "std": 0.010252504173694062
     },
     "branch_length_px": {
       "n": 7977,
@@ -58,92 +70,107 @@
     },
     "per_mask": [
       {
-        "fractal_dimension": 1.388693277825618,
+        "fractal_dimension": 1.3886932778256185,
         "skeleton_density": 0.03653163507850128,
+        "area_density": 0.1316616626008632,
         "n_branches": 621,
         "file": "01_h.tif"
       },
       {
-        "fractal_dimension": 1.3573406481319499,
+        "fractal_dimension": 1.3573406481319494,
         "skeleton_density": 0.03298969475198599,
+        "area_density": 0.12541439919934946,
         "n_branches": 541,
         "file": "02_h.tif"
       },
       {
-        "fractal_dimension": 1.3622761835454176,
+        "fractal_dimension": 1.3622761835454185,
         "skeleton_density": 0.03285677425408144,
+        "area_density": 0.13266247576155626,
         "n_branches": 600,
         "file": "03_h.tif"
       },
       {
         "fractal_dimension": 1.3520340831763664,
         "skeleton_density": 0.031584255957965844,
+        "area_density": 0.12049634077688122,
         "n_branches": 544,
         "file": "04_h.tif"
       },
       {
-        "fractal_dimension": 1.3456321564613016,
+        "fractal_dimension": 1.345632156461302,
         "skeleton_density": 0.030569759804841435,
+        "area_density": 0.11511110589854257,
         "n_branches": 468,
         "file": "05_h.tif"
       },
       {
         "fractal_dimension": 1.3985322968328728,
         "skeleton_density": 0.03769078000875711,
+        "area_density": 0.13204087696253206,
         "n_branches": 661,
         "file": "06_h.tif"
       },
       {
-        "fractal_dimension": 1.3402525364486795,
+        "fractal_dimension": 1.3402525364486801,
         "skeleton_density": 0.030945064740101332,
+        "area_density": 0.11434485832238694,
         "n_branches": 469,
         "file": "07_h.tif"
       },
       {
         "fractal_dimension": 1.3758196353805843,
         "skeleton_density": 0.034561284168386816,
+        "area_density": 0.1284500688059048,
         "n_branches": 591,
         "file": "08_h.tif"
       },
       {
-        "fractal_dimension": 1.3492079529622865,
+        "fractal_dimension": 1.349207952962285,
         "skeleton_density": 0.03120504159629699,
+        "area_density": 0.10331441170951398,
         "n_branches": 513,
         "file": "09_h.tif"
       },
       {
         "fractal_dimension": 1.3736093061503196,
         "skeleton_density": 0.03528061862763495,
+        "area_density": 0.11499382310627385,
         "n_branches": 647,
         "file": "10_h.tif"
       },
       {
-        "fractal_dimension": 1.344913850188068,
+        "fractal_dimension": 1.344913850188067,
         "skeleton_density": 0.030407518608869706,
+        "area_density": 0.11820346218802777,
         "n_branches": 489,
         "file": "11_h.tif"
       },
       {
         "fractal_dimension": 1.3578842900528407,
         "skeleton_density": 0.03248928817163946,
+        "area_density": 0.13108111277913304,
         "n_branches": 536,
         "file": "12_h.tif"
       },
       {
         "fractal_dimension": 1.3263937832111194,
         "skeleton_density": 0.02915650215800338,
+        "area_density": 0.11078728029023582,
         "n_branches": 460,
         "file": "13_h.tif"
       },
       {
-        "fractal_dimension": 1.3317478358708261,
+        "fractal_dimension": 1.331747835870824,
         "skeleton_density": 0.029285513229498968,
+        "area_density": 0.11167081065866016,
         "n_branches": 464,
         "file": "14_h.tif"
       },
       {
-        "fractal_dimension": 1.2989469824859428,
+        "fractal_dimension": 1.298946982485944,
         "skeleton_density": 0.026226387064489896,
+        "area_density": 0.09996989741665104,
         "n_branches": 373,
         "file": "15_h.tif"
       }

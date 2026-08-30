@@ -47,8 +47,14 @@ def render_frame(
     edges = simulation.tree_edges(pop)
     if not edges.empty:
         segments = np.stack([edges[["x0", "y0"]].values, edges[["x1", "y1"]].values], axis=1)
+        if "radius" in edges.columns and (edges.radius > 0).any():
+            # Convert vessel diameter to points (figure is rendered at dpi=100)
+            px_per_unit = size / (2 * a * 1.16)
+            linewidths = np.maximum(2 * edges.radius.values * px_per_unit * 72 / 100, 0.4)
+        else:
+            linewidths = 1.0
         ax.add_collection(
-            LineCollection(segments, colors=VESSEL_COLOR, linewidths=1.0, alpha=0.9)
+            LineCollection(segments, colors=VESSEL_COLOR, linewidths=linewidths, alpha=0.9)
         )
 
     tips = pop[~pop.frozen & (pop.path_id >= 0)]

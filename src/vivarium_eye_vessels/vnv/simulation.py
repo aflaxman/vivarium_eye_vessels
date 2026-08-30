@@ -27,6 +27,7 @@ TREE_ATTRIBUTES = [
     "path_id",
     "parent_id",
     "depth",
+    "radius",
 ]
 
 
@@ -87,6 +88,7 @@ def tree_edges(pop: pd.DataFrame) -> pd.DataFrame:
             "z1": children.z.values,
             "child": children.index.values,
             "parent": children.parent_id.values,
+            "radius": children.radius.values,
         }
     )
 

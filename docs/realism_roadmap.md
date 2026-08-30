@@ -12,18 +12,24 @@ After implementing any of them, re-run the V&V harness (see
 the overwritten `docs/vnv/` outputs, so the effect of the change is visible
 both as an image diff in the pull request and in the quantitative metrics.
 
-## 1. Vessel calibers via Murray's law
+## 1. Vessel calibers via Murray's law — IMPLEMENTED
 
-There is no radius column today — the visualizer fakes width from tree depth.
 Real branchings satisfy r_parent^k ≈ r_1^k + r_2^k with k ≈ 2.7–3, and branch
 *angles* co-vary with radius ratios (Murray's optimality principle: large
 daughters deviate little, small side-branches come off near-perpendicular).
-Today `split_angle` is a constant plus noise.
 
-*Implementation sketch*: a `VesselCaliber` component owning a `radius` column,
-assigned at splits by Murray's law and tapered along paths. `PathSplitter`
-reads the parent radius to modulate split angles. Immediate payoff in render
-fidelity, and it makes angle statistics calibratable rather than hand-tuned.
+*As implemented*: `Particle3D` owns a `radius` column seeded by
+`particles.root_radius`; `PathFreezer` continuations inherit the caliber with
+a configurable `radius_taper`; `PathSplitter` draws a flow split, assigns
+daughter radii by Murray's law (`murray_exponent`, `flow_asymmetry`,
+`min_radius`), and derives the branch angles from the radii via the
+minimum-work formulas (the configured `split_angle` remains as a fallback for
+uncalibered parents); `PathDLA` attachments get a capillary `attach_radius`.
+The visualizer, growth GIF, and rasterization all draw true calibers, and the
+V&V harness gained two caliber metrics: *vessel area density* and the fitted
+*junction exponent* (median k = 3.00 on the generated network; see
+`docs/vnv/`). Bifurcation angles now emerge from the radii and concentrate
+inside the 60–90° literature band.
 
 ## 2. Growth toward hypoxia (space colonization)
 
@@ -121,16 +127,15 @@ vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 model change's before/after visible as a side-by-side image diff in the pull
 request, and prior versions remain retrievable from git history.
 
-*Comparability caveats*: the simulation currently produces centerlines without
-calibers, so image-based metrics are computed on skeletons for both sim and
-real masks; real fundus masks are 2D projections of a curved surface while the
-sim is projected from a thin ellipsoid; and the sim's spatial scale is
-arbitrary, so scale-dependent metrics (density, segment lengths) are
-normalized to the field of view. The harness is designed to show the
-*direction and size of improvement*, not to claim the current model matches
-reality — expect the current model to be visibly and measurably far from HRF,
-most obviously in fractal dimension and density (ideas 1, 2, and 4 above are
-what close that gap).
+*Comparability caveats*: topological metrics are computed on skeletons for
+both sim and real masks so they don't depend on calibers; real fundus masks
+are 2D projections of a curved surface while the sim is projected from a thin
+ellipsoid; and the sim's spatial scale is arbitrary, so scale-dependent
+metrics (density, segment lengths) are normalized to the field of view. The
+harness is designed to show the *direction and size of improvement*, not to
+claim the current model matches reality — expect the current model to remain
+measurably far from HRF in fractal dimension and density (ideas 2 and 4 above
+are what close that gap).
 
 ## References
 

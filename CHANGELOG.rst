@@ -1,3 +1,18 @@
+**v0.2.0 - 08/29/26**
+
+ - Vessel calibers via Murray's law (realism roadmap idea 1)
+
+   - New ``radius`` particle column: roots seeded from
+     ``particles.root_radius``, continuations tapered by
+     ``path_freezer.radius_taper``, DLA attachments given
+     ``path_dla.attach_radius``
+   - ``PathSplitter`` assigns daughter calibers by Murray's law and derives
+     branch angles from the radii via the minimum-work principle
+     (``murray_exponent``, ``flow_asymmetry``, ``min_radius``)
+   - Visualizer, growth GIF, and V&V rasterization draw true calibers
+   - New V&V metrics: vessel area density and fitted junction exponents;
+     caliber diagnostics overwrite ``docs/vnv/`` in place
+
 **v0.1.1 - 08/29/26**
 
  - Consolidate V&V outputs into a single ``docs/vnv/`` folder that each

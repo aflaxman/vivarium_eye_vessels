@@ -71,10 +71,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
 
-    sim_raster = metrics.rasterize_network(edges, bounds)
+    has_calibers = "radius" in edges.columns and bool((edges.radius > 0).any())
+    sim_raster = metrics.rasterize_network(
+        edges, bounds, radii=edges.radius.values if has_calibers else None
+    )
     sim_image_metrics = metrics.image_metrics(sim_raster)
     sim_angles = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
+    sim_junction_exponents = metrics.junction_exponents(pop)
 
     # --- Real reference data ---
     mask_paths = reference_data.fetch_hrf_masks()
@@ -94,6 +98,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     real_fd = np.array([m["fractal_dimension"] for m in real_per_mask])
     real_density = np.array([m["skeleton_density"] for m in real_per_mask])
+    real_area_density = np.array([m["area_density"] for m in real_per_mask])
 
     # --- Figure ---
     fig, axes = plt.subplots(2, 3, figsize=(15, 9))
@@ -104,8 +109,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         return binary_dilation(thin_image, disk(2))
 
     ax = axes[0, 0]
-    ax.imshow(~displayable(sim_raster), cmap="gray", interpolation="nearest")
-    ax.set_title("Simulation: rasterized network (x–y)", color=INK, fontsize=10)
+    sim_display = sim_raster if has_calibers else displayable(sim_raster)
+    sim_panel_title = (
+        "Simulation: network with calibers (x–y)"
+        if has_calibers
+        else "Simulation: rasterized network (x–y)"
+    )
+    ax.imshow(~sim_display, cmap="gray", interpolation="nearest")
+    ax.set_title(sim_panel_title, color=INK, fontsize=10)
     for spine in ax.spines.values():
         spine.set_color(SIM_COLOR)
         spine.set_linewidth(2)
@@ -186,6 +197,18 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax.legend(frameon=False, fontsize=8, labelcolor=INK)
     ax.set_title("Bifurcation angles (tree-based)", color=INK, fontsize=10)
     style_axis(ax)
+    if len(sim_junction_exponents):
+        ax.text(
+            0.97,
+            0.55,
+            f"junction exponent:\nmedian k = {np.median(sim_junction_exponents):.2f}"
+            f" (n={len(sim_junction_exponents)})\nMurray target k = 3",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            color=INK,
+            fontsize=8,
+        )
 
     headline = (
         f"Fractal dimension (skeleton): sim {sim_image_metrics['fractal_dimension']:.2f}  vs  "
@@ -193,14 +216,19 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"Skeleton density: sim {sim_image_metrics['skeleton_density']*100:.2f}%  vs  "
         f"HRF {real_density.mean()*100:.2f}% ± {real_density.std()*100:.2f}%"
     )
+    area_line = (
+        f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
+        f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%"
+    )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
         color=INK,
         fontsize=13,
-        y=0.99,
+        y=0.995,
     )
-    fig.text(0.5, 0.945, headline, ha="center", color=INK, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.text(0.5, 0.955, headline, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.93, area_line, ha="center", color=INK, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.915))
     figure_path = output_dir / "comparison.png"
     fig.savefig(figure_path, dpi=110, facecolor="white")
     plt.close(fig)
@@ -211,16 +239,19 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         "model_spec": str(model_spec),
         "steps": steps,
         "raster_size": metrics.RASTER_SIZE,
+        "has_calibers": has_calibers,
         "simulation": {
             "n_particles": int(len(pop)),
             "n_frozen": int(pop.frozen.sum()),
             "n_segments": int(len(edges)),
             "fractal_dimension": sim_image_metrics["fractal_dimension"],
             "skeleton_density": sim_image_metrics["skeleton_density"],
+            "area_density": sim_image_metrics["area_density"],
             "branch_length_px": metrics.summarize(sim_image_metrics["branch_length_px"]),
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
+            "junction_exponent": metrics.summarize(sim_junction_exponents),
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),
@@ -231,6 +262,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "skeleton_density": {
                 "mean": float(real_density.mean()),
                 "std": float(real_density.std()),
+            },
+            "area_density": {
+                "mean": float(real_area_density.mean()),
+                "std": float(real_area_density.std()),
             },
             "branch_length_px": metrics.summarize(real_lengths),
             "branch_tortuosity": metrics.summarize(real_tortuosity),

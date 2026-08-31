@@ -30,6 +30,11 @@ PARTICLE_COLUMNS = [
     "vessel_type",  # artery/vein identity, inherited down each tree
     "anastomosis_id",  # index of the opposite-tree particle this tip fused with
     "layer_id",  # which vascular plexus the vessel belongs to (0 = superficial)
+    # Ornstein-Uhlenbeck steering state: the autocorrelated random component
+    # of each tip's acceleration (see particles.noise_persistence_time)
+    "wx",
+    "wy",
+    "wz",
 ]
 
 VESSEL_TYPE_NONE = 0
@@ -85,6 +90,12 @@ class Particle3D(Component):
             "root_radius": 0.02,  # Caliber of the root (vein) vessels at the seed circle
             # Arteries are narrower than veins; the clinical artery:vein ratio is ~2:3
             "artery_caliber_ratio": 0.67,
+            # Persistence time (days) of the random steering. 0 keeps the
+            # legacy white-noise kicks; above 0 the kicks become an
+            # Ornstein-Uhlenbeck process with this correlation time, whose
+            # coherent curvature raises tortuosity relative to white noise --
+            # the disease dial (see realism roadmap idea 7)
+            "noise_persistence_time": 0.0,
         }
     }
 
@@ -94,6 +105,7 @@ class Particle3D(Component):
         self.overall_max_velocity_change = self.config.overall_max_velocity_change
         self.initial_velocity_range = self.config.initial_velocity_range
         self.terminal_velocity = self.config.terminal_velocity
+        self.noise_persistence_time = float(self.config.noise_persistence_time)
 
         self.clock = builder.time.clock()
 
@@ -217,6 +229,9 @@ class Particle3D(Component):
         pop["vessel_type"] = VESSEL_TYPE_NONE
         pop["anastomosis_id"] = -1
         pop["layer_id"] = -1
+        pop["wx"] = 0.0
+        pop["wy"] = 0.0
+        pop["wz"] = 0.0
 
         self.initialize_circle_positions(pop)
 
@@ -264,8 +279,11 @@ class Particle3D(Component):
             self.update_positions(active_particles)
 
     def update_positions(self, particles: pd.DataFrame) -> None:
-        """Update positions and velocities based on forces and random changes."""
-        updates = particles[["x", "y", "z", "vx", "vy", "vz"]].copy()
+        """Update positions and velocities based on forces and random steering."""
+        columns = ["x", "y", "z", "vx", "vy", "vz"]
+        if self.noise_persistence_time > 0:
+            columns += ["wx", "wy", "wz"]
+        updates = particles[columns].copy()
 
         # Update positions based on current velocities
         for pos, vel in [("x", "vx"), ("y", "vy"), ("z", "vz")]:
@@ -279,15 +297,31 @@ class Particle3D(Component):
         fy = self.force_y(updates.index)
         fz = self.force_z(updates.index)
 
-        # Update velocities with random changes and forces
-        for i, (v, f) in enumerate(zip(["vx", "vy", "vz"], [fx, fy, fz])):
-            # Random velocity change
-            dv = (
-                (self.randomness.get_draw(updates.index, additional_key=f"d{v}") - 0.5)
-                * 2
-                * max_velocity_change
-                * self.scale[i]
-            )
+        # Update velocities with random steering and forces
+        for i, (v, w, f) in enumerate(
+            zip(["vx", "vy", "vz"], ["wx", "wy", "wz"], [fx, fy, fz])
+        ):
+            if self.noise_persistence_time > 0:
+                # Ornstein-Uhlenbeck steering: an AR(1) with correlation time
+                # noise_persistence_time and the same stationary spread as the
+                # legacy uniform kick (sd = max_velocity_change / sqrt(3)), so
+                # theta -> 1 degenerates exactly to white noise
+                theta = min(self.step_size / self.noise_persistence_time, 1.0)
+                stationary_sd = max_velocity_change / np.sqrt(3.0) * self.scale[i]
+                draws = self.randomness.get_draw(updates.index, additional_key=f"d{v}")
+                shocks = norm.ppf(np.clip(draws, 1e-12, 1 - 1e-12))
+                updates[w] = (1 - theta) * updates[w] + stationary_sd * np.sqrt(
+                    theta * (2 - theta)
+                ) * shocks
+                dv = updates[w]
+            else:
+                # Legacy white-noise kick, uniform on +/- max_velocity_change
+                dv = (
+                    (self.randomness.get_draw(updates.index, additional_key=f"d{v}") - 0.5)
+                    * 2
+                    * max_velocity_change
+                    * self.scale[i]
+                )
 
             # Add force contribution to velocity
             updates[v] += (dv + f) * self.step_size

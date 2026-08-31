@@ -213,13 +213,37 @@ established headline metrics intact: 97.9% perfused, skeleton density
 x–z cross-section, and `metrics.json` gains a `plexus_layers` block
 (per-layer counts, calibers, z-adherence, diving-vessel count).
 
-## 7. Smooth, controllable tortuosity
+## 7. Smooth, controllable tortuosity — IMPLEMENTED
 
 The white-noise velocity jitter produces wiggle at the step scale; real
 vessels wander smoothly, and tortuosity *changes* are diagnostic (retinopathy
 of prematurity, diabetic retinopathy). Replace the random velocity term with
 an Ornstein–Uhlenbeck (autocorrelated) process: one interpretable knob — a
 persistence time — that directly controls a clinically meaningful biomarker.
+
+*As implemented*: `Particle3D` carries an OU steering state (`wx/wy/wz`
+columns) updated as an AR(1) with correlation time
+`particles.noise_persistence_time` (in days) and the same stationary
+spread as the old uniform kick (sd = `overall_max_velocity_change`/√3), so
+the process degenerates exactly to white noise as the persistence time
+approaches one step — and `noise_persistence_time: 0` keeps the legacy
+white-noise path bit-for-bit.
+
+What the 800-step sweep taught us, stated plainly: the healthy model's
+tortuosity was *already* at the target (branch median 1.004 vs. HRF 1.000)
+— white-noise kicks average out at the branch scale, so the healthy spec
+keeps `noise_persistence_time: 0` and its calibration unchanged. Turning
+persistence on is the *pathology* dial: correlated steering produces
+coherent curvature, raising path tortuosity (1.011 → 1.049 at 0.25 days)
+— and because persistent tips commit into repulsion walls instead of
+diffusing around them, the phenotype arrives as a package with capillary
+dropout and hypoperfusion (97.9% → 75–90% perfused), reminiscent of
+diabetic retinopathy's tortuous, dropout-ridden vasculature. Amplitude
+compensation (holding the integrated wander constant, sd ∝ 1/√τ) does not
+decouple the two: the network's force ecology is genuinely tuned around
+diffusive tips. A clean single-variable tortuosity dial for *healthy*
+networks would need the retuning pass of idea 8; as a disease knob it
+works today.
 
 ## 8. Calibrate to real statistics — then break them deliberately
 

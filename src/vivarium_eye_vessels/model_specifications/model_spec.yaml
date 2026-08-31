@@ -43,6 +43,10 @@ configuration:
             n_vessels: 4               # Number of frozen particles in the circle
         root_radius: 0.02              # Caliber of the root (vein) vessels
         artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
+        noise_persistence_time: 0.0    # OU steering memory (days); 0 = white noise.
+                                       # Healthy tortuosity is already on target; raising
+                                       # this is the DR-like disease dial (tortuosity up,
+                                       # perfusion down) -- see realism roadmap idea 7
 
     # Path freezing configuration
     path_freezer:

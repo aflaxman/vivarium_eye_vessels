@@ -308,6 +308,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             if len(sim_wide_tortuosity)
             else float("nan")
         ),
+        "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
         "artery_vein_caliber_ratio": sim_avr,
         "perfused_fraction": sim_perfused_fraction,
     }

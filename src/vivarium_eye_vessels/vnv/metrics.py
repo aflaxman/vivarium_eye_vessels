@@ -222,6 +222,37 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
     return frame
 
 
+def wide_junction_spacing(
+    skeleton: np.ndarray, binary: np.ndarray, min_diameter_px: float = 4.0
+) -> float:
+    """Mean skeleton distance between junctions along wide vessels, in px.
+
+    Real arcades throw off side branches at short, regular intervals (a
+    comb-like pattern), so the wide-vessel skeleton carries many junctions
+    per unit length. Wide pixels are those whose medial-axis diameter
+    (2 x EDT) exceeds ``min_diameter_px``; the spacing is wide skeleton
+    pixels per junction on a wide pixel. Crossing vessels create the same
+    false junctions in simulated rasters and real masks, so the estimator
+    stays comparable. NaN when there is no wide skeleton.
+    """
+    skeleton = skeleton.astype(bool)
+    kernel = np.ones((3, 3), dtype=int)
+    kernel[1, 1] = 0
+    neighbor_count = ndimage.convolve(skeleton.astype(int), kernel, mode="constant", cval=0)
+    junctions = skeleton & (neighbor_count >= 3)
+    edt = ndimage.distance_transform_edt(binary)
+    wide = skeleton & (2.0 * edt > min_diameter_px)
+    n_wide = int(wide.sum())
+    if n_wide == 0:
+        return float("nan")
+    # One skeleton joint spans several junction pixels; count connected
+    # junction clusters so a branch point counts once
+    labels, n_clusters = ndimage.label(junctions, structure=np.ones((3, 3)))
+    on_wide = np.unique(labels[wide & junctions])
+    n_junctions = int((on_wide > 0).sum())
+    return float(n_wide / max(n_junctions, 1))
+
+
 def image_metrics(binary: np.ndarray) -> dict[str, Any]:
     """All image-based metrics for one binary vessel image."""
     skeleton = skeletonize(binary)
@@ -234,6 +265,7 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
         "branch_length_px": branches.length_px.tolist(),
         "branch_tortuosity": branches.tortuosity.tolist(),
         "branch_diameter_px": branches.diameter_px.tolist(),
+        "wide_junction_spacing_px": wide_junction_spacing(skeleton, binary),
     }
 
 

@@ -367,6 +367,41 @@ continuation, then measure direction drift per unit arc) is the missing
 instrument; until it exists, the steering exponent and adaptation cap
 stay pinned during refits instead of being left to the score.
 
+*Fourth pass (comb-like side branching)*: even with smooth arcades, the
+branches off them were far too sparse — real arcades are *monopodial*: a
+trunk that keeps nearly its own caliber and sheds small side branches at
+short, comb-like intervals, where the splitter only did near-symmetric
+dichotomous forks and the caliber cadence made wide tips branch rarely.
+The pattern now has its own instrument: `wide_junction_spacing_px`, the
+skeleton distance between branch points along wide (>4 px) vessels
+(junction clusters counted once, measured identically on sim rasters and
+HRF masks). HRF carries a branch point every 22.7 px of wide skeleton
+(sd 1.8); the previous model managed one every 38.6 px — an 80-point
+score term that quantifies exactly what the eye saw. The splitter's new
+comb mode (`side_branch_flow` / `side_branch_radius` /
+`side_branch_probability`, off by default) makes parents above the
+reference caliber emit side branches at their own cadence and strongly
+asymmetrically: the trunk keeps ~96% of its caliber and the tooth takes
+the Murray caliber for a ~10% flow fraction, leaving near-perpendicular
+on a random side — both angles fall out of the minimum-work bifurcation
+relations already in the code. The instructive failure: the first comb
+collapsed the network outright, because teeth spawn inside the frozen-
+repulsion field of their own trunk (interaction radius 0.15 units
+= 38 px — wider than the comb spacing itself) and the stacked forces
+drove every tip extinct; the repulsion radius, it turns out, was itself
+an anti-realism constraint, and dropping it to 0.12 both rescues the
+comb and lets vessels pack at real densities. The fit (emission 0.65,
+spacing 26.0 px vs HRF 22.7) scores 47.3 against the previous spec's
+135.7 on the corrected objective, and the emission rate was chosen for
+robustness, not just the fit seed: 0.8 packs tighter (19.9 px, 50.5)
+but tips one held-out seed into the crowding-extinction cascade, while
+0.65 holds on both. Superficial skeleton and area density remain the
+weakest terms — the fundus-visible network is still sparser than HRF —
+and the operating point is sensitive: small pushes toward more
+superficial mass (lower dive probability, weaker repulsion) destabilize
+the growth front, which is more evidence for the multi-seed objective
+as the next harness investment.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

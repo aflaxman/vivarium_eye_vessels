@@ -556,6 +556,18 @@ class PathSplitter(Component):
             # trunks run long between branch points while narrow twigs branch at
             # the full split_probability; 0 restores caliber-independent cadence
             "caliber_cadence_exponent": 0.0,
+            # Comb-like side branching: parents wider than side_branch_radius
+            # split at the full split_probability (no cadence damping) and
+            # split asymmetrically -- the trunk continues at nearly its own
+            # caliber while the side branch takes the Murray minor caliber for
+            # this flow fraction, leaving at a near-perpendicular angle, on a
+            # random side. 0 disables the mode (dichotomous splitting only)
+            "side_branch_flow": 0.0,
+            "side_branch_radius": 0.008,
+            # Per-split-round emission probability for side-branching trunks
+            # (replaces split_probability and the cadence damping for them);
+            # sets the comb-tooth spacing along the arcades
+            "side_branch_probability": 0.5,
         }
     }
 
@@ -652,14 +664,21 @@ class PathSplitter(Component):
         """
         base = float(self.config.split_probability)
         exponent = float(self.config.caliber_cadence_exponent)
-        if exponent == 0.0:
-            return pd.Series(base, index=active.index)
-
         radii = active.radius.to_numpy(dtype=float)
         factors = np.ones(len(radii))
-        calibered = radii > 0
-        factors[calibered] = (float(self.config.min_radius) / radii[calibered]) ** exponent
-        return pd.Series(np.clip(base * factors, 0.0, 1.0), index=active.index)
+        if exponent != 0.0:
+            calibered = radii > 0
+            factors[calibered] = (
+                float(self.config.min_radius) / radii[calibered]
+            ) ** exponent
+        probabilities = np.clip(base * factors, 0.0, 1.0)
+        # Side-branching trunks are exempt from the cadence damping: real
+        # arcades emit side branches at short, comb-like intervals, at
+        # their own emission probability
+        if float(self.config.side_branch_flow) > 0:
+            wide = radii > float(self.config.side_branch_radius)
+            probabilities[wide] = float(self.config.side_branch_probability)
+        return pd.Series(probabilities, index=active.index)
 
     def split_frozen(self, pop, to_split):
         available = pop[~pop.frozen & (pop.path_id < 0)]
@@ -741,9 +760,17 @@ class PathSplitter(Component):
         min_radius = float(self.config.min_radius)
 
         # Minor daughter carries flow fraction f in [0.5 - flow_asymmetry, 0.5]
-        flow_fractions = 0.5 - self.config.flow_asymmetry * self.randomness.get_draw(
-            to_split, "flow_fraction"
-        )
+        draw = self.randomness.get_draw(to_split, "flow_fraction")
+        flow_fractions = 0.5 - self.config.flow_asymmetry * draw
+        side_flow = float(self.config.side_branch_flow)
+        side_branching = pd.Series(False, index=to_split)
+        if side_flow > 0:
+            # Comb mode: a wide trunk keeps nearly its own caliber and sheds
+            # a small side branch (flow fraction ~ side_branch_flow, +/-25%)
+            side_branching = parent_radii > float(self.config.side_branch_radius)
+            flow_fractions = flow_fractions.where(
+                ~side_branching, side_flow * (0.75 + 0.5 * draw)
+            )
         major_radii, minor_radii = murray_daughter_radii(
             parent_radii, flow_fractions, exponent
         )
@@ -766,7 +793,18 @@ class PathSplitter(Component):
         # Retain some stochasticity around the optimal angles
         noise_1 = 0.75 + 0.5 * self.randomness.get_draw(to_split, "split_angle")
         noise_2 = 0.75 + 0.5 * self.randomness.get_draw(to_split, "split_angle_2")
-        return major_radii, minor_radii, angle_major * noise_1, angle_minor * noise_2
+        angle_major = angle_major * noise_1
+        angle_minor = angle_minor * noise_2
+        if side_flow > 0 and bool(side_branching.any()):
+            # Comb teeth leave on a random side; mirroring both angles keeps
+            # the trunk's small deviation opposite the tooth
+            signs = self.randomness.choice(
+                to_split, [-1.0, 1.0], [0.5, 0.5], "side_branch_side"
+            )
+            signs = signs.astype(float).where(side_branching, 1.0)
+            angle_major = angle_major * signs
+            angle_minor = angle_minor * signs
+        return major_radii, minor_radii, angle_major, angle_minor
 
     def split_unfrozen(self, pop, to_split):
         available = pop[~pop.frozen & (pop.path_id < 0)]

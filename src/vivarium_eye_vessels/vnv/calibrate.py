@@ -53,6 +53,10 @@ TARGETS = {
     # (>4 px) branches is 1.11 across the HRF masks (sd 0.017). One-sided
     # with a judgment scale: only meandering wide vessels are penalized
     "wide_tortuosity_q90": {"target": 1.11, "scale": 0.05, "one_sided": "above"},
+    # Comb-like side branching: real arcades carry a branch point every
+    # ~23 px of wide (>4 px) skeleton (HRF across-mask mean 22.71, sd 1.77,
+    # counting connected junction clusters once)
+    "wide_junction_spacing_px": {"target": 22.71, "scale": 1.77},
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
@@ -63,6 +67,9 @@ SEARCH_SPACE = {
     ("particles", "noise_caliber_exponent"): [0.0, 0.75, 1.5],
     ("path_splitter", "split_interval"): [12, 15, 18],
     ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
+    ("path_splitter", "side_branch_flow"): [0.06, 0.1, 0.15],
+    ("path_splitter", "side_branch_probability"): [0.5, 0.65, 0.8],
+    ("frozen_repulsion", "interaction_radius"): [0.08, 0.1, 0.15],
     ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
     ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],
     ("flow_remodeler", "adaptation_rate"): [0.05, 0.10, 0.15],
@@ -142,6 +149,7 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
         "wide_tortuosity_q90": (
             float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
         ),
+        "wide_junction_spacing_px": image["wide_junction_spacing_px"],
         "artery_vein_caliber_ratio": (
             float(arteries.radius.mean() / veins.radius.mean())
             if len(arteries) and len(veins)

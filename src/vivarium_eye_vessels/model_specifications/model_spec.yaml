@@ -69,6 +69,15 @@ configuration:
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
         caliber_cadence_exponent: 0.75  # Wider tips split less often (vnv_calibrate fit)
+        side_branch_flow: 0.1      # Comb mode: trunks shed small side branches
+                                   # carrying ~10% of the flow at near-perpendicular
+                                   # angles, at the full split cadence
+        side_branch_radius: 0.008  # Parents wider than this side-branch instead of
+                                   # splitting dichotomously
+        side_branch_probability: 0.65  # Tooth emission per split round: sets the
+                                       # comb spacing along the arcades
+                                       # (vnv_calibrate: sim 26px vs HRF 22.7px;
+                                       # 0.8 packs tighter but collapses seed 7)
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
@@ -124,7 +133,10 @@ configuration:
     frozen_repulsion:
         force_type: hookean
         spring_constant: 1.5  # Spring constant for Hooke's law (force/distance)
-        interaction_radius: 0.15
+        interaction_radius: 0.12  # Real arcades carry a branch every ~23 px, so
+                                  # vessels must be allowed to pack that closely;
+                                  # at 0.15 the comb teeth crowd each other into
+                                  # extinction (vnv_calibrate composition fit)
         delay: 1 # days
         cross_type_factor: 0.25  # Weak artery-vein repulsion -> interdigitating arcades
 

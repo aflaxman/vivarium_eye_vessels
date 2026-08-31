@@ -1,3 +1,42 @@
+**v0.13.0 - 08/31/26**
+
+ - Comb-like side branching off the arcades (monopodial branching), with
+   a branch-spacing calibration target
+
+   - Visual review showed the branches off the arcades far too sparse:
+     real arcades are monopodial -- a trunk that keeps nearly its own
+     caliber and sheds small side branches at short, regular intervals
+     -- while the splitter only did near-symmetric dichotomous forks,
+     and the caliber cadence made wide tips branch *rarely*
+   - New metric ``wide_junction_spacing_px``: skeleton distance between
+     branch points along wide (>4 px) vessels, counting connected
+     junction clusters once; measured identically on simulated rasters
+     and HRF masks. HRF: a branch point every 22.7 px of wide skeleton
+     (sd 1.77); the previous model: every 38.6 px. New calibration
+     target with the across-mask sd as scale
+   - New ``PathSplitter`` comb mode (``side_branch_flow``,
+     ``side_branch_radius``, ``side_branch_probability``; off by
+     default): parents wider than the reference split at their own
+     emission probability -- exempt from the cadence damping -- and
+     asymmetrically: the trunk continues at ~96% of its caliber while
+     the tooth takes the Murray caliber for a ~10% flow fraction,
+     leaving near-perpendicularly on a random side (both consequences
+     of the minimum-work bifurcation relations already in the code)
+   - The comb initially collapsed the network: teeth spawn inside the
+     frozen-repulsion field of their own trunk and neighbours (radius
+     0.15 units = 38 px, wider than the comb spacing itself) and the
+     stacked forces drove every tip extinct. Real vessels pack a branch
+     every ~23 px, so ``frozen_repulsion.interaction_radius`` drops to
+     0.12; the extinction threshold is untouched
+   - Fit: emission 0.65 per split round gives spacing 26.0 px (HRF 22.7)
+     and calibration total 47.3, vs 135.7 for the previous spec under
+     the corrected objective (the spacing term alone was 80.7); 0.8
+     packs tighter (19.9 px, 50.5) but collapses a held-out seed, while
+     0.65 holds on both held-out seeds
+   - Three new tests: cadence exemption for side-branching trunks,
+     asymmetric near-perpendicular tooth geometry, and the spacing
+     metric on a synthetic comb
+
 **v0.12.0 - 08/31/26**
 
  - Straighten the large vessels (caliber-dependent steering stiffness,

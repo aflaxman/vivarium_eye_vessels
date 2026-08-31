@@ -1,3 +1,44 @@
+**v0.12.0 - 08/31/26**
+
+ - Straighten the large vessels (caliber-dependent steering stiffness,
+   an adaptation growth cap, and a fundus-faithful comparison)
+
+   - Visual review showed the wide vessels meandering and curling at the
+     zoomed-out scale, unlike the smooth HRF arcades. Two mechanisms were
+     responsible: caliber-blind steering (arcade tips took the same
+     random kicks as capillary tips, so their heading random-walked) and
+     an anastomosis-shortcut runaway in the flow remodeler (an
+     artery-vein capillary bridge sees enormous shear, thickens, gains
+     conductance as r^4, draws more flow, and runs away to arcade
+     caliber -- promoting curly capillary paths into fat vessels; on the
+     fit seed only 376 of 2,516 wide particles were true arcades, and
+     191 sat in the capillary-only deep plexuses)
+   - New ``particles.noise_caliber_reference/_exponent``: tips wider
+     than the reference caliber have their random steering attenuated by
+     ``(reference/radius)^exponent`` (spec: 0.004 and 1.5), so arcades
+     hold their heading while capillaries wander; exponent 0 is the
+     legacy caliber-blind steering, and the OU disease dial composes
+     with the attenuation unchanged
+   - New ``flow_remodeler.max_adapted_radius`` (spec 0.006): shear-driven
+     thickening saturates at venule caliber; segments born wider (Murray
+     splits off the arcades) are untouched and can only taper. The
+     default equals ``max_radius``, preserving the previous behavior
+   - The HRF comparison now rasterizes the superficial (layer 0)
+     projection only: fundus photographs do not see the deep
+     capillary-only plexuses (OCTA does -- ``docs/vnv/plexus.png``), so
+     scoring them against fundus masks inflated the capillary share.
+     Tree- and graph-based metrics still use the full 3D network
+   - ``initial_circle.n_vessels`` 4 -> 6: with the runaway capped, the
+     missing wide-vessel mass was real arcade mass; three artery/vein
+     pairs at the disc close most of the superficial density gap
+   - New ``wide_tortuosity_q90`` calibration target (HRF 1.11, one-sided)
+     guards against meandering wide vessels, though skeleton-branch
+     tortuosity only weakly sees the long-wavelength curl (branches are
+     chopped at junctions); the steering exponent and adaptation cap are
+     therefore pinned during refits rather than left to the score
+   - Two new tests: adaptation growth never exceeds the cap;
+     a caliber-stiffened run lays straighter arcades than exponent 0
+
 **v0.11.0 - 08/31/26**
 
  - Surface the diameter composition and fit it toward the HRF fractions

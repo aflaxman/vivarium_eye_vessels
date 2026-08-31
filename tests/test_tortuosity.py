@@ -90,6 +90,30 @@ def test_ou_steering_has_configured_statistics():
     np.testing.assert_allclose(np.mean(correlations), 1 - theta, atol=0.08)
 
 
+def test_caliber_stiffness_straightens_wide_paths():
+    """Attenuated steering on wide tips lays straighter arcades.
+
+    Deterministic seeds make this an exact comparison, not a statistical one.
+    """
+
+    def arcade_tortuosity(exponent: float) -> float:
+        config = copy.deepcopy(CONFIGURATION)
+        config["particles"]["noise_caliber_exponent"] = exponent
+        sim = InteractiveContext(
+            components=[Particle3D(), PathFreezer(), PathSplitter(), EllipsoidContainment()],
+            configuration=config,
+        )
+        simulation.run_steps(sim, 250)
+        pop = sim.get_population(["x", "y", "z", "frozen", "path_id", "parent_id", "depth"])
+        # Depth-0 chains are the wide arcades; deeper paths taper toward the
+        # unattenuated capillary reference caliber
+        arcades = metrics.path_tortuosity(pop[pop.depth == 0])
+        assert len(arcades) > 0, "no arcade chains grew"
+        return float(np.median(arcades))
+
+    assert arcade_tortuosity(1.5) < arcade_tortuosity(0.0)
+
+
 def test_persistence_reduces_tortuosity():
     """Longer steering memory means straighter vessels.
 

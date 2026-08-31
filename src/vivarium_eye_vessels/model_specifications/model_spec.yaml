@@ -40,13 +40,19 @@ configuration:
         initial_circle:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
-            n_vessels: 4               # Number of frozen particles in the circle
+            n_vessels: 6               # Root trunks at the disc (3 artery/vein pairs);
+                                       # more superficial arcades close most of the gap
+                                       # to the HRF density metrics (vnv_calibrate fit)
         root_radius: 0.02              # Caliber of the root (vein) vessels
         artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
         noise_persistence_time: 0.0    # OU steering memory (days); 0 = white noise.
                                        # Healthy tortuosity is already on target; raising
                                        # this is the DR-like disease dial (tortuosity up,
                                        # perfusion down) -- see realism roadmap idea 7
+        noise_caliber_reference: 0.004  # Tips at or below capillary caliber steer freely
+        noise_caliber_exponent: 1.5     # Wider tips hold their heading: random steering
+                                        # is attenuated by (reference/radius)^exponent so
+                                        # the arcades sweep smoothly instead of wandering
 
     # Path freezing configuration
     path_freezer:
@@ -85,6 +91,9 @@ configuration:
                                    # adaptation from hollowing out the mid calibers)
         min_radius: 0.001
         max_radius: 0.02
+        max_adapted_radius: 0.006  # Shear-driven thickening saturates at venule
+                                   # caliber; guards the anastomosis-shortcut runaway
+                                   # that promoted curly capillary paths to fat vessels
 
     # Stratified plexuses: superficial arcades, capillary-only deeper layers
     # connected by diving vessels

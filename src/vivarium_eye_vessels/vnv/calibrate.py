@@ -1,8 +1,9 @@
 """Calibrate the healthy model against real-data targets (roadmap idea 8).
 
-The objective scores a simulated network against validation targets drawn
-from the HRF dataset (means and spreads of the image-based metrics) and
-from clinical literature (the arcade A:V caliber ratio, full perfusion):
+The objective scores a simulated network against the validation targets in
+``TARGETS``, drawn from the HRF dataset (means and spreads of the
+image-based metrics) and from clinical literature (the arcade A:V caliber
+ratio, full perfusion):
 each component is a squared z-like deviation, and the total is their sum,
 so a score of 0 means every metric sits on its target and each unit is one
 squared standard-deviation-equivalent of miss.
@@ -48,6 +49,10 @@ TARGETS = {
     # HRF branches are 34.5% wide (>4 px); shares sum to 1, so scoring the
     # capillary and wide shares also pins the mid (2-4 px) share
     "wide_share": {"target": 0.345, "scale": 0.08},
+    # Real arcades run straight: the 90th-percentile tortuosity of wide
+    # (>4 px) branches is 1.11 across the HRF masks (sd 0.017). One-sided
+    # with a judgment scale: only meandering wide vessels are penalized
+    "wide_tortuosity_q90": {"target": 1.11, "scale": 0.05, "one_sided": "above"},
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
@@ -55,6 +60,7 @@ TARGETS = {
 # Candidate values per knob, current spec setting included. Chosen from the
 # per-feature sweeps: these are the knobs the headline metrics respond to.
 SEARCH_SPACE = {
+    ("particles", "noise_caliber_exponent"): [0.0, 0.75, 1.5],
     ("path_splitter", "split_interval"): [12, 15, 18],
     ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
     ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
@@ -62,6 +68,7 @@ SEARCH_SPACE = {
     ("flow_remodeler", "adaptation_rate"): [0.05, 0.10, 0.15],
     ("flow_remodeler", "adaptation_deadband"): [1.0, 2.0, 4.0],
     ("flow_remodeler", "max_radius"): [0.012, 0.016, 0.02],
+    ("flow_remodeler", "max_adapted_radius"): [0.005, 0.006, 0.008],
     ("plexus_layers", "dive_probability"): [0.035, 0.05, 0.07],
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
     ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
@@ -103,10 +110,17 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
     """The scored summary statistics for one finished simulation."""
     from vivarium_eye_vessels.vnv.compare import stratify_by_diameter
 
-    raster = metrics.rasterize_network(edges, bounds, radii=edges.radius.values)
+    # Fundus photographs image the superficial vasculature; the deep
+    # capillary-only plexuses are essentially invisible to them (OCTA sees
+    # them instead), so the HRF comparison rasterizes layer 0 only
+    fundus = edges[edges.layer_id == 0]
+    raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
     image = metrics.image_metrics(raster)
     lengths = np.asarray(image["branch_length_px"], dtype=float)
     strata = stratify_by_diameter(lengths, image["branch_diameter_px"])
+    tortuosity = np.asarray(image["branch_tortuosity"], dtype=float)
+    diameter = np.asarray(image["branch_diameter_px"], dtype=float)
+    wide_tortuosity = tortuosity[diameter > 4.0]
     arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
     veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
     return {
@@ -125,6 +139,9 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
         ),
         "capillary_share": len(strata["diameter_le_2px"]) / max(len(lengths), 1),
         "wide_share": len(strata["diameter_gt_4px"]) / max(len(lengths), 1),
+        "wide_tortuosity_q90": (
+            float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
+        ),
         "artery_vein_caliber_ratio": (
             float(arteries.radius.mean() / veins.radius.mean())
             if len(arteries) and len(veins)

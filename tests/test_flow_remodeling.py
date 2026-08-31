@@ -237,6 +237,36 @@ def test_remodeler_prunes_and_recycles_without_cutting_the_graph():
     assert bridges_ok.all(), "a pruned particle is still an anastomosis target"
 
 
+def test_adaptation_growth_saturates_at_cap():
+    """Thickening never pushes a caliber past max_adapted_radius.
+
+    Segments born wider (Murray splits) may exist above the cap but can only
+    taper: any step-over-step radius increase of an existing vessel particle
+    is adaptation, and must land at or below max(previous radius, cap).
+    """
+    cap = 0.005
+    sim, _ = make_remodeling_simulation(
+        flow_remodeler={"adaptation_rate": 0.3, "max_adapted_radius": cap}
+    )
+    previous = sim.get_population(["radius"]).radius
+    saw_growth = False
+    for _ in range(200):
+        sim.step()
+        current = sim.get_population(["radius"]).radius
+        # Splits add new simulants; only particles present in both snapshots
+        # can have been adapted
+        common = previous.index.intersection(current.index)
+        prev = previous.loc[common].to_numpy()
+        curr = current.loc[common].to_numpy()
+        grew = (prev > 0) & (curr > prev + 1e-15)
+        if grew.any():
+            saw_growth = True
+            limit = np.maximum(prev[grew], cap) + 1e-12
+            assert (curr[grew] <= limit).all(), "adaptation grew past the cap"
+        previous = current
+    assert saw_growth, "no adaptation growth ever happened; the test saw nothing"
+
+
 def test_wide_deadband_reproduces_no_adaptation_run():
     """A band covering every segment turns adaptation off exactly.
 

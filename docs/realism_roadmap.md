@@ -330,6 +330,43 @@ mid-caliber runs between branchings or a caliber-dependent taper —
 mechanism work for a future pass, ideally calibrated against the
 per-plexus ROSE data once the Zenodo request is granted.
 
+*Third pass (arcade geometry)*: at the zoomed-out scale the wide vessels
+meandered and curled, unlike the smooth HRF arcades. Two mechanisms were
+responsible, and both were fixed at the mechanism level rather than by
+tuning. First, steering was caliber-blind — an arcade tip took the same
+random kicks as a capillary tip, so its heading random-walked — fixed by
+`noise_caliber_reference/_exponent`: tips wider than the capillary
+reference have their random steering attenuated by
+`(reference/radius)^exponent`, so arcades hold their heading while
+capillaries wander (real large vessels are stiff; sprouting is a
+capillary-tip behavior). Second, and less obvious: the flow remodeler
+had an *anastomosis-shortcut runaway* — an artery→vein capillary bridge
+sees an enormous pressure drop through a tiny radius, its shear
+explodes, adaptation thickens it, conductance grows as r⁴, it draws yet
+more flow — a positive feedback that promoted curly capillary paths all
+the way to arcade caliber (on the fit seed, only 376 of 2,516
+wide-caliber particles were true arcades, and 191 sat in the
+capillary-only deep plexuses). The new `max_adapted_radius` saturates
+shear-driven *thickening* at venule caliber while segments born wider
+can still taper. Alongside the mechanisms, the HRF comparison itself was
+corrected to be fundus-faithful: fundus photographs do not see the deep
+capillary-only plexuses (OCTA does — see `plexus.png`), so the
+comparison now rasterizes the superficial layer only, and with the
+promotion runaway gone the missing wide mass turned out to be *real
+arcade mass* — seeding 6 root trunks instead of 4 closes most of the
+superficial density gap and finally makes the network panel read like a
+fundus image: smooth arcades sweeping from the disc into a fine mesh.
+The honest cost: the calibration score prefers the old meandering
+config (39.0 vs 55.0 on the corrected measurement) because skeleton-
+branch tortuosity is chopped at junctions and cannot see the
+long-wavelength curl — the fat promoted vessels bought area density and
+wide-share cheaply. The `wide_tortuosity_q90` target (HRF 1.11,
+one-sided) guards the worst of it, but a proper vessel-tracking
+curliness metric (merge branches through junctions along the widest
+continuation, then measure direction drift per unit arc) is the missing
+instrument; until it exists, the steering exponent and adaptation cap
+stay pinned during refits instead of being left to the score.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

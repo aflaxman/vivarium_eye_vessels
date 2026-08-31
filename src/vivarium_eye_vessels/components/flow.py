@@ -172,6 +172,10 @@ class FlowRemodeler(Component):
             "adaptation_deadband": 1.0,
             "min_radius": 0.001,
             "max_radius": 0.02,
+            # Ceiling for shear-driven thickening (growth only; wider
+            # segments may still taper). The default matches max_radius,
+            # which preserves the previous unlimited-growth behavior
+            "max_adapted_radius": 0.02,
         }
     }
 
@@ -318,10 +322,19 @@ class FlowRemodeler(Component):
         deadband = float(self.config.adaptation_deadband)
         if deadband > 1.0:
             factors = np.where((ratios > 1.0 / deadband) & (ratios < deadband), 1.0, factors)
+        old_radii = segments.radius.to_numpy()
         new_radii = np.clip(
-            segments.radius.to_numpy() * factors,
+            old_radii * factors,
             float(self.config.min_radius),
             float(self.config.max_radius),
+        )
+        # Thickening saturates at max_adapted_radius; segments born wider
+        # (Murray splits off the arcades) are untouched and can only taper.
+        # Guards the anastomosis-shortcut runaway: an artery-vein capillary
+        # bridge sees enormous shear, thickens, gains conductance as r^4,
+        # draws yet more flow, and would otherwise run away to arcade caliber
+        new_radii = np.minimum(
+            new_radii, np.maximum(old_radii, float(self.config.max_adapted_radius))
         )
         self.particles.update_particles(
             pd.DataFrame({"radius": new_radii}, index=pd.Index(segments.node_a))

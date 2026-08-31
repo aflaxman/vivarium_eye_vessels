@@ -206,8 +206,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     edges = simulation.tree_edges(pop)
 
     has_calibers = "radius" in edges.columns and bool((edges.radius > 0).any())
+    # Fundus photographs image the superficial vasculature; the deep
+    # capillary-only plexuses are essentially invisible to them (OCTA sees
+    # them instead — docs/vnv/plexus.png), so everything compared against
+    # HRF uses the superficial (layer 0) projection only
+    fundus_edges = edges[edges.layer_id == 0] if "layer_id" in edges.columns else edges
     sim_raster = metrics.rasterize_network(
-        edges, bounds, radii=edges.radius.values if has_calibers else None
+        fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )
     sim_image_metrics = metrics.image_metrics(sim_raster)
     sim_angles = metrics.bifurcation_angles(pop)
@@ -277,6 +282,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     from vivarium_eye_vessels.vnv import calibrate
 
     sim_lengths = np.asarray(sim_image_metrics["branch_length_px"], dtype=float)
+    sim_branch_tortuosity = np.asarray(sim_image_metrics["branch_tortuosity"], dtype=float)
+    sim_branch_diameter = np.asarray(sim_image_metrics["branch_diameter_px"], dtype=float)
+    sim_wide_tortuosity = sim_branch_tortuosity[sim_branch_diameter > 4.0]
     calibration_stats = {
         "skeleton_density": sim_image_metrics["skeleton_density"],
         "area_density": sim_image_metrics["area_density"],
@@ -295,6 +303,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         ),
         "capillary_share": len(sim_strata["diameter_le_2px"]) / max(len(sim_lengths), 1),
         "wide_share": len(sim_strata["diameter_gt_4px"]) / max(len(sim_lengths), 1),
+        "wide_tortuosity_q90": (
+            float(np.quantile(sim_wide_tortuosity, 0.9))
+            if len(sim_wide_tortuosity)
+            else float("nan")
+        ),
         "artery_vein_caliber_ratio": sim_avr,
         "perfused_fraction": sim_perfused_fraction,
     }
@@ -315,9 +328,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax = axes[0, 0]
     sim_display = sim_raster if has_calibers else displayable(sim_raster)
     sim_panel_title = (
-        "Simulation: network with calibers (x–y)"
+        "Simulation: superficial network with calibers (x–y)"
         if has_calibers
-        else "Simulation: rasterized network (x–y)"
+        else "Simulation: rasterized superficial network (x–y)"
     )
     ax.imshow(~sim_display, cmap="gray", interpolation="nearest")
     ax.set_title(sim_panel_title, color=INK, fontsize=10)

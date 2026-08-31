@@ -96,6 +96,13 @@ class Particle3D(Component):
             # coherent curvature raises tortuosity relative to white noise --
             # the disease dial (see realism roadmap idea 7)
             "noise_persistence_time": 0.0,
+            # Caliber-dependent steering stiffness: a tip wider than the
+            # reference caliber has its random steering attenuated by
+            # (reference / radius) ** exponent, so arcade-caliber tips hold
+            # their heading while capillary tips wander freely. Exponent 0
+            # keeps the legacy caliber-blind steering
+            "noise_caliber_reference": 0.004,
+            "noise_caliber_exponent": 0.0,
         }
     }
 
@@ -106,6 +113,8 @@ class Particle3D(Component):
         self.initial_velocity_range = self.config.initial_velocity_range
         self.terminal_velocity = self.config.terminal_velocity
         self.noise_persistence_time = float(self.config.noise_persistence_time)
+        self.noise_caliber_reference = float(self.config.noise_caliber_reference)
+        self.noise_caliber_exponent = float(self.config.noise_caliber_exponent)
 
         self.clock = builder.time.clock()
 
@@ -297,6 +306,18 @@ class Particle3D(Component):
         fy = self.force_y(updates.index)
         fz = self.force_z(updates.index)
 
+        # Wide tips steer stiffly: attenuate the random kick with caliber
+        if self.noise_caliber_exponent > 0:
+            radius = particles.radius.to_numpy()
+            attenuation = np.where(
+                radius > self.noise_caliber_reference,
+                (self.noise_caliber_reference / np.maximum(radius, 1e-12))
+                ** self.noise_caliber_exponent,
+                1.0,
+            )
+        else:
+            attenuation = 1.0
+
         # Update velocities with random steering and forces
         for i, (v, w, f) in enumerate(
             zip(["vx", "vy", "vz"], ["wx", "wy", "wz"], [fx, fy, fz])
@@ -307,7 +328,9 @@ class Particle3D(Component):
                 # legacy uniform kick (sd = max_velocity_change / sqrt(3)), so
                 # theta -> 1 degenerates exactly to white noise
                 theta = min(self.step_size / self.noise_persistence_time, 1.0)
-                stationary_sd = max_velocity_change / np.sqrt(3.0) * self.scale[i]
+                stationary_sd = (
+                    max_velocity_change / np.sqrt(3.0) * self.scale[i] * attenuation
+                )
                 draws = self.randomness.get_draw(updates.index, additional_key=f"d{v}")
                 shocks = norm.ppf(np.clip(draws, 1e-12, 1 - 1e-12))
                 updates[w] = (1 - theta) * updates[w] + stationary_sd * np.sqrt(
@@ -321,6 +344,7 @@ class Particle3D(Component):
                     * 2
                     * max_velocity_change
                     * self.scale[i]
+                    * attenuation
                 )
 
             # Add force contribution to velocity

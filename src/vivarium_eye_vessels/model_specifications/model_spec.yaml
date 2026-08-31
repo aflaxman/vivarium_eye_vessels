@@ -79,9 +79,10 @@ configuration:
         vein_pressure: -1.0
         tissue_pressure: 0.0
         leak_fraction: 0.01        # Per-node tissue leak vs. median segment conductance
-        shear_threshold_fraction: 0.5  # Prune terminal segments below this x median shear
-        adaptation_rate: 0.10      # Caliber drift toward the median-shear radius
-                                   # (vnv_calibrate fit; 0.15 over-thickens)
+        shear_threshold_fraction: 0.65  # Prune terminal segments below this x median shear
+        adaptation_rate: 0.05      # Caliber drift toward the median-shear radius
+                                   # (vnv_calibrate composition fit: lower rate keeps
+                                   # adaptation from hollowing out the mid calibers)
         min_radius: 0.001
         max_radius: 0.02
 
@@ -97,8 +98,8 @@ configuration:
 
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:
-        capture_radius: 0.045     # Tip-to-target distance that triggers fusion
-                                  # (wide enough to reach across a plexus gap)
+        capture_radius: 0.035     # Tip-to-target distance that triggers fusion
+                                  # (vnv_calibrate composition fit)
         max_tip_radius: 0.004     # Only capillary-caliber tips anastomose
         max_target_radius: 0.004  # And only onto capillary-caliber segments
         probability: 0.5          # Per-step fusion probability once in range

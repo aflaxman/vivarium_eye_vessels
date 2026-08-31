@@ -167,6 +167,9 @@ class FlowRemodeler(Component):
             "leak_fraction": 0.01,
             "shear_threshold_fraction": 0.3,
             "adaptation_rate": 0.0,
+            # Adapt only segments whose shear is off their tree's median by
+            # more than this factor; 1.0 adapts everything (no deadband)
+            "adaptation_deadband": 1.0,
             "min_radius": 0.001,
             "max_radius": 0.02,
         }
@@ -303,12 +306,18 @@ class FlowRemodeler(Component):
         if segments.empty:
             return
         with np.errstate(divide="ignore", under="ignore"):
-            factors = np.power(
-                np.clip(
-                    segments.shear.to_numpy() / median_shear[keep].to_numpy(), 1e-6, None
-                ),
-                rate,
+            ratios = np.clip(
+                segments.shear.to_numpy() / median_shear[keep].to_numpy(), 1e-6, None
             )
+            factors = np.power(ratios, rate)
+        # Deadband: segments already within a factor of their tree's median
+        # shear are left alone. Without it, adaptation polarizes calibers
+        # away from the middle -- below-median twigs thin toward the floor
+        # while above-median vessels thicken -- hollowing out the mid-caliber
+        # stratum that dominates real networks.
+        deadband = float(self.config.adaptation_deadband)
+        if deadband > 1.0:
+            factors = np.where((ratios > 1.0 / deadband) & (ratios < deadband), 1.0, factors)
         new_radii = np.clip(
             segments.radius.to_numpy() * factors,
             float(self.config.min_radius),

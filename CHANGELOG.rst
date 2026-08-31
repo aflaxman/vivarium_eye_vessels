@@ -1,3 +1,37 @@
+**v0.11.0 - 08/31/26**
+
+ - Surface the diameter composition and fit it toward the HRF fractions
+
+   - The comparison figure gains a fourth row: a per-branch diameter
+     histogram (sim vs HRF, log-x) and grouped composition bars for the
+     <=2 px / 2-4 px / >4 px strata, by branch count and by skeleton
+     length, with the shares printed on the stratified panels;
+     ``metrics.json`` records the diameter summaries and per-stratum
+     length shares
+   - The wide (>4 px) branch share joined the calibration targets;
+     together with the capillary share this pins the whole three-bin
+     composition (HRF: 6/59/35% capillary/mid/wide)
+   - New ``flow_remodeler.adaptation_deadband``: segments whose shear is
+     within this factor of their tree's median don't adapt (default 1.0
+     = previous behavior). Motivated by the per-target calibration logs:
+     shear adaptation polarizes calibers away from the median --
+     below-median twigs thin to the floor while above-median vessels
+     thicken -- hollowing out the mid-caliber stratum that dominates
+     real networks
+   - Composition fit: ``adaptation_rate`` 0.10 -> 0.05,
+     ``shear_threshold_fraction`` 0.5 -> 0.65,
+     ``capture_radius`` 0.045 -> 0.035 moves the composition
+     19/15/66% -> 21/21/58% and the score 40.2 -> 34.8 (scores now
+     include the wide-share target, so they are not comparable to
+     v0.10.0's 24.7); on the fit seed reverting any single knob of the
+     trio is worse, and the trio also wins on a held-out healthy seed
+     (54.8 -> 40.5) but amplifies the pre-existing degeneracy of seed 42
+     (165 -> 326), keeping the multi-seed objective on the roadmap
+   - The residual composition gap to HRF is structural -- Murray
+     bifurcations plus geometric taper transit the mid-caliber band in a
+     couple of generations -- and is called out as mechanism work in the
+     roadmap
+
 **v0.10.0 - 08/31/26**
 
  - Calibrate the healthy model against real-data targets (realism roadmap

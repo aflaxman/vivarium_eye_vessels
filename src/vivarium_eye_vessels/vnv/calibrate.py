@@ -60,6 +60,7 @@ SEARCH_SPACE = {
     ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
     ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],
     ("flow_remodeler", "adaptation_rate"): [0.05, 0.10, 0.15],
+    ("flow_remodeler", "adaptation_deadband"): [1.0, 2.0, 4.0],
     ("flow_remodeler", "max_radius"): [0.012, 0.016, 0.02],
     ("plexus_layers", "dive_probability"): [0.035, 0.05, 0.07],
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],

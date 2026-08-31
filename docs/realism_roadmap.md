@@ -293,6 +293,43 @@ proportional compute cost). Disease phenotypes also remain future work:
 the ingredients (the OU tortuosity dial, per-type perfusion, pruning)
 are in place.
 
+*Second fit (diameter composition)*: visual review after the first fit
+showed the simulated calibers splitting into thin-and-thick with too few
+mid-caliber vessels, so the composition became an explicit target.
+Binning skeleton branches by their EDT-recovered diameter (≤2 px,
+2–4 px, >4 px at the standard raster scale), HRF is 6/59/35%
+(capillary/mid/wide) while the first fit produced 19/15/66% — the mid
+bin, which dominates real networks, was the *smallest* simulated
+stratum. The comparison figure now carries a diameter histogram and
+grouped composition bars (by branch count and by skeleton length), and
+the wide share joined the calibration targets. A composition-aware
+coordinate-descent pass found no single-knob improvement; the per-target
+logs exposed why — shear adaptation *polarizes* calibers away from the
+median (below-median twigs thin toward the floor while above-median
+vessels thicken), actively hollowing out the mid stratum — so the
+remodeler gained an `adaptation_deadband` (segments within a factor of
+their tree's median shear don't adapt; the default 1.0 preserves the
+previous behavior). The winning move in the follow-up sweeps was gentler
+remodeling rather than the deadband itself: `adaptation_rate`
+0.10 → 0.05, `shear_threshold_fraction` 0.5 → 0.65, anastomosis
+`capture_radius` 0.045 → 0.035, moving the composition to 21/21/58% and
+the score 40.2 → 34.8 (these totals include the new wide-share target,
+so they are not comparable to the 24.7 above). The three knobs interact:
+on the fit seed, reverting any one of them is worse than the trio
+(40.4 / 85.8 / 46.0). Robustness is mixed in the same way as the first
+fit: the trio also wins on a held-out healthy seed (54.8 → 40.5, with
+the composition moving the same direction), but on the known-degenerate
+seed 42 — where both configs produce a broken sparse network — the
+stiffer pruning threshold and slower adaptation amplify the degeneracy
+(165 → 326, mostly unperfused tissue). The fix for that is the
+multi-seed objective above, not a different point fit. The residual gap is
+structural rather than a tuning miss: Murray-law bifurcations plus the
+geometric freeze taper transit the mid-caliber band in a couple of
+branch generations, so real mid-bin mass needs either longer
+mid-caliber runs between branchings or a caliber-dependent taper —
+mechanism work for a future pass, ideally calibrated against the
+per-plexus ROSE data once the Zenodo request is granted.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

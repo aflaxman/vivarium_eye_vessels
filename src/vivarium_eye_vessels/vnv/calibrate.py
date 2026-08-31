@@ -240,7 +240,14 @@ def main(model_spec: str, budget: int, steps: int, seed, log_path: str, workdir:
         click.echo(f"[{tag}] total={total:.2f} {log[-1]['overrides']}")
         return total
 
-    outcome = coordinate_descent(evaluate, SEARCH_SPACE, {}, budget)
+    # Seed the search at the spec's own settings so the incumbent value of
+    # each knob is recognized and never re-evaluated as a "new" candidate
+    base_overrides = {
+        (section, key): base_spec["configuration"][section][key]
+        for section, key in SEARCH_SPACE
+        if key in base_spec["configuration"].get(section, {})
+    }
+    outcome = coordinate_descent(evaluate, SEARCH_SPACE, base_overrides, budget)
     click.echo(f"Best score {outcome['best_score']:.2f} after {outcome['evaluations']} runs:")
     for (section, key), value in outcome["best"].items():
         click.echo(f"  {section}.{key} = {value}")

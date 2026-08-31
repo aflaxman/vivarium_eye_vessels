@@ -6,6 +6,7 @@ from vivarium_eye_vessels.vnv.calibrate import (
     SEARCH_SPACE,
     TARGETS,
     calibration_score,
+    combine_seed_scores,
     coordinate_descent,
 )
 
@@ -49,6 +50,23 @@ def test_missing_or_nan_stats_never_win():
     scores = calibration_score(stats)
     assert scores["artery_vein_caliber_ratio"] == 25.0
     assert scores["fractal_dimension"] == 25.0
+
+
+def test_multiseed_objective_is_the_mean_across_seeds():
+    per_seed = {
+        7: {"skeleton_density": 1.0, "wide_share": 3.0, "total": 4.0},
+        42: {"skeleton_density": 5.0, "wide_share": 1.0, "total": 6.0},
+    }
+    combined = combine_seed_scores(per_seed)
+    np.testing.assert_allclose(combined["skeleton_density"], 3.0)
+    np.testing.assert_allclose(combined["wide_share"], 2.0)
+    np.testing.assert_allclose(combined["total"], 5.0)
+
+
+def test_multiseed_objective_punishes_a_single_collapsed_seed():
+    steady = combine_seed_scores({1: {"total": 60.0}, 2: {"total": 60.0}})
+    lucky_but_fragile = combine_seed_scores({1: {"total": 40.0}, 2: {"total": 1800.0}})
+    assert steady["total"] < lucky_but_fragile["total"]
 
 
 def test_coordinate_descent_finds_the_known_optimum():

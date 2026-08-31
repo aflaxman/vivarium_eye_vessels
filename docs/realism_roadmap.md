@@ -293,6 +293,134 @@ proportional compute cost). Disease phenotypes also remain future work:
 the ingredients (the OU tortuosity dial, per-type perfusion, pruning)
 are in place.
 
+*Second fit (diameter composition)*: visual review after the first fit
+showed the simulated calibers splitting into thin-and-thick with too few
+mid-caliber vessels, so the composition became an explicit target.
+Binning skeleton branches by their EDT-recovered diameter (≤2 px,
+2–4 px, >4 px at the standard raster scale), HRF is 6/59/35%
+(capillary/mid/wide) while the first fit produced 19/15/66% — the mid
+bin, which dominates real networks, was the *smallest* simulated
+stratum. The comparison figure now carries a diameter histogram and
+grouped composition bars (by branch count and by skeleton length), and
+the wide share joined the calibration targets. A composition-aware
+coordinate-descent pass found no single-knob improvement; the per-target
+logs exposed why — shear adaptation *polarizes* calibers away from the
+median (below-median twigs thin toward the floor while above-median
+vessels thicken), actively hollowing out the mid stratum — so the
+remodeler gained an `adaptation_deadband` (segments within a factor of
+their tree's median shear don't adapt; the default 1.0 preserves the
+previous behavior). The winning move in the follow-up sweeps was gentler
+remodeling rather than the deadband itself: `adaptation_rate`
+0.10 → 0.05, `shear_threshold_fraction` 0.5 → 0.65, anastomosis
+`capture_radius` 0.045 → 0.035, moving the composition to 21/21/58% and
+the score 40.2 → 34.8 (these totals include the new wide-share target,
+so they are not comparable to the 24.7 above). The three knobs interact:
+on the fit seed, reverting any one of them is worse than the trio
+(40.4 / 85.8 / 46.0). Robustness is mixed in the same way as the first
+fit: the trio also wins on a held-out healthy seed (54.8 → 40.5, with
+the composition moving the same direction), but on the known-degenerate
+seed 42 — where both configs produce a broken sparse network — the
+stiffer pruning threshold and slower adaptation amplify the degeneracy
+(165 → 326, mostly unperfused tissue). The fix for that is the
+multi-seed objective above, not a different point fit. The residual gap is
+structural rather than a tuning miss: Murray-law bifurcations plus the
+geometric freeze taper transit the mid-caliber band in a couple of
+branch generations, so real mid-bin mass needs either longer
+mid-caliber runs between branchings or a caliber-dependent taper —
+mechanism work for a future pass, ideally calibrated against the
+per-plexus ROSE data once the Zenodo request is granted.
+
+*Third pass (arcade geometry)*: at the zoomed-out scale the wide vessels
+meandered and curled, unlike the smooth HRF arcades. Two mechanisms were
+responsible, and both were fixed at the mechanism level rather than by
+tuning. First, steering was caliber-blind — an arcade tip took the same
+random kicks as a capillary tip, so its heading random-walked — fixed by
+`noise_caliber_reference/_exponent`: tips wider than the capillary
+reference have their random steering attenuated by
+`(reference/radius)^exponent`, so arcades hold their heading while
+capillaries wander (real large vessels are stiff; sprouting is a
+capillary-tip behavior). Second, and less obvious: the flow remodeler
+had an *anastomosis-shortcut runaway* — an artery→vein capillary bridge
+sees an enormous pressure drop through a tiny radius, its shear
+explodes, adaptation thickens it, conductance grows as r⁴, it draws yet
+more flow — a positive feedback that promoted curly capillary paths all
+the way to arcade caliber (on the fit seed, only 376 of 2,516
+wide-caliber particles were true arcades, and 191 sat in the
+capillary-only deep plexuses). The new `max_adapted_radius` saturates
+shear-driven *thickening* at venule caliber while segments born wider
+can still taper. Alongside the mechanisms, the HRF comparison itself was
+corrected to be fundus-faithful: fundus photographs do not see the deep
+capillary-only plexuses (OCTA does — see `plexus.png`), so the
+comparison now rasterizes the superficial layer only, and with the
+promotion runaway gone the missing wide mass turned out to be *real
+arcade mass* — seeding 6 root trunks instead of 4 closes most of the
+superficial density gap and finally makes the network panel read like a
+fundus image: smooth arcades sweeping from the disc into a fine mesh.
+The honest cost: the calibration score prefers the old meandering
+config (39.0 vs 55.0 on the corrected measurement) because skeleton-
+branch tortuosity is chopped at junctions and cannot see the
+long-wavelength curl — the fat promoted vessels bought area density and
+wide-share cheaply. The `wide_tortuosity_q90` target (HRF 1.11,
+one-sided) guards the worst of it, but a proper vessel-tracking
+curliness metric (merge branches through junctions along the widest
+continuation, then measure direction drift per unit arc) is the missing
+instrument; until it exists, the steering exponent and adaptation cap
+stay pinned during refits instead of being left to the score.
+
+*Fourth pass (comb-like side branching)*: even with smooth arcades, the
+branches off them were far too sparse — real arcades are *monopodial*: a
+trunk that keeps nearly its own caliber and sheds small side branches at
+short, comb-like intervals, where the splitter only did near-symmetric
+dichotomous forks and the caliber cadence made wide tips branch rarely.
+The pattern now has its own instrument: `wide_junction_spacing_px`, the
+skeleton distance between branch points along wide (>4 px) vessels
+(junction clusters counted once, measured identically on sim rasters and
+HRF masks). HRF carries a branch point every 22.7 px of wide skeleton
+(sd 1.8); the previous model managed one every 38.6 px — an 80-point
+score term that quantifies exactly what the eye saw. The splitter's new
+comb mode (`side_branch_flow` / `side_branch_radius` /
+`side_branch_probability`, off by default) makes parents above the
+reference caliber emit side branches at their own cadence and strongly
+asymmetrically: the trunk keeps ~96% of its caliber and the tooth takes
+the Murray caliber for a ~10% flow fraction, leaving near-perpendicular
+on a random side — both angles fall out of the minimum-work bifurcation
+relations already in the code. The instructive failure: the first comb
+collapsed the network outright, because teeth spawn inside the frozen-
+repulsion field of their own trunk (interaction radius 0.15 units
+= 38 px — wider than the comb spacing itself) and the stacked forces
+drove every tip extinct; the repulsion radius, it turns out, was itself
+an anti-realism constraint, and dropping it to 0.12 both rescues the
+comb and lets vessels pack at real densities. The fit (emission 0.65,
+spacing 26.0 px vs HRF 22.7) scores 47.3 against the previous spec's
+135.7 on the corrected objective, and the emission rate was chosen for
+robustness, not just the fit seed: 0.8 packs tighter (19.9 px, 50.5)
+but tips one held-out seed into the crowding-extinction cascade, while
+0.65 holds on both. Superficial skeleton and area density remain the
+weakest terms — the fundus-visible network is still sparser than HRF —
+and the operating point is sensitive: small pushes toward more
+superficial mass (lower dive probability, weaker repulsion) destabilize
+the growth front.
+
+*Fifth pass (multi-seed objective)*: the harness investment every
+earlier pass asked for. `vnv_calibrate --seeds 123456,7,42` makes the
+objective the *mean* score across the listed seeds (one simulation per
+seed per evaluation, per-seed breakdowns logged), so a config that
+collapses on any seed loses to one that is merely mediocre everywhere.
+Re-judging the comb-era candidates under it was clarifying: every
+candidate has exactly one weak seed (the growth front either catches a
+good trajectory or it doesn't), so single-seed fits had been silently
+trading robustness for fit-seed polish. The best 3-seed mean moved one
+knob — `dive_probability` 0.05 → 0.04, keeping slightly more of the
+capillary bed superficial — improving the mean 114.1 → 70.6 (per-seed
+47/74/221 → 42/121/49) and the fit seed itself. Candidates that looked
+tempting on one seed (a stiffer extinction threshold, gentler tooth
+emission, a wider capture radius, and their combinations) all lost on
+the mean. The remaining seed-to-seed spread (42 vs 121) is honest
+variance in whether the arcades colonize evenly; averaging over more
+seeds per evaluation (at proportional compute) or seed-averaged
+coordinate descent with a larger budget is the obvious continuation
+when compute allows.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

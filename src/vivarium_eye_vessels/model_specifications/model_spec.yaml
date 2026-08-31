@@ -40,13 +40,19 @@ configuration:
         initial_circle:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
-            n_vessels: 4               # Number of frozen particles in the circle
+            n_vessels: 6               # Root trunks at the disc (3 artery/vein pairs);
+                                       # more superficial arcades close most of the gap
+                                       # to the HRF density metrics (vnv_calibrate fit)
         root_radius: 0.02              # Caliber of the root (vein) vessels
         artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
         noise_persistence_time: 0.0    # OU steering memory (days); 0 = white noise.
                                        # Healthy tortuosity is already on target; raising
                                        # this is the DR-like disease dial (tortuosity up,
                                        # perfusion down) -- see realism roadmap idea 7
+        noise_caliber_reference: 0.004  # Tips at or below capillary caliber steer freely
+        noise_caliber_exponent: 1.5     # Wider tips hold their heading: random steering
+                                        # is attenuated by (reference/radius)^exponent so
+                                        # the arcades sweep smoothly instead of wandering
 
     # Path freezing configuration
     path_freezer:
@@ -63,6 +69,15 @@ configuration:
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
         caliber_cadence_exponent: 0.75  # Wider tips split less often (vnv_calibrate fit)
+        side_branch_flow: 0.1      # Comb mode: trunks shed small side branches
+                                   # carrying ~10% of the flow at near-perpendicular
+                                   # angles, at the full split cadence
+        side_branch_radius: 0.008  # Parents wider than this side-branch instead of
+                                   # splitting dichotomously
+        side_branch_probability: 0.65  # Tooth emission per split round: sets the
+                                       # comb spacing along the arcades
+                                       # (vnv_calibrate: sim 26px vs HRF 22.7px;
+                                       # 0.8 packs tighter but collapses seed 7)
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
@@ -79,11 +94,15 @@ configuration:
         vein_pressure: -1.0
         tissue_pressure: 0.0
         leak_fraction: 0.01        # Per-node tissue leak vs. median segment conductance
-        shear_threshold_fraction: 0.5  # Prune terminal segments below this x median shear
-        adaptation_rate: 0.10      # Caliber drift toward the median-shear radius
-                                   # (vnv_calibrate fit; 0.15 over-thickens)
+        shear_threshold_fraction: 0.65  # Prune terminal segments below this x median shear
+        adaptation_rate: 0.05      # Caliber drift toward the median-shear radius
+                                   # (vnv_calibrate composition fit: lower rate keeps
+                                   # adaptation from hollowing out the mid calibers)
         min_radius: 0.001
         max_radius: 0.02
+        max_adapted_radius: 0.006  # Shear-driven thickening saturates at venule
+                                   # caliber; guards the anastomosis-shortcut runaway
+                                   # that promoted curly capillary paths to fat vessels
 
     # Stratified plexuses: superficial arcades, capillary-only deeper layers
     # connected by diving vessels
@@ -93,12 +112,14 @@ configuration:
         damping: 5.0                 # Damps vertical oscillation around the plane
         max_force: 0.3               # Cap the pull below the extinction threshold
         dive_radius: 0.004           # Only capillary-caliber tips dive deeper
-        dive_probability: 0.05       # Per-step chance an eligible tip dives
+        dive_probability: 0.04       # Per-step chance an eligible tip dives
+                                     # (multi-seed vnv_calibrate fit: best mean
+                                     # score across seeds 123456/7/42)
 
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:
-        capture_radius: 0.045     # Tip-to-target distance that triggers fusion
-                                  # (wide enough to reach across a plexus gap)
+        capture_radius: 0.035     # Tip-to-target distance that triggers fusion
+                                  # (vnv_calibrate composition fit)
         max_tip_radius: 0.004     # Only capillary-caliber tips anastomose
         max_target_radius: 0.004  # And only onto capillary-caliber segments
         probability: 0.5          # Per-step fusion probability once in range
@@ -114,7 +135,10 @@ configuration:
     frozen_repulsion:
         force_type: hookean
         spring_constant: 1.5  # Spring constant for Hooke's law (force/distance)
-        interaction_radius: 0.15
+        interaction_radius: 0.12  # Real arcades carry a branch every ~23 px, so
+                                  # vessels must be allowed to pack that closely;
+                                  # at 0.15 the comb teeth crowd each other into
+                                  # extinction (vnv_calibrate composition fit)
         delay: 1 # days
         cross_type_factor: 0.25  # Weak artery-vein repulsion -> interdigitating arcades
 

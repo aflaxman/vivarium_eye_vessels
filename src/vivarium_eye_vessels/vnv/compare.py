@@ -206,8 +206,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     edges = simulation.tree_edges(pop)
 
     has_calibers = "radius" in edges.columns and bool((edges.radius > 0).any())
+    # Fundus photographs image the superficial vasculature; the deep
+    # capillary-only plexuses are essentially invisible to them (OCTA sees
+    # them instead — docs/vnv/plexus.png), so everything compared against
+    # HRF uses the superficial (layer 0) projection only
+    fundus_edges = edges[edges.layer_id == 0] if "layer_id" in edges.columns else edges
     sim_raster = metrics.rasterize_network(
-        edges, bounds, radii=edges.radius.values if has_calibers else None
+        fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )
     sim_image_metrics = metrics.image_metrics(sim_raster)
     sim_angles = metrics.bifurcation_angles(pop)
@@ -277,6 +282,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     from vivarium_eye_vessels.vnv import calibrate
 
     sim_lengths = np.asarray(sim_image_metrics["branch_length_px"], dtype=float)
+    sim_branch_tortuosity = np.asarray(sim_image_metrics["branch_tortuosity"], dtype=float)
+    sim_branch_diameter = np.asarray(sim_image_metrics["branch_diameter_px"], dtype=float)
+    sim_wide_tortuosity = sim_branch_tortuosity[sim_branch_diameter > 4.0]
     calibration_stats = {
         "skeleton_density": sim_image_metrics["skeleton_density"],
         "area_density": sim_image_metrics["area_density"],
@@ -294,6 +302,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             else float("nan")
         ),
         "capillary_share": len(sim_strata["diameter_le_2px"]) / max(len(sim_lengths), 1),
+        "wide_share": len(sim_strata["diameter_gt_4px"]) / max(len(sim_lengths), 1),
+        "wide_tortuosity_q90": (
+            float(np.quantile(sim_wide_tortuosity, 0.9))
+            if len(sim_wide_tortuosity)
+            else float("nan")
+        ),
+        "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
         "artery_vein_caliber_ratio": sim_avr,
         "perfused_fraction": sim_perfused_fraction,
     }
@@ -304,7 +319,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     real_area_density = np.array([m["area_density"] for m in real_per_mask])
 
     # --- Figure ---
-    fig, axes = plt.subplots(3, 3, figsize=(15, 13.5))
+    fig, axes = plt.subplots(4, 3, figsize=(15, 18))
     fig.patch.set_facecolor("white")
 
     def displayable(thin_image: np.ndarray) -> np.ndarray:
@@ -314,9 +329,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax = axes[0, 0]
     sim_display = sim_raster if has_calibers else displayable(sim_raster)
     sim_panel_title = (
-        "Simulation: network with calibers (x–y)"
+        "Simulation: superficial network with calibers (x–y)"
         if has_calibers
-        else "Simulation: rasterized network (x–y)"
+        else "Simulation: rasterized superficial network (x–y)"
     )
     ax.imshow(~sim_display, cmap="gray", interpolation="nearest")
     ax.set_title(sim_panel_title, color=INK, fontsize=10)
@@ -415,6 +430,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     # Row 3: segment lengths stratified by local vessel diameter, measured the
     # same way on both images (distance transform along the skeleton)
+    sim_n_branches = max(len(sim_lengths), 1)
+    real_n_branches = max(len(real_lengths), 1)
     for column, key in enumerate(DIAMETER_BIN_TITLES):
         ax = axes[2, column]
         overlay_histogram(
@@ -426,11 +443,64 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         )
         ax.set_xscale("log")
         ax.set_title(
-            f"{DIAMETER_BIN_TITLES[key]} — sim n={len(sim_strata[key])},"
-            f" HRF n={len(real_strata[key])}",
+            f"{DIAMETER_BIN_TITLES[key]} — sim {len(sim_strata[key])/sim_n_branches:.0%},"
+            f" HRF {len(real_strata[key])/real_n_branches:.0%} of branches",
             color=INK,
             fontsize=10,
         )
+
+    # Row 4: the diameter composition itself — the distribution and the
+    # share of branches (and of total skeleton length) per diameter stratum
+    ax = axes[3, 0]
+    diameter_bins = np.geomspace(1.8, 16, 24)
+    overlay_histogram(
+        ax,
+        sim_image_metrics["branch_diameter_px"],
+        real_diameters,
+        diameter_bins,
+        "skeleton branch diameter (px)",
+    )
+    ax.set_xscale("log")
+    ax.set_title("Branch diameter distribution", color=INK, fontsize=10)
+
+    def composition_bars(ax, sim_shares, real_shares, ylabel: str, title: str) -> None:
+        labels = ["≤ 2 px", "2–4 px", "> 4 px"]
+        positions = np.arange(len(labels))
+        width = 0.36
+        ax.bar(positions - width / 2, sim_shares, width, color=SIM_COLOR, label="Simulation")
+        ax.bar(
+            positions + width / 2, real_shares, width, color=REAL_COLOR, label="HRF (real)"
+        )
+        for xs, shares in (
+            (positions - width / 2, sim_shares),
+            (positions + width / 2, real_shares),
+        ):
+            for x, share in zip(xs, shares):
+                ax.text(x, share + 0.01, f"{share:.0%}", ha="center", color=INK, fontsize=8)
+        ax.set_xticks(positions, labels)
+        ax.set_ylim(0, 1.12)
+        ax.set_ylabel(ylabel, color=INK, fontsize=9)
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK)
+        ax.set_title(title, color=INK, fontsize=10)
+        style_axis(ax)
+
+    stratum_keys = list(DIAMETER_BIN_TITLES)
+    composition_bars(
+        axes[3, 1],
+        [len(sim_strata[key]) / sim_n_branches for key in stratum_keys],
+        [len(real_strata[key]) / real_n_branches for key in stratum_keys],
+        "share of branches",
+        "Diameter composition (by branch count)",
+    )
+    sim_total_length = max(float(np.sum(sim_lengths)), 1.0)
+    real_total_length = max(float(np.sum(real_lengths)), 1.0)
+    composition_bars(
+        axes[3, 2],
+        [float(np.sum(sim_strata[key])) / sim_total_length for key in stratum_keys],
+        [float(np.sum(real_strata[key])) / real_total_length for key in stratum_keys],
+        "share of skeleton length",
+        "Diameter composition (by skeleton length)",
+    )
 
     headline = (
         f"Fractal dimension (skeleton): sim {sim_image_metrics['fractal_dimension']:.2f}  vs  "
@@ -452,9 +522,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fontsize=13,
         y=0.995,
     )
-    fig.text(0.5, 0.968, headline, ha="center", color=INK, fontsize=10)
-    fig.text(0.5, 0.951, area_line, ha="center", color=INK, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.text(0.5, 0.976, headline, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.963, area_line, ha="center", color=INK, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
     figure_path = output_dir / "comparison.png"
     fig.savefig(figure_path, dpi=110, facecolor="white")
     plt.close(fig)
@@ -481,10 +551,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "skeleton_density": sim_image_metrics["skeleton_density"],
             "area_density": sim_image_metrics["area_density"],
             "branch_length_px": metrics.summarize(sim_image_metrics["branch_length_px"]),
+            "branch_diameter_px": metrics.summarize(sim_image_metrics["branch_diameter_px"]),
             "branch_length_by_diameter": {
                 key: {
                     **metrics.summarize(values),
                     "share": len(values) / max(len(sim_image_metrics["branch_length_px"]), 1),
+                    "length_share": float(np.sum(values))
+                    / max(float(np.sum(sim_lengths)), 1.0),
                 }
                 for key, values in sim_strata.items()
             },
@@ -528,10 +601,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
                 "std": float(real_area_density.std()),
             },
             "branch_length_px": metrics.summarize(real_lengths),
+            "branch_diameter_px": metrics.summarize(real_diameters),
             "branch_length_by_diameter": {
                 key: {
                     **metrics.summarize(values),
                     "share": len(values) / max(len(real_lengths), 1),
+                    "length_share": float(np.sum(values))
+                    / max(float(np.sum(np.asarray(real_lengths, dtype=float))), 1.0),
                 }
                 for key, values in real_strata.items()
             },

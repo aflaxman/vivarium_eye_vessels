@@ -1,3 +1,135 @@
+**v0.14.0 - 08/31/26**
+
+ - Multi-seed calibration objective, and a multi-seed refit
+
+   - ``vnv_calibrate`` gains ``--seeds A,B,C``: the objective becomes
+     the MEAN score across the listed seeds (one simulation per seed
+     per evaluation, per-seed breakdowns logged), so a config that
+     collapses on any seed loses to one that is merely mediocre
+     everywhere -- the robustness the single-seed fits kept missing
+   - The comb-era candidates were re-judged on seeds 123456/7/42:
+     every config has exactly one weak seed, and the single-seed
+     winner's weak seed was hiding real fragility. The best 3-seed
+     mean is ``plexus_layers.dive_probability`` 0.05 -> 0.04
+     (mean 114.1 -> 70.6; per-seed 47/74/221 -> 42/121/49), which
+     also improves the fit seed itself
+   - Two new tests: the multi-seed objective is the per-component mean,
+     and a config that collapses on one seed loses to a steady one
+
+**v0.13.0 - 08/31/26**
+
+ - Comb-like side branching off the arcades (monopodial branching), with
+   a branch-spacing calibration target
+
+   - Visual review showed the branches off the arcades far too sparse:
+     real arcades are monopodial -- a trunk that keeps nearly its own
+     caliber and sheds small side branches at short, regular intervals
+     -- while the splitter only did near-symmetric dichotomous forks,
+     and the caliber cadence made wide tips branch *rarely*
+   - New metric ``wide_junction_spacing_px``: skeleton distance between
+     branch points along wide (>4 px) vessels, counting connected
+     junction clusters once; measured identically on simulated rasters
+     and HRF masks. HRF: a branch point every 22.7 px of wide skeleton
+     (sd 1.77); the previous model: every 38.6 px. New calibration
+     target with the across-mask sd as scale
+   - New ``PathSplitter`` comb mode (``side_branch_flow``,
+     ``side_branch_radius``, ``side_branch_probability``; off by
+     default): parents wider than the reference split at their own
+     emission probability -- exempt from the cadence damping -- and
+     asymmetrically: the trunk continues at ~96% of its caliber while
+     the tooth takes the Murray caliber for a ~10% flow fraction,
+     leaving near-perpendicularly on a random side (both consequences
+     of the minimum-work bifurcation relations already in the code)
+   - The comb initially collapsed the network: teeth spawn inside the
+     frozen-repulsion field of their own trunk and neighbours (radius
+     0.15 units = 38 px, wider than the comb spacing itself) and the
+     stacked forces drove every tip extinct. Real vessels pack a branch
+     every ~23 px, so ``frozen_repulsion.interaction_radius`` drops to
+     0.12; the extinction threshold is untouched
+   - Fit: emission 0.65 per split round gives spacing 26.0 px (HRF 22.7)
+     and calibration total 47.3, vs 135.7 for the previous spec under
+     the corrected objective (the spacing term alone was 80.7); 0.8
+     packs tighter (19.9 px, 50.5) but collapses a held-out seed, while
+     0.65 holds on both held-out seeds
+   - Three new tests: cadence exemption for side-branching trunks,
+     asymmetric near-perpendicular tooth geometry, and the spacing
+     metric on a synthetic comb
+
+**v0.12.0 - 08/31/26**
+
+ - Straighten the large vessels (caliber-dependent steering stiffness,
+   an adaptation growth cap, and a fundus-faithful comparison)
+
+   - Visual review showed the wide vessels meandering and curling at the
+     zoomed-out scale, unlike the smooth HRF arcades. Two mechanisms were
+     responsible: caliber-blind steering (arcade tips took the same
+     random kicks as capillary tips, so their heading random-walked) and
+     an anastomosis-shortcut runaway in the flow remodeler (an
+     artery-vein capillary bridge sees enormous shear, thickens, gains
+     conductance as r^4, draws more flow, and runs away to arcade
+     caliber -- promoting curly capillary paths into fat vessels; on the
+     fit seed only 376 of 2,516 wide particles were true arcades, and
+     191 sat in the capillary-only deep plexuses)
+   - New ``particles.noise_caliber_reference/_exponent``: tips wider
+     than the reference caliber have their random steering attenuated by
+     ``(reference/radius)^exponent`` (spec: 0.004 and 1.5), so arcades
+     hold their heading while capillaries wander; exponent 0 is the
+     legacy caliber-blind steering, and the OU disease dial composes
+     with the attenuation unchanged
+   - New ``flow_remodeler.max_adapted_radius`` (spec 0.006): shear-driven
+     thickening saturates at venule caliber; segments born wider (Murray
+     splits off the arcades) are untouched and can only taper. The
+     default equals ``max_radius``, preserving the previous behavior
+   - The HRF comparison now rasterizes the superficial (layer 0)
+     projection only: fundus photographs do not see the deep
+     capillary-only plexuses (OCTA does -- ``docs/vnv/plexus.png``), so
+     scoring them against fundus masks inflated the capillary share.
+     Tree- and graph-based metrics still use the full 3D network
+   - ``initial_circle.n_vessels`` 4 -> 6: with the runaway capped, the
+     missing wide-vessel mass was real arcade mass; three artery/vein
+     pairs at the disc close most of the superficial density gap
+   - New ``wide_tortuosity_q90`` calibration target (HRF 1.11, one-sided)
+     guards against meandering wide vessels, though skeleton-branch
+     tortuosity only weakly sees the long-wavelength curl (branches are
+     chopped at junctions); the steering exponent and adaptation cap are
+     therefore pinned during refits rather than left to the score
+   - Two new tests: adaptation growth never exceeds the cap;
+     a caliber-stiffened run lays straighter arcades than exponent 0
+
+**v0.11.0 - 08/31/26**
+
+ - Surface the diameter composition and fit it toward the HRF fractions
+
+   - The comparison figure gains a fourth row: a per-branch diameter
+     histogram (sim vs HRF, log-x) and grouped composition bars for the
+     <=2 px / 2-4 px / >4 px strata, by branch count and by skeleton
+     length, with the shares printed on the stratified panels;
+     ``metrics.json`` records the diameter summaries and per-stratum
+     length shares
+   - The wide (>4 px) branch share joined the calibration targets;
+     together with the capillary share this pins the whole three-bin
+     composition (HRF: 6/59/35% capillary/mid/wide)
+   - New ``flow_remodeler.adaptation_deadband``: segments whose shear is
+     within this factor of their tree's median don't adapt (default 1.0
+     = previous behavior). Motivated by the per-target calibration logs:
+     shear adaptation polarizes calibers away from the median --
+     below-median twigs thin to the floor while above-median vessels
+     thicken -- hollowing out the mid-caliber stratum that dominates
+     real networks
+   - Composition fit: ``adaptation_rate`` 0.10 -> 0.05,
+     ``shear_threshold_fraction`` 0.5 -> 0.65,
+     ``capture_radius`` 0.045 -> 0.035 moves the composition
+     19/15/66% -> 21/21/58% and the score 40.2 -> 34.8 (scores now
+     include the wide-share target, so they are not comparable to
+     v0.10.0's 24.7); on the fit seed reverting any single knob of the
+     trio is worse, and the trio also wins on a held-out healthy seed
+     (54.8 -> 40.5) but amplifies the pre-existing degeneracy of seed 42
+     (165 -> 326), keeping the multi-seed objective on the roadmap
+   - The residual composition gap to HRF is structural -- Murray
+     bifurcations plus geometric taper transit the mid-caliber band in a
+     couple of generations -- and is called out as mechanism work in the
+     roadmap
+
 **v0.10.0 - 08/31/26**
 
  - Calibrate the healthy model against real-data targets (realism roadmap

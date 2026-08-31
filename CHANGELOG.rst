@@ -1,3 +1,22 @@
+**v0.9.0 - 08/30/26**
+
+ - Smooth, controllable tortuosity via Ornstein-Uhlenbeck steering
+   (realism roadmap idea 7)
+
+   - New ``wx/wy/wz`` particle columns: the autocorrelated random
+     component of each tip's steering, updated as an AR(1) with
+     correlation time ``particles.noise_persistence_time`` (days) and the
+     same stationary spread as the legacy uniform kick, so the process
+     degenerates exactly to white noise at one-step persistence and
+     ``noise_persistence_time: 0`` preserves the legacy behavior
+     bit-for-bit
+   - The healthy spec keeps ``noise_persistence_time: 0``: the sweep
+     showed healthy tortuosity was already at the HRF target (branch
+     median 1.004 vs 1.000), and any persistence raises tortuosity
+     (1.011 -> 1.049 path median at 0.25 days) as a package with
+     capillary dropout and hypoperfusion -- a DR-like disease dial, not
+     a healthy-network knob
+
 **v0.8.0 - 08/30/26**
 
  - Layered plexuses (realism roadmap idea 6)

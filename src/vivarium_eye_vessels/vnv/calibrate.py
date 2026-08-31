@@ -45,6 +45,9 @@ TARGETS = {
     "branch_tortuosity_median": {"target": 1.000, "scale": 0.02},
     "ks_log_length": {"target": 0.0, "scale": 0.05, "one_sided": "above"},
     "capillary_share": {"target": 0.0647, "scale": 0.05, "one_sided": "above"},
+    # HRF branches are 34.5% wide (>4 px); shares sum to 1, so scoring the
+    # capillary and wide shares also pins the mid (2-4 px) share
+    "wide_share": {"target": 0.345, "scale": 0.08},
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
@@ -54,8 +57,10 @@ TARGETS = {
 SEARCH_SPACE = {
     ("path_splitter", "split_interval"): [12, 15, 18],
     ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
+    ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
     ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],
-    ("flow_remodeler", "adaptation_rate"): [0.10, 0.15, 0.20],
+    ("flow_remodeler", "adaptation_rate"): [0.05, 0.10, 0.15],
+    ("flow_remodeler", "max_radius"): [0.012, 0.016, 0.02],
     ("plexus_layers", "dive_probability"): [0.035, 0.05, 0.07],
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
     ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
@@ -118,6 +123,7 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
             else float("nan")
         ),
         "capillary_share": len(strata["diameter_le_2px"]) / max(len(lengths), 1),
+        "wide_share": len(strata["diameter_gt_4px"]) / max(len(lengths), 1),
         "artery_vein_caliber_ratio": (
             float(arteries.radius.mean() / veins.radius.mean())
             if len(arteries) and len(veins)

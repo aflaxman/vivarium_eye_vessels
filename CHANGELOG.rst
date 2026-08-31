@@ -13,6 +13,13 @@
    - ``metrics.json`` now records the calibration score of every standard
      run (``calibration`` block + figure headline), tracked across model
      versions like every other metric
+   - The first fit (22 evaluations) moved three knobs
+     (``caliber_cadence_exponent`` 0.6 -> 0.75, ``adaptation_rate``
+     0.15 -> 0.10, ``perfusion_demand.magnitude`` 0.3 -> 0.35) and cut
+     the score 38.7 -> 24.7: KS to the HRF length distribution
+     0.171 -> 0.074, capillary share 22.5% -> 19.1%, fractal dimension
+     1.43 -> 1.41, area density 14.2% -> 13.6%, A:V ratio and tortuosity
+     holding; skeleton density traded back 2.69% -> 2.43%
 
 **v0.9.0 - 08/30/26**
 

@@ -99,5 +99,6 @@ if __name__ == "__main__":
             make_artifacts=vivarium_eye_vessels.tools.cli:make_artifacts
             vnv_growth_gif=vivarium_eye_vessels.vnv.animate:main
             vnv_compare=vivarium_eye_vessels.vnv.compare:main
+            vnv_calibrate=vivarium_eye_vessels.vnv.calibrate:main
         """,
     )

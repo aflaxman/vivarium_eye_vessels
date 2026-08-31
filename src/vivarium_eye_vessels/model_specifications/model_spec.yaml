@@ -62,7 +62,7 @@ configuration:
         murray_exponent: 3.0   # r_parent^k = r_major^k + r_minor^k at bifurcations
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
-        caliber_cadence_exponent: 0.6  # Wider tips split less often -> constant-ish L/D
+        caliber_cadence_exponent: 0.75  # Wider tips split less often (vnv_calibrate fit)
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
@@ -80,7 +80,8 @@ configuration:
         tissue_pressure: 0.0
         leak_fraction: 0.01        # Per-node tissue leak vs. median segment conductance
         shear_threshold_fraction: 0.5  # Prune terminal segments below this x median shear
-        adaptation_rate: 0.15      # Caliber drift toward the median-shear radius
+        adaptation_rate: 0.10      # Caliber drift toward the median-shear radius
+                                   # (vnv_calibrate fit; 0.15 over-thickens)
         min_radius: 0.001
         max_radius: 0.02
 
@@ -107,7 +108,8 @@ configuration:
         site_spacing: 0.1        # Lattice spacing of tissue demand sites
         perfusion_radius: 0.15   # Tissue within this distance of a vessel is perfused
         influence_radius: 2.0    # Hypoxic sites recruit growth tips within this distance
-        magnitude: 0.3           # Attraction strength (keep below the extinction threshold)
+        magnitude: 0.35          # Attraction strength, below the extinction threshold
+                                 # (vnv_calibrate fit)
 
     frozen_repulsion:
         force_type: hookean

@@ -245,7 +245,7 @@ diffusive tips. A clean single-variable tortuosity dial for *healthy*
 networks would need the retuning pass of idea 8; as a disease knob it
 works today.
 
-## 8. Calibrate to real statistics — then break them deliberately
+## 8. Calibrate to real statistics — then break them deliberately — HEALTHY FIT IMPLEMENTED
 
 Pick validation targets from public datasets (HRF, DRIVE, STARE fundus vessel
 segmentations; OCTA-500 for depth-resolved data) — fractal dimension (~1.7 for
@@ -256,6 +256,42 @@ calibrated, disease phenotypes become parameter perturbations: capillary
 dropout and neovascular tufts (diabetic retinopathy), a peripheral avascular
 front (ROP), collateral formation after simulated vein occlusion. If the goal
 is synthetic training data, the *pathological* variety is where the value is.
+
+*As implemented (healthy fit)*: the `vnv_calibrate` CLI formalizes the
+objective the per-feature sweeps had been eyeballing — eight validation
+targets (skeleton density, area density, fractal dimension, branch
+tortuosity from the HRF across-mask means and sds; KS distance to the HRF
+segment-length distribution; capillary branch share; clinical A:V ratio
+0.67; full perfusion, one-sided) each scored as a squared z-like deviation,
+summed into a single calibration score where 0 is perfect and each unit is
+one squared sd-equivalent of miss. `metrics.json` now carries the score of
+every standard run (`calibration` block, plus the total in the figure
+headline) so it is tracked across model versions like every other metric.
+The fit itself is coordinate descent over the eight knobs the sweeps showed
+the metrics respond to, one 800-step run per evaluation, every evaluation
+logged.
+
+The first fit (22 evaluations) moved three knobs —
+`caliber_cadence_exponent` 0.6 → 0.75, `adaptation_rate` 0.15 → 0.10,
+`perfusion_demand.magnitude` 0.3 → 0.35 — and cut the calibration score
+from 38.7 to 24.7 (−36%): KS distance to the HRF length distribution
+0.171 → 0.074, capillary branch share 22.5% → 19.1%, fractal dimension
+1.43 → 1.41 (HRF 1.35), area density 14.2% → 13.6% (HRF 11.9%), with the
+A:V ratio (0.66) and tortuosity (1.003) holding; skeleton density gave
+back 2.69% → 2.43% (HRF 3.21%) as the search traded it against the
+distributional terms. The search surface is genuinely coupled and sharp:
+`split_interval` 18 collapses the network outright (score ≈ 4,500), and
+the old cadence exponent 0.6 scores 340 under the *new* incumbent — the
+knobs cannot be tuned one feature at a time, which is exactly why the
+harness exists. Robustness: the fitted knobs beat the previous spec on
+*every* seed tested (38.7 → 24.7 on the fit seed; 269 → 157 and 46 → 45
+on two held-out seeds), but the seed-to-seed spread is larger than the
+within-seed improvement — whether a run catches a good growth trajectory
+dominates — so a natural next step for the harness is a multi-seed
+objective (average the score over 2–3 seeds per evaluation, at
+proportional compute cost). Disease phenotypes also remain future work:
+the ingredients (the OU tortuosity dial, per-type perfusion, pruning)
+are in place.
 
 ## Validation & verification (V&V)
 

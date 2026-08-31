@@ -1,0 +1,251 @@
+"""Calibrate the healthy model against real-data targets (roadmap idea 8).
+
+The objective scores a simulated network against validation targets drawn
+from the HRF dataset (means and spreads of the image-based metrics) and
+from clinical literature (the arcade A:V caliber ratio, full perfusion):
+each component is a squared z-like deviation, and the total is their sum,
+so a score of 0 means every metric sits on its target and each unit is one
+squared standard-deviation-equivalent of miss.
+
+Usage::
+
+    vnv_calibrate src/vivarium_eye_vessels/model_specifications/model_spec.yaml \
+        --budget 24 --log calibration_log.json
+
+The search is coordinate descent over ``SEARCH_SPACE``: one knob at a time,
+try the candidate values around the current setting, keep the best, move to
+the next knob, and repeat until the budget runs out or a full pass makes no
+improvement. Every evaluation (config, per-metric scores, total) is
+appended to the log as it happens, so partial runs are still informative.
+Runs are deterministic given the spec's seed; use ``--seed`` to check a
+candidate's robustness on other seeds.
+"""
+
+import copy
+import itertools
+import json
+import time
+from pathlib import Path
+
+import click
+import numpy as np
+import yaml
+from scipy.stats import ks_2samp
+
+from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
+
+# (target, scale): score component is ((value - target) / scale) ** 2.
+# HRF-derived targets use the across-mask mean and sd; clinical targets use
+# literature values with a judgment scale; "one_sided" components only score
+# deviations in the bad direction.
+TARGETS = {
+    "skeleton_density": {"target": 0.0321, "scale": 0.0029},
+    "area_density": {"target": 0.1193, "scale": 0.0103},
+    "fractal_dimension": {"target": 1.3536, "scale": 0.0242},
+    "branch_tortuosity_median": {"target": 1.000, "scale": 0.02},
+    "ks_log_length": {"target": 0.0, "scale": 0.05, "one_sided": "above"},
+    "capillary_share": {"target": 0.0647, "scale": 0.05, "one_sided": "above"},
+    "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
+    "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
+}
+
+# Candidate values per knob, current spec setting included. Chosen from the
+# per-feature sweeps: these are the knobs the headline metrics respond to.
+SEARCH_SPACE = {
+    ("path_splitter", "split_interval"): [12, 15, 18],
+    ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
+    ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],
+    ("flow_remodeler", "adaptation_rate"): [0.10, 0.15, 0.20],
+    ("plexus_layers", "dive_probability"): [0.035, 0.05, 0.07],
+    ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
+    ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
+    ("perfusion_demand", "magnitude"): [0.25, 0.3, 0.35],
+}
+
+
+def calibration_score(stats: dict) -> dict:
+    """Per-target squared deviations and their total, NaN-tolerant.
+
+    Missing or NaN stats score as a 5-sigma miss so broken runs never win.
+    """
+    scores = {}
+    for name, spec in TARGETS.items():
+        value = stats.get(name)
+        if value is None or not np.isfinite(value):
+            scores[name] = 25.0
+            continue
+        deviation = (value - spec["target"]) / spec["scale"]
+        one_sided = spec.get("one_sided")
+        if one_sided == "above":
+            deviation = max(deviation, 0.0)
+        elif one_sided == "below":
+            deviation = min(deviation, 0.0)
+        scores[name] = float(deviation**2)
+    scores["total"] = float(sum(scores.values()))
+    return scores
+
+
+def pooled_hrf_lengths() -> np.ndarray:
+    lengths: list[float] = []
+    for path in reference_data.fetch_hrf_masks():
+        binary = metrics.binarize_mask(reference_data.load_mask(path))
+        lengths.extend(metrics.image_metrics(binary)["branch_length_px"])
+    return np.asarray(lengths, dtype=float)
+
+
+def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> dict:
+    """The scored summary statistics for one finished simulation."""
+    from vivarium_eye_vessels.vnv.compare import stratify_by_diameter
+
+    raster = metrics.rasterize_network(edges, bounds, radii=edges.radius.values)
+    image = metrics.image_metrics(raster)
+    lengths = np.asarray(image["branch_length_px"], dtype=float)
+    strata = stratify_by_diameter(lengths, image["branch_diameter_px"])
+    arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
+    veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
+    return {
+        "skeleton_density": image["skeleton_density"],
+        "area_density": image["area_density"],
+        "fractal_dimension": image["fractal_dimension"],
+        "branch_tortuosity_median": (
+            float(np.median(image["branch_tortuosity"]))
+            if image["branch_tortuosity"]
+            else float("nan")
+        ),
+        "ks_log_length": (
+            float(ks_2samp(np.log10(lengths), np.log10(real_lengths)).statistic)
+            if len(lengths)
+            else float("nan")
+        ),
+        "capillary_share": len(strata["diameter_le_2px"]) / max(len(lengths), 1),
+        "artery_vein_caliber_ratio": (
+            float(arteries.radius.mean() / veins.radius.mean())
+            if len(arteries) and len(veins)
+            else float("nan")
+        ),
+        "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, 0.1, 0.15),
+        "n_frozen": int(pop.frozen.sum()),
+        "graph_cycles": metrics.graph_cycles(pop),
+    }
+
+
+def apply_overrides(spec: dict, overrides: dict) -> dict:
+    candidate = copy.deepcopy(spec)
+    for (section, key), value in overrides.items():
+        candidate["configuration"][section][key] = value
+    return candidate
+
+
+def evaluate_spec(
+    spec: dict, steps: int, real_lengths: np.ndarray, workdir: Path, tag: str
+) -> dict:
+    """Run one candidate spec to completion and score it."""
+    spec_path = workdir / f"candidate_{tag}.yaml"
+    with open(spec_path, "w") as f:
+        yaml.safe_dump(spec, f)
+    sim = simulation.build_headless_simulation(spec_path)
+    bounds = simulation.get_ellipsoid_bounds(sim)
+    semi_axes = simulation.get_ellipsoid_semi_axes(sim)
+    simulation.run_steps(sim, steps)
+    pop = simulation.get_network(sim)
+    edges = simulation.tree_edges(pop)
+    stats = scoring_stats(pop, edges, bounds, semi_axes, real_lengths)
+    return {"stats": stats, "scores": calibration_score(stats)}
+
+
+def coordinate_descent(evaluate, space: dict, base_overrides: dict, budget: int) -> dict:
+    """Greedy one-knob-at-a-time search; ``evaluate(overrides) -> total score``.
+
+    Returns {"best": overrides, "best_score": float, "evaluations": int}.
+    The evaluate callable is expected to cache/log as it sees fit.
+    """
+    current = dict(base_overrides)
+    best_score = evaluate(current)
+    evaluations = 1
+    improved = True
+    while improved and evaluations < budget:
+        improved = False
+        for knob, candidates in space.items():
+            for value in candidates:
+                if evaluations >= budget:
+                    break
+                if current.get(knob) == value:
+                    continue
+                trial = {**current, knob: value}
+                score = evaluate(trial)
+                evaluations += 1
+                if score < best_score:
+                    best_score = score
+                    current = trial
+                    improved = True
+    return {"best": current, "best_score": best_score, "evaluations": evaluations}
+
+
+@click.command()
+@click.argument("model_spec", type=click.Path(exists=True))
+@click.option("--budget", default=24, show_default=True, help="Max simulation runs.")
+@click.option("--steps", default=800, show_default=True)
+@click.option("--seed", default=None, type=int, help="Override the spec's random seed.")
+@click.option(
+    "--log",
+    "log_path",
+    default="calibration_log.json",
+    show_default=True,
+    type=click.Path(),
+)
+@click.option(
+    "--workdir",
+    default=".calibration_work",
+    show_default=True,
+    type=click.Path(),
+    help="Scratch directory for candidate specs (not for committing).",
+)
+def main(model_spec: str, budget: int, steps: int, seed, log_path: str, workdir: str):
+    """Fit MODEL_SPEC's knobs against the HRF-derived calibration targets."""
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    with open(model_spec) as f:
+        base_spec = yaml.safe_load(f)
+    if seed is not None:
+        base_spec["configuration"]["randomness"]["random_seed"] = seed
+
+    click.echo("Computing HRF reference statistics (cached download)...")
+    real_lengths = pooled_hrf_lengths()
+
+    log: list[dict] = []
+    cache: dict[tuple, float] = {}
+    counter = itertools.count()
+
+    def evaluate(overrides: dict) -> float:
+        key = tuple(sorted(overrides.items()))
+        if key in cache:
+            return cache[key]
+        tag = f"{next(counter):03d}"
+        start = time.time()
+        result = evaluate_spec(
+            apply_overrides(base_spec, overrides), steps, real_lengths, work, tag
+        )
+        total = result["scores"]["total"]
+        cache[key] = total
+        log.append(
+            {
+                "tag": tag,
+                "overrides": {f"{s}.{k}": v for (s, k), v in overrides.items()},
+                "minutes": round((time.time() - start) / 60, 1),
+                **result,
+            }
+        )
+        with open(log_path, "w") as f:
+            json.dump(log, f, indent=2)
+        click.echo(f"[{tag}] total={total:.2f} {log[-1]['overrides']}")
+        return total
+
+    outcome = coordinate_descent(evaluate, SEARCH_SPACE, {}, budget)
+    click.echo(f"Best score {outcome['best_score']:.2f} after {outcome['evaluations']} runs:")
+    for (section, key), value in outcome["best"].items():
+        click.echo(f"  {section}.{key} = {value}")
+    click.echo(f"Full log in {log_path}")
+
+
+if __name__ == "__main__":
+    main()

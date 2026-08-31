@@ -245,7 +245,7 @@ diffusive tips. A clean single-variable tortuosity dial for *healthy*
 networks would need the retuning pass of idea 8; as a disease knob it
 works today.
 
-## 8. Calibrate to real statistics — then break them deliberately
+## 8. Calibrate to real statistics — then break them deliberately — HEALTHY FIT IMPLEMENTED
 
 Pick validation targets from public datasets (HRF, DRIVE, STARE fundus vessel
 segmentations; OCTA-500 for depth-resolved data) — fractal dimension (~1.7 for
@@ -256,6 +256,21 @@ calibrated, disease phenotypes become parameter perturbations: capillary
 dropout and neovascular tufts (diabetic retinopathy), a peripheral avascular
 front (ROP), collateral formation after simulated vein occlusion. If the goal
 is synthetic training data, the *pathological* variety is where the value is.
+
+*As implemented (healthy fit)*: the `vnv_calibrate` CLI formalizes the
+objective the per-feature sweeps had been eyeballing — eight validation
+targets (skeleton density, area density, fractal dimension, branch
+tortuosity from the HRF across-mask means and sds; KS distance to the HRF
+segment-length distribution; capillary branch share; clinical A:V ratio
+0.67; full perfusion, one-sided) each scored as a squared z-like deviation,
+summed into a single calibration score where 0 is perfect and each unit is
+one squared sd-equivalent of miss. `metrics.json` now carries the score of
+every standard run (`calibration` block, plus the total in the figure
+headline) so it is tracked across model versions like every other metric.
+The fit itself is coordinate descent over the eight knobs the sweeps showed
+the metrics respond to, one 800-step run per evaluation, every evaluation
+logged. Disease phenotypes remain future work: the ingredients (the OU
+tortuosity dial, per-type perfusion, pruning) are in place.
 
 ## Validation & verification (V&V)
 

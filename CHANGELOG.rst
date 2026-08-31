@@ -1,3 +1,19 @@
+**v0.10.0 - 08/31/26**
+
+ - Calibrate the healthy model against real-data targets (realism roadmap
+   idea 8, healthy fit)
+
+   - New ``vnv_calibrate`` CLI: a formal objective over eight validation
+     targets (HRF-derived skeleton/area density, fractal dimension, and
+     tortuosity; KS distance to the HRF segment-length distribution;
+     capillary branch share; clinical A:V ratio; one-sided full
+     perfusion), each a squared z-like deviation, fitted by coordinate
+     descent over the eight most influential knobs with every 800-step
+     evaluation logged
+   - ``metrics.json`` now records the calibration score of every standard
+     run (``calibration`` block + figure headline), tracked across model
+     versions like every other metric
+
 **v0.9.0 - 08/30/26**
 
  - Smooth, controllable tortuosity via Ornstein-Uhlenbeck steering

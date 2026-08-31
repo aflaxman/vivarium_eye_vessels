@@ -271,6 +271,34 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     )
     real_strata = stratify_by_diameter(real_lengths, real_diameters)
 
+    # Calibration score: squared z-like deviation from each validation target
+    from scipy.stats import ks_2samp
+
+    from vivarium_eye_vessels.vnv import calibrate
+
+    sim_lengths = np.asarray(sim_image_metrics["branch_length_px"], dtype=float)
+    calibration_stats = {
+        "skeleton_density": sim_image_metrics["skeleton_density"],
+        "area_density": sim_image_metrics["area_density"],
+        "fractal_dimension": sim_image_metrics["fractal_dimension"],
+        "branch_tortuosity_median": (
+            float(np.median(sim_image_metrics["branch_tortuosity"]))
+            if sim_image_metrics["branch_tortuosity"]
+            else float("nan")
+        ),
+        "ks_log_length": (
+            float(
+                ks_2samp(np.log10(sim_lengths), np.log10(np.asarray(real_lengths))).statistic
+            )
+            if len(sim_lengths)
+            else float("nan")
+        ),
+        "capillary_share": len(sim_strata["diameter_le_2px"]) / max(len(sim_lengths), 1),
+        "artery_vein_caliber_ratio": sim_avr,
+        "perfused_fraction": sim_perfused_fraction,
+    }
+    calibration_scores = calibrate.calibration_score(calibration_stats)
+
     real_fd = np.array([m["fractal_dimension"] for m in real_per_mask])
     real_density = np.array([m["skeleton_density"] for m in real_per_mask])
     real_area_density = np.array([m["area_density"] for m in real_per_mask])
@@ -415,7 +443,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
         f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%      "
         f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)      "
-        f"Loops: {sim_graph_cycles}      Pruned: {sim_n_pruned}"
+        f"Loops: {sim_graph_cycles}      Pruned: {sim_n_pruned}      "
+        f"Calibration score: {calibration_scores['total']:.1f}"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -474,6 +503,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "graph_cycles": sim_graph_cycles,
             "n_pruned": sim_n_pruned,
             "plexus_layers": sim_plexus,
+            "calibration": {
+                "stats": calibration_stats,
+                "scores": calibration_scores,
+            },
             "wall_shear": (
                 metrics.summarize(sim_shear.shear[sim_shear.shear > 0])
                 if sim_shear is not None

@@ -399,8 +399,27 @@ but tips one held-out seed into the crowding-extinction cascade, while
 weakest terms — the fundus-visible network is still sparser than HRF —
 and the operating point is sensitive: small pushes toward more
 superficial mass (lower dive probability, weaker repulsion) destabilize
-the growth front, which is more evidence for the multi-seed objective
-as the next harness investment.
+the growth front.
+
+*Fifth pass (multi-seed objective)*: the harness investment every
+earlier pass asked for. `vnv_calibrate --seeds 123456,7,42` makes the
+objective the *mean* score across the listed seeds (one simulation per
+seed per evaluation, per-seed breakdowns logged), so a config that
+collapses on any seed loses to one that is merely mediocre everywhere.
+Re-judging the comb-era candidates under it was clarifying: every
+candidate has exactly one weak seed (the growth front either catches a
+good trajectory or it doesn't), so single-seed fits had been silently
+trading robustness for fit-seed polish. The best 3-seed mean moved one
+knob — `dive_probability` 0.05 → 0.04, keeping slightly more of the
+capillary bed superficial — improving the mean 114.1 → 70.6 (per-seed
+47/74/221 → 42/121/49) and the fit seed itself. Candidates that looked
+tempting on one seed (a stiffer extinction threshold, gentler tooth
+emission, a wider capture radius, and their combinations) all lost on
+the mean. The remaining seed-to-seed spread (42 vs 121) is honest
+variance in whether the arcades colonize evenly; averaging over more
+seeds per evaluation (at proportional compute) or seed-averaged
+coordinate descent with a larger budget is the obvious continuation
+when compute allows.
 
 ## Validation & verification (V&V)
 

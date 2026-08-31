@@ -1,3 +1,21 @@
+**v0.14.0 - 08/31/26**
+
+ - Multi-seed calibration objective, and a multi-seed refit
+
+   - ``vnv_calibrate`` gains ``--seeds A,B,C``: the objective becomes
+     the MEAN score across the listed seeds (one simulation per seed
+     per evaluation, per-seed breakdowns logged), so a config that
+     collapses on any seed loses to one that is merely mediocre
+     everywhere -- the robustness the single-seed fits kept missing
+   - The comb-era candidates were re-judged on seeds 123456/7/42:
+     every config has exactly one weak seed, and the single-seed
+     winner's weak seed was hiding real fragility. The best 3-seed
+     mean is ``plexus_layers.dive_probability`` 0.05 -> 0.04
+     (mean 114.1 -> 70.6; per-seed 47/74/221 -> 42/121/49), which
+     also improves the fit seed itself
+   - Two new tests: the multi-seed objective is the per-component mean,
+     and a config that collapses on one seed loses to a steady one
+
 **v0.13.0 - 08/31/26**
 
  - Comb-like side branching off the arcades (monopodial branching), with

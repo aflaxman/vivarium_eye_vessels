@@ -112,7 +112,9 @@ configuration:
         damping: 5.0                 # Damps vertical oscillation around the plane
         max_force: 0.3               # Cap the pull below the extinction threshold
         dive_radius: 0.004           # Only capillary-caliber tips dive deeper
-        dive_probability: 0.05       # Per-step chance an eligible tip dives
+        dive_probability: 0.04       # Per-step chance an eligible tip dives
+                                     # (multi-seed vnv_calibrate fit: best mean
+                                     # score across seeds 123456/7/42)
 
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:

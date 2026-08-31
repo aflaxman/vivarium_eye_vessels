@@ -19,7 +19,10 @@ the next knob, and repeat until the budget runs out or a full pass makes no
 improvement. Every evaluation (config, per-metric scores, total) is
 appended to the log as it happens, so partial runs are still informative.
 Runs are deterministic given the spec's seed; use ``--seed`` to check a
-candidate's robustness on other seeds.
+candidate's robustness on other seeds, or ``--seeds 123456,7,42`` to make
+the objective the mean score across several seeds (one simulation per seed
+per evaluation), so the fit cannot win by overfitting a lucky growth
+trajectory.
 """
 
 import copy
@@ -76,7 +79,7 @@ SEARCH_SPACE = {
     ("flow_remodeler", "adaptation_deadband"): [1.0, 2.0, 4.0],
     ("flow_remodeler", "max_radius"): [0.012, 0.016, 0.02],
     ("flow_remodeler", "max_adapted_radius"): [0.005, 0.006, 0.008],
-    ("plexus_layers", "dive_probability"): [0.035, 0.05, 0.07],
+    ("plexus_layers", "dive_probability"): [0.035, 0.04, 0.05],
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
     ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
     ("perfusion_demand", "magnitude"): [0.25, 0.3, 0.35],
@@ -213,11 +216,32 @@ def coordinate_descent(evaluate, space: dict, base_overrides: dict, budget: int)
     return {"best": current, "best_score": best_score, "evaluations": evaluations}
 
 
+def combine_seed_scores(per_seed: dict) -> dict:
+    """Mean of each score component across seeds — the multi-seed objective.
+
+    Averaging the totals (rather than taking the best or median seed) makes
+    a config that collapses on any seed lose to one that is merely mediocre
+    everywhere, which is the robustness the single-seed fits kept missing.
+    """
+    combined: dict[str, float] = {}
+    for scores in per_seed.values():
+        for name, value in scores.items():
+            combined[name] = combined.get(name, 0.0) + value / len(per_seed)
+    return combined
+
+
 @click.command()
 @click.argument("model_spec", type=click.Path(exists=True))
 @click.option("--budget", default=24, show_default=True, help="Max simulation runs.")
 @click.option("--steps", default=800, show_default=True)
 @click.option("--seed", default=None, type=int, help="Override the spec's random seed.")
+@click.option(
+    "--seeds",
+    default=None,
+    help="Comma-separated random seeds; the objective becomes the MEAN score "
+    "across them (one simulation per seed per evaluation), so the fit "
+    "cannot win by overfitting a lucky growth trajectory.",
+)
 @click.option(
     "--log",
     "log_path",
@@ -232,7 +256,7 @@ def coordinate_descent(evaluate, space: dict, base_overrides: dict, budget: int)
     type=click.Path(),
     help="Scratch directory for candidate specs (not for committing).",
 )
-def main(model_spec: str, budget: int, steps: int, seed, log_path: str, workdir: str):
+def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, workdir: str):
     """Fit MODEL_SPEC's knobs against the HRF-derived calibration targets."""
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -240,6 +264,7 @@ def main(model_spec: str, budget: int, steps: int, seed, log_path: str, workdir:
         base_spec = yaml.safe_load(f)
     if seed is not None:
         base_spec["configuration"]["randomness"]["random_seed"] = seed
+    seed_list = [int(s) for s in seeds.split(",")] if seeds else None
 
     click.echo("Computing HRF reference statistics (cached download)...")
     real_lengths = pooled_hrf_lengths()
@@ -254,17 +279,31 @@ def main(model_spec: str, budget: int, steps: int, seed, log_path: str, workdir:
             return cache[key]
         tag = f"{next(counter):03d}"
         start = time.time()
-        result = evaluate_spec(
-            apply_overrides(base_spec, overrides), steps, real_lengths, work, tag
-        )
-        total = result["scores"]["total"]
+        candidate = apply_overrides(base_spec, overrides)
+        if seed_list is None:
+            result = evaluate_spec(candidate, steps, real_lengths, work, tag)
+            entry = dict(result)
+            total = result["scores"]["total"]
+        else:
+            per_seed = {}
+            for s in seed_list:
+                candidate["configuration"]["randomness"]["random_seed"] = s
+                per_seed[s] = evaluate_spec(
+                    candidate, steps, real_lengths, work, f"{tag}_seed{s}"
+                )
+            combined = combine_seed_scores({s: r["scores"] for s, r in per_seed.items()})
+            entry = {
+                "scores": combined,
+                "per_seed": {str(s): r for s, r in per_seed.items()},
+            }
+            total = combined["total"]
         cache[key] = total
         log.append(
             {
                 "tag": tag,
                 "overrides": {f"{s}.{k}": v for (s, k), v in overrides.items()},
                 "minutes": round((time.time() - start) / 60, 1),
-                **result,
+                **entry,
             }
         )
         with open(log_path, "w") as f:

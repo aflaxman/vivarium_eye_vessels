@@ -60,6 +60,11 @@ TARGETS = {
     # ~23 px of wide (>4 px) skeleton (HRF across-mask mean 22.71, sd 1.77,
     # counting connected junction clusters once)
     "wide_junction_spacing_px": {"target": 22.71, "scale": 1.77},
+    # Fundus-visible (superficial-tree) bifurcation geometry: healthy
+    # arteriolar branch angles are unimodal around ~75-84 degrees; obtuse
+    # (>100 degree) junctions are rare. Judgment scales from the literature
+    "bifurcation_angle_median": {"target": 77.0, "scale": 5.0},
+    "bifurcation_obtuse_share": {"target": 0.05, "scale": 0.05, "one_sided": "above"},
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
@@ -83,6 +88,7 @@ SEARCH_SPACE = {
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
     ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
     ("perfusion_demand", "magnitude"): [0.25, 0.3, 0.35],
+    ("perfusion_demand", "caliber_exponent"): [0.0, 0.5, 1.0],
 }
 
 
@@ -131,6 +137,8 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
     tortuosity = np.asarray(image["branch_tortuosity"], dtype=float)
     diameter = np.asarray(image["branch_diameter_px"], dtype=float)
     wide_tortuosity = tortuosity[diameter > 4.0]
+    # Bifurcation geometry is judged on the superficial tree, like the raster
+    angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
     arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
     veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
     return {
@@ -153,6 +161,12 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
             float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
         ),
         "wide_junction_spacing_px": image["wide_junction_spacing_px"],
+        "bifurcation_angle_median": (
+            float(np.median(angles)) if len(angles) else float("nan")
+        ),
+        "bifurcation_obtuse_share": (
+            float((angles > 100).mean()) if len(angles) else float("nan")
+        ),
         "artery_vein_caliber_ratio": (
             float(arteries.radius.mean() / veins.radius.mean())
             if len(arteries) and len(veins)

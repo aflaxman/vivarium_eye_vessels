@@ -123,6 +123,49 @@ def run_simulation(with_perfusion: bool, steps: int = 250) -> float:
     return metrics.perfused_fraction(pop, SEMI_AXES, site_spacing=0.1, perfusion_radius=0.15)
 
 
+def test_caliber_attenuation_scales_the_pull():
+    """A wide tip feels (reference/radius)**exponent of the capillary pull."""
+    import pandas as pd
+
+    config = copy.deepcopy(CONFIGURATION)
+    config["perfusion_demand"]["caliber_exponent"] = 1.0
+    demand = PerfusionDemand()
+    sim = InteractiveContext(
+        components=[
+            Particle3D(),
+            PathFreezer(),
+            PathExtinction(),
+            PathSplitter(),
+            EllipsoidContainment(),
+            FrozenRepulsion(),
+            demand,
+        ],
+        configuration=config,
+    )
+    simulation.run_steps(sim, 10)
+
+    def pull(radius: float) -> float:
+        particles = pd.DataFrame(
+            {
+                "x": [0.5],
+                "y": [0.3],
+                "z": [0.0],
+                "frozen": [False],
+                "path_id": [1],
+                "vessel_type": [1],
+                "radius": [radius],
+            },
+            index=[0],
+        )
+        return float(np.linalg.norm(demand.calculate_forces_vectorized(particles)[0]))
+
+    capillary = pull(0.004)
+    assert capillary > 0
+    np.testing.assert_allclose(pull(0.016), capillary * 0.25, rtol=1e-9)
+    # At or below the reference caliber the pull is unattenuated
+    np.testing.assert_allclose(pull(0.002), capillary, rtol=1e-9)
+
+
 def test_perfusion_demand_improves_tissue_coverage():
     # Deterministic seeds make this an exact comparison, not a statistical one
     coverage_without = run_simulation(with_perfusion=False)

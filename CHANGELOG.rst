@@ -1,3 +1,32 @@
+**v0.15.0 - 08/31/26**
+
+ - Unimodal bifurcation angles: measure fundus-visible junction geometry
+   and pin it with targets
+
+   - The bifurcation-angle histogram was bimodal (a peak near 75 degrees
+     plus a second mode at 100-150). Decomposing junctions by provenance
+     showed the second mode is almost entirely deep-plexus capillary
+     junctions (layer-2 share of obtuse angles: 0.80; superficial: 0.08)
+     -- polygonal-mesh T-junctions that fundus photographs cannot see,
+     and that real deep plexuses genuinely have. The visible (arcade and
+     comb) junctions were already unimodal at ~76 degrees with zero
+     obtuse share
+   - The comparison figure's angle panel and Murray-exponent inset now
+     measure the superficial tree only, consistent with the raster
+     (``metrics.json`` keeps the all-layer summary alongside)
+   - Two new literature targets on the superficial tree:
+     ``bifurcation_angle_median`` (77 +/- 5 degrees) and one-sided
+     ``bifurcation_obtuse_share`` (>100 degrees; target 0.05). The
+     current spec sits at median 75-79 and obtuse 0.09-0.14 across the
+     three calibration seeds
+   - New ``perfusion_demand.caliber_reference/_exponent`` knob
+     (default off, tested): attenuates hypoxia chemotaxis on wide tips.
+     Probed as a mechanism for the residual visible splay and REJECTED
+     by the multi-seed objective -- the pull on wide tips is what drives
+     the arcades outward, and attenuating it stalls colonization
+     (3-seed mean 72.3 -> 2563 at exponent 1.0). The knob stays for
+     disease-phenotype work
+
 **v0.14.0 - 08/31/26**
 
  - Multi-seed calibration objective, and a multi-seed refit

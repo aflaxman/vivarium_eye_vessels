@@ -421,6 +421,30 @@ seeds per evaluation (at proportional compute) or seed-averaged
 coordinate descent with a larger budget is the obvious continuation
 when compute allows.
 
+*Sixth pass (bifurcation angles)*: the tree-based angle histogram was
+bimodal — a peak near 75° plus a second mode at 100–150° that healthy
+retinas don't show. Decomposing every junction by provenance located the
+second mode precisely: it is almost entirely *deep-plexus capillary
+junctions* (layer-2 obtuse share 0.80 vs 0.08 superficial; capillary
+parents median 116° vs arcade/comb parents 76° with zero obtuse share) —
+sibling tips pulled toward opposite hypoxic voids splay into the
+T-shaped junctions that real deep capillary meshes genuinely have, but
+that fundus photographs cannot see. The fundus-visible geometry was
+already unimodal on the Murray optimum. So the fix is the same
+measurement principle as the superficial raster: the figure's angle
+panel and Murray-exponent inset now measure the superficial tree only
+(the all-layer summary stays in `metrics.json`), and two literature
+targets pin it — `bifurcation_angle_median` 77±5° and one-sided
+`bifurcation_obtuse_share` (>100°, target 0.05). The current spec sits
+at median 75–79° and obtuse 0.09–0.14 across the three calibration
+seeds. A mechanism dial was also built and honestly rejected:
+`perfusion_demand.caliber_exponent` attenuates hypoxia chemotaxis on
+wide tips (biologically plausible — VEGF acts on capillary sprouts),
+but the multi-seed objective vetoed it decisively (3-seed mean
+72.3 → 2563 at exponent 1.0): the pull on wide tips is what drives the
+arcades outward, and removing it stalls colonization. The knob remains
+(default off) as a candidate disease dial.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

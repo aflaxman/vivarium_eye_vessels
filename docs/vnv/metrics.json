@@ -1,13 +1,13 @@
 {
-  "generated": "2026-08-31T22:27:31",
+  "generated": "2026-09-01T05:32:48",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
   "has_calibers": true,
   "runtime": {
-    "setup_seconds": 0.2,
-    "simulation_seconds": 678.32,
-    "steps_per_second": 1.18
+    "setup_seconds": 0.17,
+    "simulation_seconds": 646.57,
+    "steps_per_second": 1.24
   },
   "simulation": {
     "n_particles": 28000,
@@ -73,16 +73,22 @@
       "q75": 1.1216900049029555
     },
     "bifurcation_angle_deg": {
+      "n": 290,
+      "median": 74.99954995673514,
+      "q25": 68.39622408646413,
+      "q75": 82.83903923136039
+    },
+    "bifurcation_angle_deg_all_layers": {
       "n": 833,
       "median": 93.54057280292962,
       "q25": 74.43016943534761,
       "q75": 116.58694651784316
     },
     "junction_exponent": {
-      "n": 235,
-      "median": 3.201731692668724,
-      "q25": 2.9056692992575703,
-      "q75": 3.82109022642907
+      "n": 112,
+      "median": 3.114661808105799,
+      "q25": 2.999999999999998,
+      "q75": 4.202072907371889
     },
     "perfused_fraction": 0.9984012789768185,
     "arterial_supply_fraction": 0.753796962430056,
@@ -138,6 +144,8 @@
         "wide_share": 0.2236503856041131,
         "wide_tortuosity_q90": 1.1666666666666667,
         "wide_junction_spacing_px": 18.58992805755396,
+        "bifurcation_angle_median": 74.99954995673514,
+        "bifurcation_obtuse_share": 0.08620689655172414,
         "artery_vein_caliber_ratio": 0.660007242386956,
         "perfused_fraction": 0.9984012789768185
       },
@@ -151,9 +159,11 @@
         "wide_share": 2.3008951428172555,
         "wide_tortuosity_q90": 1.2844444444444434,
         "wide_junction_spacing_px": 5.418300236500081,
+        "bifurcation_angle_median": 0.16007201502393562,
+        "bifurcation_obtuse_share": 0.5243757431629014,
         "artery_vein_caliber_ratio": 0.03994208188522016,
         "perfused_fraction": 0.0,
-        "total": 41.60713267465135
+        "total": 42.29158043283819
       }
     },
     "wall_shear": {

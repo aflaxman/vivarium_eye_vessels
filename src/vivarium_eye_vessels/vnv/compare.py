@@ -215,7 +215,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )
     sim_image_metrics = metrics.image_metrics(sim_raster)
-    sim_angles = metrics.bifurcation_angles(pop)
+    # Angles and Murray exponents are compared against literature values for
+    # fundus-visible (arteriolar) junctions, so measure them on the
+    # superficial tree — the deep capillary plexuses form polygonal meshes
+    # whose T-shaped junctions would drown the arteriolar geometry
+    superficial_pop = pop[pop.layer_id == 0]
+    sim_angles = metrics.bifurcation_angles(superficial_pop)
+    sim_angles_all_layers = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
     sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_n_anastomoses = int((pop.anastomosis_id >= 0).sum())
@@ -232,7 +238,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         if remodeler is not None
         else None
     )
-    sim_junction_exponents = metrics.junction_exponents(pop)
+    sim_junction_exponents = metrics.junction_exponents(superficial_pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
     )
@@ -309,6 +315,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             else float("nan")
         ),
         "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
+        "bifurcation_angle_median": (
+            float(np.median(sim_angles)) if len(sim_angles) else float("nan")
+        ),
+        "bifurcation_obtuse_share": (
+            float((sim_angles > 100).mean()) if len(sim_angles) else float("nan")
+        ),
         "artery_vein_caliber_ratio": sim_avr,
         "perfused_fraction": sim_perfused_fraction,
     }
@@ -413,7 +425,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax.set_xlabel("bifurcation angle (degrees)", color=INK, fontsize=9)
     ax.set_ylabel("density", color=INK, fontsize=9)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK)
-    ax.set_title("Bifurcation angles (tree-based)", color=INK, fontsize=10)
+    ax.set_title("Bifurcation angles (superficial, tree-based)", color=INK, fontsize=10)
     style_axis(ax)
     if len(sim_junction_exponents):
         ax.text(
@@ -565,6 +577,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
+            "bifurcation_angle_deg_all_layers": metrics.summarize(sim_angles_all_layers),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
             "perfused_fraction": sim_perfused_fraction,
             "arterial_supply_fraction": sim_arterial_supply,

@@ -1,3 +1,33 @@
+**v0.17.0 - 09/01/26**
+
+ - Sub-teeth: extend the comb one caliber class down, with the
+   robustness trade on record
+
+   - Visual review still read the mid vessels as too long and meandering
+     between branch points. Diagnosis: comb teeth ran ~90 px between
+     splits (cadence damping) where HRF mid vessels branch every
+     30-50 px, and artery teeth sat just below ``side_branch_radius``
+     so they never combed. ``side_branch_radius`` 0.008 -> 0.006 lets
+     teeth grow sub-teeth -- the hierarchical texture real mid-vessels
+     show -- and the fit-seed network now pairs it with near-target
+     skeleton density (2.9%) and full perfusion
+   - The robustness trade is deliberate and documented: the 3-seed mean
+     regresses (67.4 -> 165) because one seed in three stalls mid-growth
+     under the denser branching. Nine stabilizer configs were swept
+     multi-seed (extinction thresholds, repulsion radii, developmental
+     gating, self-healing growth fronts, bigger particle pools -- the
+     pool hypothesis was falsified bit-for-bit); none kept the sub-teeth
+     look while protecting every seed. The growth front is
+     percolation-like, and the roadmap names this the central open
+     problem for the healthy model
+   - Three new mechanism knobs from the investigation, all
+     default-legacy and unit-tested: ``path_anastomosis.min_layer``
+     (restrict capillary fusion to deeper plexuses),
+     ``path_splitter.min_active_tips`` (a tree whose growth front thins
+     re-sprouts to top itself up; 1 = legacy bootstrap-only), and
+     ``path_splitter.side_branch_start_time`` (combs form after the
+     arcades establish, as in retinal development)
+
 **v0.16.0 - 08/31/26**
 
  - Match the length-weighted caliber profile ("length x width")

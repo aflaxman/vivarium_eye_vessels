@@ -470,6 +470,34 @@ the aggregate mean (64.2) by winning back seed-42 density terms, but
 loses the caliber profile and angle terms this pass targets — the
 thicker-teeth config ships because matching length×width was the goal.
 
+*Eighth pass (sub-teeth, and the percolation problem)*: visual review
+still read the mid vessels as too long and meandering between branch
+points — comb teeth ran ~90 px between splits (the cadence damping)
+where HRF mid vessels branch every 30–50 px, and artery teeth sat just
+below `side_branch_radius`, so they never combed.
+`side_branch_radius` 0.008 → 0.006 extends the comb one caliber class
+down (teeth grow sub-teeth), and on the fit seed this produces the most
+fundus-like texture yet, with near-target skeleton density (2.9%) and
+full perfusion. The trade is on record deliberately: the 3-seed mean
+regresses (67.4 → 165) because one seed in three stalls mid-growth
+under the denser branching. Nine stabilizer configurations were swept
+under the multi-seed objective — higher and intermediate extinction
+thresholds, tighter repulsion, deep-only anastomosis, a self-healing
+growth front (`min_active_tips`), developmental gating of the comb
+(`side_branch_start_time`), and a doubled particle pool (falsified
+bit-for-bit: idle wanderers exert no forces and draws are keyed, so the
+run is unchanged) — and each rescued one seed while sinking another.
+The conclusion worth recording: the growth front is percolation-like
+(early crowding near the disc decides whether a seed's network fills),
+so branching density and robustness are coupled through a critical
+point, and no per-knob tuning decouples them. Candidate real fixes for
+a future pass: growth in waves (freeze the front's advance rate),
+crowding-aware tooth emission (skip a tooth when local frozen density
+is high), or accepting per-seed retries as the cost of a
+near-critical growth model. The three stabilizer knobs stay in the
+code, default-legacy and unit-tested, for that work and for disease
+phenotypes.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

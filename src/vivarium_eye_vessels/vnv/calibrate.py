@@ -82,6 +82,7 @@ SEARCH_SPACE = {
     ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
     ("path_splitter", "side_branch_flow"): [0.06, 0.1, 0.15],
     ("path_splitter", "side_branch_probability"): [0.5, 0.65, 0.8],
+    ("path_splitter", "side_branch_radius"): [0.005, 0.006, 0.008],
     ("frozen_repulsion", "interaction_radius"): [0.08, 0.1, 0.15],
     ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
     ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],

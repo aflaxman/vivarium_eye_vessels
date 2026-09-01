@@ -73,8 +73,12 @@ configuration:
                                    # ~15% of the flow at near-perpendicular angles
                                    # (multi-seed caliber-profile fit: thicker teeth
                                    # fill the 5-7 px band real fundi carry)
-        side_branch_radius: 0.008  # Parents wider than this side-branch instead of
-                                   # splitting dichotomously
+        side_branch_radius: 0.006  # Parents wider than this side-branch instead of
+                                   # splitting dichotomously; 0.006 extends the comb
+                                   # one caliber class down (teeth grow sub-teeth),
+                                   # the structure real mid-vessels show. Robustness
+                                   # note: one of three calibration seeds stalls
+                                   # mid-growth under this -- see the roadmap
         side_branch_probability: 0.65  # Tooth emission per split round: sets the
                                        # comb spacing along the arcades
                                        # (vnv_calibrate: sim 26px vs HRF 22.7px;

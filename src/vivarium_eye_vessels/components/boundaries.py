@@ -458,12 +458,18 @@ class PerfusionDemand(BaseForceComponent):
             "perfusion_radius": 0.15,
             "influence_radius": 2.0,
             "magnitude": 0.3,
+            # Hypoxia chemotaxis acts on capillary sprout tips, not trunks:
+            # tips wider than caliber_reference have the attraction attenuated
+            # by (reference / radius) ** caliber_exponent. Exponent 0 keeps
+            # the legacy caliber-blind attraction
+            "caliber_reference": 0.004,
+            "caliber_exponent": 0.0,
         }
     }
 
     @property
     def required_attributes(self) -> List[str]:
-        return ["x", "y", "z", "frozen", "path_id", "vessel_type"]
+        return ["x", "y", "z", "frozen", "path_id", "vessel_type", "radius"]
 
     @property
     def filter_str(self) -> str:
@@ -475,6 +481,8 @@ class PerfusionDemand(BaseForceComponent):
         self.perfusion_radius = float(config.perfusion_radius)
         self.influence_radius = float(config.influence_radius)
         self.magnitude = float(config.magnitude)
+        self.caliber_reference = float(config.caliber_reference)
+        self.caliber_exponent = float(config.caliber_exponent)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
 
         if "ellipsoid_containment" in builder.components.list_components():
@@ -511,4 +519,14 @@ class PerfusionDemand(BaseForceComponent):
             forces[selected] = colonization_forces(
                 tips[selected], hypoxic, self.influence_radius, self.magnitude
             )
+        # Chemotaxis is a capillary-sprout behavior: attenuate the pull on
+        # wide tips so trunks and side branches hold their heading
+        if self.caliber_exponent > 0:
+            radii = particles["radius"].to_numpy(dtype=float)
+            attenuation = np.where(
+                radii > self.caliber_reference,
+                (self.caliber_reference / np.maximum(radii, 1e-12)) ** self.caliber_exponent,
+                1.0,
+            )
+            forces = forces * attenuation[:, np.newaxis]
         return forces

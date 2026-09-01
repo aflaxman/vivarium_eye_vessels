@@ -215,7 +215,13 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )
     sim_image_metrics = metrics.image_metrics(sim_raster)
-    sim_angles = metrics.bifurcation_angles(pop)
+    # Angles and Murray exponents are compared against literature values for
+    # fundus-visible (arteriolar) junctions, so measure them on the
+    # superficial tree — the deep capillary plexuses form polygonal meshes
+    # whose T-shaped junctions would drown the arteriolar geometry
+    superficial_pop = pop[pop.layer_id == 0]
+    sim_angles = metrics.bifurcation_angles(superficial_pop)
+    sim_angles_all_layers = metrics.bifurcation_angles(pop)
     sim_tortuosity_paths = metrics.path_tortuosity(pop)
     sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_n_anastomoses = int((pop.anastomosis_id >= 0).sum())
@@ -232,7 +238,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         if remodeler is not None
         else None
     )
-    sim_junction_exponents = metrics.junction_exponents(pop)
+    sim_junction_exponents = metrics.junction_exponents(superficial_pop)
     sim_perfused_fraction = metrics.perfused_fraction(
         pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
     )
@@ -259,9 +265,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     real_lengths: list[float] = []
     real_tortuosity: list[float] = []
     real_diameters: list[float] = []
+    real_pixel_diameters: list[np.ndarray] = []
     example_binary = None
     for path in mask_paths:
         binary = metrics.binarize_mask(reference_data.load_mask(path))
+        real_pixel_diameters.append(metrics.skeleton_pixel_diameters(binary))
         if example_binary is None:
             example_binary = binary
         m = metrics.image_metrics(binary)
@@ -275,6 +283,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         sim_image_metrics["branch_length_px"], sim_image_metrics["branch_diameter_px"]
     )
     real_strata = stratify_by_diameter(real_lengths, real_diameters)
+    real_pixel_diameters = np.concatenate(real_pixel_diameters)
+    sim_pixel_diameters = metrics.skeleton_pixel_diameters(sim_raster)
 
     # Calibration score: squared z-like deviation from each validation target
     from scipy.stats import ks_2samp
@@ -309,6 +319,17 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             else float("nan")
         ),
         "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
+        "ks_caliber_profile": (
+            float(ks_2samp(sim_pixel_diameters, real_pixel_diameters).statistic)
+            if len(sim_pixel_diameters)
+            else float("nan")
+        ),
+        "bifurcation_angle_median": (
+            float(np.median(sim_angles)) if len(sim_angles) else float("nan")
+        ),
+        "bifurcation_obtuse_share": (
+            float((sim_angles > 100).mean()) if len(sim_angles) else float("nan")
+        ),
         "artery_vein_caliber_ratio": sim_avr,
         "perfused_fraction": sim_perfused_fraction,
     }
@@ -413,7 +434,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax.set_xlabel("bifurcation angle (degrees)", color=INK, fontsize=9)
     ax.set_ylabel("density", color=INK, fontsize=9)
     ax.legend(frameon=False, fontsize=8, labelcolor=INK)
-    ax.set_title("Bifurcation angles (tree-based)", color=INK, fontsize=10)
+    ax.set_title("Bifurcation angles (superficial, tree-based)", color=INK, fontsize=10)
     style_axis(ax)
     if len(sim_junction_exponents):
         ax.text(
@@ -452,16 +473,17 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # Row 4: the diameter composition itself — the distribution and the
     # share of branches (and of total skeleton length) per diameter stratum
     ax = axes[3, 0]
-    diameter_bins = np.geomspace(1.8, 16, 24)
+    # Length-weighted caliber profile: one sample per skeleton pixel at its
+    # local (EDT) diameter, so the histogram is skeleton length by width.
+    # EDT diameters are quantized (2, 2.83, 4, 4.47, ...), so 1 px bins
     overlay_histogram(
         ax,
-        sim_image_metrics["branch_diameter_px"],
-        real_diameters,
-        diameter_bins,
-        "skeleton branch diameter (px)",
+        sim_pixel_diameters,
+        real_pixel_diameters,
+        np.arange(1.5, 13.6, 1.0),
+        "local vessel diameter at skeleton px",
     )
-    ax.set_xscale("log")
-    ax.set_title("Branch diameter distribution", color=INK, fontsize=10)
+    ax.set_title("Caliber profile (skeleton length by width)", color=INK, fontsize=10)
 
     def composition_bars(ax, sim_shares, real_shares, ylabel: str, title: str) -> None:
         labels = ["≤ 2 px", "2–4 px", "> 4 px"]
@@ -564,7 +586,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "tree_segment_length": metrics.summarize(sim_tree_segment_lengths),
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
+            "pixel_diameter_px": metrics.summarize(sim_pixel_diameters),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
+            "bifurcation_angle_deg_all_layers": metrics.summarize(sim_angles_all_layers),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
             "perfused_fraction": sim_perfused_fraction,
             "arterial_supply_fraction": sim_arterial_supply,
@@ -612,6 +636,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
                 for key, values in real_strata.items()
             },
             "branch_tortuosity": metrics.summarize(real_tortuosity),
+            "pixel_diameter_px": metrics.summarize(real_pixel_diameters),
             "per_mask": real_per_mask,
         },
     }

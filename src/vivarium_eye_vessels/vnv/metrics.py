@@ -222,6 +222,19 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
     return frame
 
 
+def skeleton_pixel_diameters(binary: np.ndarray) -> np.ndarray:
+    """Local vessel diameter (2 x EDT) at every skeleton pixel, in px.
+
+    Each skeleton pixel is one unit of centerline length at its local
+    caliber, so this distribution is the length-weighted caliber profile
+    of the network — matching it matches "length x width" without any
+    binning into diameter strata.
+    """
+    skeleton = skeletonize(binary)
+    edt = ndimage.distance_transform_edt(binary)
+    return 2.0 * edt[skeleton]
+
+
 def wide_junction_spacing(
     skeleton: np.ndarray, binary: np.ndarray, min_diameter_px: float = 4.0
 ) -> float:

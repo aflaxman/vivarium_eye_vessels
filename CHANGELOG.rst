@@ -1,3 +1,90 @@
+**v0.17.0 - 09/01/26**
+
+ - Sub-teeth: extend the comb one caliber class down, with the
+   robustness trade on record
+
+   - Visual review still read the mid vessels as too long and meandering
+     between branch points. Diagnosis: comb teeth ran ~90 px between
+     splits (cadence damping) where HRF mid vessels branch every
+     30-50 px, and artery teeth sat just below ``side_branch_radius``
+     so they never combed. ``side_branch_radius`` 0.008 -> 0.006 lets
+     teeth grow sub-teeth -- the hierarchical texture real mid-vessels
+     show -- and the fit-seed network now pairs it with near-target
+     skeleton density (2.9%) and full perfusion
+   - The robustness trade is deliberate and documented: the 3-seed mean
+     regresses (67.4 -> 165) because one seed in three stalls mid-growth
+     under the denser branching. Nine stabilizer configs were swept
+     multi-seed (extinction thresholds, repulsion radii, developmental
+     gating, self-healing growth fronts, bigger particle pools -- the
+     pool hypothesis was falsified bit-for-bit); none kept the sub-teeth
+     look while protecting every seed. The growth front is
+     percolation-like, and the roadmap names this the central open
+     problem for the healthy model
+   - Three new mechanism knobs from the investigation, all
+     default-legacy and unit-tested: ``path_anastomosis.min_layer``
+     (restrict capillary fusion to deeper plexuses),
+     ``path_splitter.min_active_tips`` (a tree whose growth front thins
+     re-sprouts to top itself up; 1 = legacy bootstrap-only), and
+     ``path_splitter.side_branch_start_time`` (combs form after the
+     arcades establish, as in retinal development)
+
+**v0.16.0 - 08/31/26**
+
+ - Match the length-weighted caliber profile ("length x width")
+
+   - New metric ``skeleton_pixel_diameters``: the local (2 x EDT)
+     diameter at every skeleton pixel, so its distribution is skeleton
+     length by width with no binning into strata. The comparison figure
+     replaces the branch-diameter histogram with this caliber profile,
+     and ``ks_caliber_profile`` (KS between the sim's superficial
+     profile and the pooled HRF profile) joins the calibration targets
+   - The profile located the residual mismatch precisely: an excess at
+     ~2.8 px -- vessels piling up exactly at ``max_adapted_radius`` --
+     and a 3x deficit in the 5.5-7 px band real fundi carry. Vein comb
+     teeth are born at 4.8 px wanting to thicken (their shear sits above
+     the tree median), but the cap only lets them shrink: 76% of depth-1
+     particles had been ground to <= 3.2 px, median exactly at the cap
+   - Fit (multi-seed): ``adaptation_deadband`` 1.0 -> 2.0 (moderate-
+     shear segments keep their born caliber instead of being ground
+     toward the cap) plus ``side_branch_flow`` 0.1 -> 0.15 (teeth carry
+     15% of trunk flow, so vein teeth are born at ~5.4 px, inside the
+     missing band). 3-seed mean 79.7 -> 67.4, caliber-profile KS
+     improves on every seed, obtuse-angle share halves. Raising the cap
+     itself (0.006 -> 0.010, with or without the deadband) re-triggers
+     the shortcut runaway (means 244 / 161) and stays rejected.
+     Deadband-alone edges the aggregate mean (64.2) by winning back
+     seed-42 density terms, but loses the caliber profile and angle
+     terms this pass targets; the trade is recorded here deliberately
+
+**v0.15.0 - 08/31/26**
+
+ - Unimodal bifurcation angles: measure fundus-visible junction geometry
+   and pin it with targets
+
+   - The bifurcation-angle histogram was bimodal (a peak near 75 degrees
+     plus a second mode at 100-150). Decomposing junctions by provenance
+     showed the second mode is almost entirely deep-plexus capillary
+     junctions (layer-2 share of obtuse angles: 0.80; superficial: 0.08)
+     -- polygonal-mesh T-junctions that fundus photographs cannot see,
+     and that real deep plexuses genuinely have. The visible (arcade and
+     comb) junctions were already unimodal at ~76 degrees with zero
+     obtuse share
+   - The comparison figure's angle panel and Murray-exponent inset now
+     measure the superficial tree only, consistent with the raster
+     (``metrics.json`` keeps the all-layer summary alongside)
+   - Two new literature targets on the superficial tree:
+     ``bifurcation_angle_median`` (77 +/- 5 degrees) and one-sided
+     ``bifurcation_obtuse_share`` (>100 degrees; target 0.05). The
+     current spec sits at median 75-79 and obtuse 0.09-0.14 across the
+     three calibration seeds
+   - New ``perfusion_demand.caliber_reference/_exponent`` knob
+     (default off, tested): attenuates hypoxia chemotaxis on wide tips.
+     Probed as a mechanism for the residual visible splay and REJECTED
+     by the multi-seed objective -- the pull on wide tips is what drives
+     the arcades outward, and attenuating it stalls colonization
+     (3-seed mean 72.3 -> 2563 at exponent 1.0). The knob stays for
+     disease-phenotype work
+
 **v0.14.0 - 08/31/26**
 
  - Multi-seed calibration objective, and a multi-seed refit

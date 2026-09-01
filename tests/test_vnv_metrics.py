@@ -97,3 +97,18 @@ def test_path_tortuosity_straight_chain_is_one():
     )
     ratios = metrics.path_tortuosity(pop)
     np.testing.assert_allclose(ratios, [1.0], atol=1e-9)
+
+
+def test_skeleton_pixel_diameters_recover_bar_widths():
+    """A wide bar and a thin bar contribute pixels at their own diameters."""
+    image = np.zeros((40, 220), dtype=bool)
+    image[15:24, 10:110] = True  # 9 px wide bar
+    image[30:32, 10:210] = True  # 2 px thin bar
+    diameters = metrics.skeleton_pixel_diameters(image)
+    assert len(diameters) > 100
+    wide = diameters[diameters > 6]
+    thin = diameters[diameters <= 4]
+    # The thin bar is twice as long, so it contributes more skeleton pixels
+    assert len(thin) > len(wide) > 30
+    assert 7.0 < np.median(wide) < 11.0
+    assert 1.5 < np.median(thin) < 3.5

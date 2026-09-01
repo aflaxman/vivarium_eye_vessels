@@ -60,6 +60,16 @@ TARGETS = {
     # ~23 px of wide (>4 px) skeleton (HRF across-mask mean 22.71, sd 1.77,
     # counting connected junction clusters once)
     "wide_junction_spacing_px": {"target": 22.71, "scale": 1.77},
+    # Length-weighted caliber profile: KS between the per-skeleton-pixel
+    # diameter distributions (sim superficial raster vs pooled HRF) — the
+    # binning-free version of the composition targets, matching
+    # "length x width" across the whole caliber range
+    "ks_caliber_profile": {"target": 0.0, "scale": 0.05, "one_sided": "above"},
+    # Fundus-visible (superficial-tree) bifurcation geometry: healthy
+    # arteriolar branch angles are unimodal around ~75-84 degrees; obtuse
+    # (>100 degree) junctions are rare. Judgment scales from the literature
+    "bifurcation_angle_median": {"target": 77.0, "scale": 5.0},
+    "bifurcation_obtuse_share": {"target": 0.05, "scale": 0.05, "one_sided": "above"},
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
@@ -72,17 +82,19 @@ SEARCH_SPACE = {
     ("path_splitter", "caliber_cadence_exponent"): [0.45, 0.6, 0.75],
     ("path_splitter", "side_branch_flow"): [0.06, 0.1, 0.15],
     ("path_splitter", "side_branch_probability"): [0.5, 0.65, 0.8],
+    ("path_splitter", "side_branch_radius"): [0.005, 0.006, 0.008],
     ("frozen_repulsion", "interaction_radius"): [0.08, 0.1, 0.15],
     ("path_freezer", "radius_taper"): [0.994, 0.996, 0.998],
     ("flow_remodeler", "shear_threshold_fraction"): [0.35, 0.5, 0.65],
     ("flow_remodeler", "adaptation_rate"): [0.05, 0.10, 0.15],
     ("flow_remodeler", "adaptation_deadband"): [1.0, 2.0, 4.0],
     ("flow_remodeler", "max_radius"): [0.012, 0.016, 0.02],
-    ("flow_remodeler", "max_adapted_radius"): [0.005, 0.006, 0.008],
+    ("flow_remodeler", "max_adapted_radius"): [0.006, 0.008, 0.010],
     ("plexus_layers", "dive_probability"): [0.035, 0.04, 0.05],
     ("path_anastomosis", "capture_radius"): [0.035, 0.045, 0.055],
     ("frozen_repulsion", "spring_constant"): [1.25, 1.5, 1.75],
     ("perfusion_demand", "magnitude"): [0.25, 0.3, 0.35],
+    ("perfusion_demand", "caliber_exponent"): [0.0, 0.5, 1.0],
 }
 
 
@@ -108,17 +120,31 @@ def calibration_score(stats: dict) -> dict:
     return scores
 
 
-def pooled_hrf_lengths() -> np.ndarray:
+def hrf_references() -> dict:
+    """Pooled HRF reference distributions for the distributional targets."""
     lengths: list[float] = []
+    pixel_diameters: list[np.ndarray] = []
     for path in reference_data.fetch_hrf_masks():
         binary = metrics.binarize_mask(reference_data.load_mask(path))
         lengths.extend(metrics.image_metrics(binary)["branch_length_px"])
-    return np.asarray(lengths, dtype=float)
+        pixel_diameters.append(metrics.skeleton_pixel_diameters(binary))
+    return {
+        "lengths": np.asarray(lengths, dtype=float),
+        "pixel_diameters": np.concatenate(pixel_diameters),
+    }
 
 
-def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> dict:
+def pooled_hrf_lengths() -> np.ndarray:
+    return hrf_references()["lengths"]
+
+
+def scoring_stats(pop, edges, bounds, semi_axes, references: dict | np.ndarray) -> dict:
     """The scored summary statistics for one finished simulation."""
     from vivarium_eye_vessels.vnv.compare import stratify_by_diameter
+
+    if isinstance(references, np.ndarray):  # legacy callers passed lengths only
+        references = {"lengths": references, "pixel_diameters": np.array([])}
+    real_lengths = references["lengths"]
 
     # Fundus photographs image the superficial vasculature; the deep
     # capillary-only plexuses are essentially invisible to them (OCTA sees
@@ -126,11 +152,14 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
     fundus = edges[edges.layer_id == 0]
     raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
     image = metrics.image_metrics(raster)
+    pixel_diameters = metrics.skeleton_pixel_diameters(raster)
     lengths = np.asarray(image["branch_length_px"], dtype=float)
     strata = stratify_by_diameter(lengths, image["branch_diameter_px"])
     tortuosity = np.asarray(image["branch_tortuosity"], dtype=float)
     diameter = np.asarray(image["branch_diameter_px"], dtype=float)
     wide_tortuosity = tortuosity[diameter > 4.0]
+    # Bifurcation geometry is judged on the superficial tree, like the raster
+    angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
     arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
     veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
     return {
@@ -153,6 +182,17 @@ def scoring_stats(pop, edges, bounds, semi_axes, real_lengths: np.ndarray) -> di
             float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
         ),
         "wide_junction_spacing_px": image["wide_junction_spacing_px"],
+        "ks_caliber_profile": (
+            float(ks_2samp(pixel_diameters, references["pixel_diameters"]).statistic)
+            if len(pixel_diameters) and len(references["pixel_diameters"])
+            else float("nan")
+        ),
+        "bifurcation_angle_median": (
+            float(np.median(angles)) if len(angles) else float("nan")
+        ),
+        "bifurcation_obtuse_share": (
+            float((angles > 100).mean()) if len(angles) else float("nan")
+        ),
         "artery_vein_caliber_ratio": (
             float(arteries.radius.mean() / veins.radius.mean())
             if len(arteries) and len(veins)
@@ -172,7 +212,7 @@ def apply_overrides(spec: dict, overrides: dict) -> dict:
 
 
 def evaluate_spec(
-    spec: dict, steps: int, real_lengths: np.ndarray, workdir: Path, tag: str
+    spec: dict, steps: int, references: dict | np.ndarray, workdir: Path, tag: str
 ) -> dict:
     """Run one candidate spec to completion and score it."""
     spec_path = workdir / f"candidate_{tag}.yaml"
@@ -184,7 +224,7 @@ def evaluate_spec(
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
-    stats = scoring_stats(pop, edges, bounds, semi_axes, real_lengths)
+    stats = scoring_stats(pop, edges, bounds, semi_axes, references)
     return {"stats": stats, "scores": calibration_score(stats)}
 
 
@@ -267,7 +307,7 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
     seed_list = [int(s) for s in seeds.split(",")] if seeds else None
 
     click.echo("Computing HRF reference statistics (cached download)...")
-    real_lengths = pooled_hrf_lengths()
+    references = hrf_references()
 
     log: list[dict] = []
     cache: dict[tuple, float] = {}
@@ -281,7 +321,7 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
         start = time.time()
         candidate = apply_overrides(base_spec, overrides)
         if seed_list is None:
-            result = evaluate_spec(candidate, steps, real_lengths, work, tag)
+            result = evaluate_spec(candidate, steps, references, work, tag)
             entry = dict(result)
             total = result["scores"]["total"]
         else:
@@ -289,7 +329,7 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
             for s in seed_list:
                 candidate["configuration"]["randomness"]["random_seed"] = s
                 per_seed[s] = evaluate_spec(
-                    candidate, steps, real_lengths, work, f"{tag}_seed{s}"
+                    candidate, steps, references, work, f"{tag}_seed{s}"
                 )
             combined = combine_seed_scores({s: r["scores"] for s, r in per_seed.items()})
             entry = {

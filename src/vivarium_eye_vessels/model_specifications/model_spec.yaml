@@ -69,11 +69,16 @@ configuration:
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
         min_radius: 0.002      # Caliber floor (capillary scale)
         caliber_cadence_exponent: 0.75  # Wider tips split less often (vnv_calibrate fit)
-        side_branch_flow: 0.1      # Comb mode: trunks shed small side branches
-                                   # carrying ~10% of the flow at near-perpendicular
-                                   # angles, at the full split cadence
-        side_branch_radius: 0.008  # Parents wider than this side-branch instead of
-                                   # splitting dichotomously
+        side_branch_flow: 0.15     # Comb mode: trunks shed side branches carrying
+                                   # ~15% of the flow at near-perpendicular angles
+                                   # (multi-seed caliber-profile fit: thicker teeth
+                                   # fill the 5-7 px band real fundi carry)
+        side_branch_radius: 0.006  # Parents wider than this side-branch instead of
+                                   # splitting dichotomously; 0.006 extends the comb
+                                   # one caliber class down (teeth grow sub-teeth),
+                                   # the structure real mid-vessels show. Robustness
+                                   # note: one of three calibration seeds stalls
+                                   # mid-growth under this -- see the roadmap
         side_branch_probability: 0.65  # Tooth emission per split round: sets the
                                        # comb spacing along the arcades
                                        # (vnv_calibrate: sim 26px vs HRF 22.7px;
@@ -103,6 +108,9 @@ configuration:
         max_adapted_radius: 0.006  # Shear-driven thickening saturates at venule
                                    # caliber; guards the anastomosis-shortcut runaway
                                    # that promoted curly capillary paths to fat vessels
+        adaptation_deadband: 2.0   # Segments within 2x of their tree's median shear
+                                   # keep their born caliber instead of being ground
+                                   # toward the cap (multi-seed caliber-profile fit)
 
     # Stratified plexuses: superficial arcades, capillary-only deeper layers
     # connected by diving vessels

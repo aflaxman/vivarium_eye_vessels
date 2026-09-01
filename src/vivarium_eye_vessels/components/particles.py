@@ -564,10 +564,20 @@ class PathSplitter(Component):
             # random side. 0 disables the mode (dichotomous splitting only)
             "side_branch_flow": 0.0,
             "side_branch_radius": 0.008,
+            # Combs form after the arcades establish (retinal development
+            # spreads the trunks from the disc first; secondary branching
+            # follows). The default predates any simulation start = always on
+            "side_branch_start_time": "2000-01-01",
             # Per-split-round emission probability for side-branching trunks
             # (replaces split_probability and the cadence damping for them);
             # sets the comb-tooth spacing along the arcades
             "side_branch_probability": 0.5,
+            # Keep at least this many active tips per tree: when a tree's
+            # growth front thins below the floor, frozen vessels re-sprout to
+            # top it up (angiogenic sprouting wherever the front dies, not
+            # only at total extinction). 1 keeps the legacy behavior of
+            # re-sprouting only when a tree has no active tips at all
+            "min_active_tips": 1,
         }
     }
 
@@ -599,6 +609,7 @@ class PathSplitter(Component):
         self.step_size = builder.configuration.time.step_size
         self.randomness = builder.randomness.get_stream("path_splitter")
         self.clock = builder.time.clock()
+        self.side_branch_start = pd.Timestamp(self.config.side_branch_start_time)
         self.simulant_creator = builder.population.get_simulant_creator()
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
@@ -631,10 +642,14 @@ class PathSplitter(Component):
             if not to_split.empty:
                 updates.extend(self.split_unfrozen(pop, to_split) or [])
 
-        # Per-type re-sprouting from frozen vessels (angiogenic sprouting)
+        # Per-type re-sprouting from frozen vessels (angiogenic sprouting):
+        # a tree whose growth front thins below min_active_tips tops itself
+        # up from its own frozen vessels; a tree with no tips at all
+        # re-sprouts unconditionally (the legacy bootstrap)
         frozen_on_path = pop[pop.frozen & (pop.path_id >= 0)]
         for vessel_type in np.unique(frozen_on_path.vessel_type):
-            if (active.vessel_type == vessel_type).any():
+            n_active = int((active.vessel_type == vessel_type).sum())
+            if n_active >= int(self.config.min_active_tips):
                 continue
             candidates = frozen_on_path[frozen_on_path.vessel_type == vessel_type]
             to_consider = self.randomness.filter_for_probability(
@@ -642,6 +657,8 @@ class PathSplitter(Component):
             )
             not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
             to_split = to_consider[not_too_deep]
+            if n_active > 0:
+                to_split = to_split[: int(self.config.min_active_tips) - n_active]
             if not to_split.empty:
                 updates.extend(self.split_frozen(pop, to_split) or [])
 
@@ -650,6 +667,12 @@ class PathSplitter(Component):
             all_updates = pd.concat(updates, axis=0)
 
             self.particles.update_particles(all_updates)
+
+    def side_branch_flow_now(self) -> float:
+        """The comb mode's flow fraction, zero before its start time."""
+        if self.clock() < self.side_branch_start:
+            return 0.0
+        return float(self.config.side_branch_flow)
 
     def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
         """Per-tip split probability, reduced for wide-caliber tips.
@@ -675,7 +698,7 @@ class PathSplitter(Component):
         # Side-branching trunks are exempt from the cadence damping: real
         # arcades emit side branches at short, comb-like intervals, at
         # their own emission probability
-        if float(self.config.side_branch_flow) > 0:
+        if self.side_branch_flow_now() > 0:
             wide = radii > float(self.config.side_branch_radius)
             probabilities[wide] = float(self.config.side_branch_probability)
         return pd.Series(probabilities, index=active.index)
@@ -762,7 +785,7 @@ class PathSplitter(Component):
         # Minor daughter carries flow fraction f in [0.5 - flow_asymmetry, 0.5]
         draw = self.randomness.get_draw(to_split, "flow_fraction")
         flow_fractions = 0.5 - self.config.flow_asymmetry * draw
-        side_flow = float(self.config.side_branch_flow)
+        side_flow = self.side_branch_flow_now()
         side_branching = pd.Series(False, index=to_split)
         if side_flow > 0:
             # Comb mode: a wide trunk keeps nearly its own caliber and sheds
@@ -940,6 +963,7 @@ def anastomosis_targets(
     frozen: pd.DataFrame,
     neighbor_lists,
     max_target_radius: float,
+    min_layer: int = 0,
 ) -> pd.Series:
     """Match each tip to the nearest opposite-tree capillary within reach.
 
@@ -964,6 +988,8 @@ def anastomosis_targets(
             & (candidates.radius > 0)
             & (candidates.radius <= max_target_radius)
         ]
+        if min_layer > 0:
+            candidates = candidates[candidates.layer_id >= min_layer]
         if candidates.empty:
             continue
         offsets = candidates[["x", "y", "z"]].to_numpy(dtype=float) - tip_positions[i]
@@ -989,6 +1015,10 @@ class PathAnastomosis(Component):
             "max_tip_radius": 0.004,  # only capillary-caliber tips anastomose
             "max_target_radius": 0.004,  # and only onto capillary-caliber segments
             "probability": 0.5,  # per-step fusion probability once in range
+            # Fuse only in plexus layers at or below this index. Real capillary
+            # loop closure lives in the deeper plexuses; superficial vessels at
+            # fundus resolution read as trees. 0 fuses anywhere (legacy)
+            "min_layer": 0,
         }
     }
 
@@ -1004,6 +1034,7 @@ class PathAnastomosis(Component):
             "radius",
             "vessel_type",
             "anastomosis_id",
+            "layer_id",
         ]
 
     def setup(self, builder: Builder) -> None:
@@ -1021,6 +1052,7 @@ class PathAnastomosis(Component):
             & (pop.vessel_type > 0)
             & (pop.radius > 0)
             & (pop.radius <= self.config.max_tip_radius)
+            & (pop.layer_id >= int(self.config.min_layer))
         ]
         if tips.empty:
             return
@@ -1031,7 +1063,11 @@ class PathAnastomosis(Component):
 
         frozen = self.freezer.frozen_particles()
         targets = anastomosis_targets(
-            tips, frozen, neighbor_lists, float(self.config.max_target_radius)
+            tips,
+            frozen,
+            neighbor_lists,
+            float(self.config.max_target_radius),
+            int(self.config.min_layer),
         )
         if targets.empty:
             return

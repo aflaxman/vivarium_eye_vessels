@@ -421,6 +421,83 @@ seeds per evaluation (at proportional compute) or seed-averaged
 coordinate descent with a larger budget is the obvious continuation
 when compute allows.
 
+*Sixth pass (bifurcation angles)*: the tree-based angle histogram was
+bimodal — a peak near 75° plus a second mode at 100–150° that healthy
+retinas don't show. Decomposing every junction by provenance located the
+second mode precisely: it is almost entirely *deep-plexus capillary
+junctions* (layer-2 obtuse share 0.80 vs 0.08 superficial; capillary
+parents median 116° vs arcade/comb parents 76° with zero obtuse share) —
+sibling tips pulled toward opposite hypoxic voids splay into the
+T-shaped junctions that real deep capillary meshes genuinely have, but
+that fundus photographs cannot see. The fundus-visible geometry was
+already unimodal on the Murray optimum. So the fix is the same
+measurement principle as the superficial raster: the figure's angle
+panel and Murray-exponent inset now measure the superficial tree only
+(the all-layer summary stays in `metrics.json`), and two literature
+targets pin it — `bifurcation_angle_median` 77±5° and one-sided
+`bifurcation_obtuse_share` (>100°, target 0.05). The current spec sits
+at median 75–79° and obtuse 0.09–0.14 across the three calibration
+seeds. A mechanism dial was also built and honestly rejected:
+`perfusion_demand.caliber_exponent` attenuates hypoxia chemotaxis on
+wide tips (biologically plausible — VEGF acts on capillary sprouts),
+but the multi-seed objective vetoed it decisively (3-seed mean
+72.3 → 2563 at exponent 1.0): the pull on wide tips is what drives the
+arcades outward, and removing it stalls colonization. The knob remains
+(default off) as a candidate disease dial.
+
+*Seventh pass (the length-weighted caliber profile)*: the diameter
+strata (≤2 / 2–4 / >4 px) were always a coarse lens, so the harness
+gained the binning-free version: `skeleton_pixel_diameters` measures the
+local (2×EDT) diameter at every skeleton pixel, making its distribution
+exactly *skeleton length by width*; the figure's diameter panel now
+plots this caliber profile and `ks_caliber_profile` (KS against the
+pooled HRF profile) joined the targets. The profile localized the
+residual mismatch to two features the strata could not see: a pile-up
+at ~2.8 px — vessels parked exactly at `max_adapted_radius` — and a 3×
+deficit in the 5.5–7 px band that real fundi carry. The tooth autopsy
+explained both: vein comb teeth are born at 4.8 px *wanting to thicken*
+(their shear sits above the tree median), but the cap only lets them
+shrink, so 76% of depth-1 particles had been ground to ≤3.2 px with the
+median exactly at the cap. The multi-seed fit that fixed it:
+`adaptation_deadband` 1.0 → 2.0, so moderate-shear segments keep their
+born caliber instead of being dragged to the cap, plus
+`side_branch_flow` 0.1 → 0.15, so vein teeth are born at ~5.4 px inside
+the missing band (3-seed mean 79.7 → 67.4, caliber KS better on every
+seed, obtuse-angle share halved). Raising the cap itself re-triggers
+the shortcut runaway (means 244/161, with or without the deadband) and
+stays rejected. One deliberate trade is on record: deadband-alone edges
+the aggregate mean (64.2) by winning back seed-42 density terms, but
+loses the caliber profile and angle terms this pass targets — the
+thicker-teeth config ships because matching length×width was the goal.
+
+*Eighth pass (sub-teeth, and the percolation problem)*: visual review
+still read the mid vessels as too long and meandering between branch
+points — comb teeth ran ~90 px between splits (the cadence damping)
+where HRF mid vessels branch every 30–50 px, and artery teeth sat just
+below `side_branch_radius`, so they never combed.
+`side_branch_radius` 0.008 → 0.006 extends the comb one caliber class
+down (teeth grow sub-teeth), and on the fit seed this produces the most
+fundus-like texture yet, with near-target skeleton density (2.9%) and
+full perfusion. The trade is on record deliberately: the 3-seed mean
+regresses (67.4 → 165) because one seed in three stalls mid-growth
+under the denser branching. Nine stabilizer configurations were swept
+under the multi-seed objective — higher and intermediate extinction
+thresholds, tighter repulsion, deep-only anastomosis, a self-healing
+growth front (`min_active_tips`), developmental gating of the comb
+(`side_branch_start_time`), and a doubled particle pool (falsified
+bit-for-bit: idle wanderers exert no forces and draws are keyed, so the
+run is unchanged) — and each rescued one seed while sinking another.
+The conclusion worth recording: the growth front is percolation-like
+(early crowding near the disc decides whether a seed's network fills),
+so branching density and robustness are coupled through a critical
+point, and no per-knob tuning decouples them. Candidate real fixes for
+a future pass: growth in waves (freeze the front's advance rate),
+crowding-aware tooth emission (skip a tooth when local frozen density
+is high), or accepting per-seed retries as the cost of a
+near-critical growth model. The three stabilizer knobs stay in the
+code, default-legacy and unit-tested, for that work and for disease
+phenotypes.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

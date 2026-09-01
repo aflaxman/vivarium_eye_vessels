@@ -1,3 +1,31 @@
+**v0.16.0 - 08/31/26**
+
+ - Match the length-weighted caliber profile ("length x width")
+
+   - New metric ``skeleton_pixel_diameters``: the local (2 x EDT)
+     diameter at every skeleton pixel, so its distribution is skeleton
+     length by width with no binning into strata. The comparison figure
+     replaces the branch-diameter histogram with this caliber profile,
+     and ``ks_caliber_profile`` (KS between the sim's superficial
+     profile and the pooled HRF profile) joins the calibration targets
+   - The profile located the residual mismatch precisely: an excess at
+     ~2.8 px -- vessels piling up exactly at ``max_adapted_radius`` --
+     and a 3x deficit in the 5.5-7 px band real fundi carry. Vein comb
+     teeth are born at 4.8 px wanting to thicken (their shear sits above
+     the tree median), but the cap only lets them shrink: 76% of depth-1
+     particles had been ground to <= 3.2 px, median exactly at the cap
+   - Fit (multi-seed): ``adaptation_deadband`` 1.0 -> 2.0 (moderate-
+     shear segments keep their born caliber instead of being ground
+     toward the cap) plus ``side_branch_flow`` 0.1 -> 0.15 (teeth carry
+     15% of trunk flow, so vein teeth are born at ~5.4 px, inside the
+     missing band). 3-seed mean 79.7 -> 67.4, caliber-profile KS
+     improves on every seed, obtuse-angle share halves. Raising the cap
+     itself (0.006 -> 0.010, with or without the deadband) re-triggers
+     the shortcut runaway (means 244 / 161) and stays rejected.
+     Deadband-alone edges the aggregate mean (64.2) by winning back
+     seed-42 density terms, but loses the caliber profile and angle
+     terms this pass targets; the trade is recorded here deliberately
+
 **v0.15.0 - 08/31/26**
 
  - Unimodal bifurcation angles: measure fundus-visible junction geometry

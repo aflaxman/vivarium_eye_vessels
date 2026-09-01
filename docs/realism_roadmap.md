@@ -445,6 +445,31 @@ but the multi-seed objective vetoed it decisively (3-seed mean
 arcades outward, and removing it stalls colonization. The knob remains
 (default off) as a candidate disease dial.
 
+*Seventh pass (the length-weighted caliber profile)*: the diameter
+strata (≤2 / 2–4 / >4 px) were always a coarse lens, so the harness
+gained the binning-free version: `skeleton_pixel_diameters` measures the
+local (2×EDT) diameter at every skeleton pixel, making its distribution
+exactly *skeleton length by width*; the figure's diameter panel now
+plots this caliber profile and `ks_caliber_profile` (KS against the
+pooled HRF profile) joined the targets. The profile localized the
+residual mismatch to two features the strata could not see: a pile-up
+at ~2.8 px — vessels parked exactly at `max_adapted_radius` — and a 3×
+deficit in the 5.5–7 px band that real fundi carry. The tooth autopsy
+explained both: vein comb teeth are born at 4.8 px *wanting to thicken*
+(their shear sits above the tree median), but the cap only lets them
+shrink, so 76% of depth-1 particles had been ground to ≤3.2 px with the
+median exactly at the cap. The multi-seed fit that fixed it:
+`adaptation_deadband` 1.0 → 2.0, so moderate-shear segments keep their
+born caliber instead of being dragged to the cap, plus
+`side_branch_flow` 0.1 → 0.15, so vein teeth are born at ~5.4 px inside
+the missing band (3-seed mean 79.7 → 67.4, caliber KS better on every
+seed, obtuse-angle share halved). Raising the cap itself re-triggers
+the shortcut runaway (means 244/161, with or without the deadband) and
+stays rejected. One deliberate trade is on record: deadband-alone edges
+the aggregate mean (64.2) by winning back seed-42 density terms, but
+loses the caliber profile and angle terms this pass targets — the
+thicker-teeth config ships because matching length×width was the goal.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

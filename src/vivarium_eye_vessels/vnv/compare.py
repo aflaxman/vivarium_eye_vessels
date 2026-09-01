@@ -265,9 +265,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     real_lengths: list[float] = []
     real_tortuosity: list[float] = []
     real_diameters: list[float] = []
+    real_pixel_diameters: list[np.ndarray] = []
     example_binary = None
     for path in mask_paths:
         binary = metrics.binarize_mask(reference_data.load_mask(path))
+        real_pixel_diameters.append(metrics.skeleton_pixel_diameters(binary))
         if example_binary is None:
             example_binary = binary
         m = metrics.image_metrics(binary)
@@ -281,6 +283,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         sim_image_metrics["branch_length_px"], sim_image_metrics["branch_diameter_px"]
     )
     real_strata = stratify_by_diameter(real_lengths, real_diameters)
+    real_pixel_diameters = np.concatenate(real_pixel_diameters)
+    sim_pixel_diameters = metrics.skeleton_pixel_diameters(sim_raster)
 
     # Calibration score: squared z-like deviation from each validation target
     from scipy.stats import ks_2samp
@@ -315,6 +319,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             else float("nan")
         ),
         "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
+        "ks_caliber_profile": (
+            float(ks_2samp(sim_pixel_diameters, real_pixel_diameters).statistic)
+            if len(sim_pixel_diameters)
+            else float("nan")
+        ),
         "bifurcation_angle_median": (
             float(np.median(sim_angles)) if len(sim_angles) else float("nan")
         ),
@@ -464,16 +473,17 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # Row 4: the diameter composition itself — the distribution and the
     # share of branches (and of total skeleton length) per diameter stratum
     ax = axes[3, 0]
-    diameter_bins = np.geomspace(1.8, 16, 24)
+    # Length-weighted caliber profile: one sample per skeleton pixel at its
+    # local (EDT) diameter, so the histogram is skeleton length by width.
+    # EDT diameters are quantized (2, 2.83, 4, 4.47, ...), so 1 px bins
     overlay_histogram(
         ax,
-        sim_image_metrics["branch_diameter_px"],
-        real_diameters,
-        diameter_bins,
-        "skeleton branch diameter (px)",
+        sim_pixel_diameters,
+        real_pixel_diameters,
+        np.arange(1.5, 13.6, 1.0),
+        "local vessel diameter at skeleton px",
     )
-    ax.set_xscale("log")
-    ax.set_title("Branch diameter distribution", color=INK, fontsize=10)
+    ax.set_title("Caliber profile (skeleton length by width)", color=INK, fontsize=10)
 
     def composition_bars(ax, sim_shares, real_shares, ylabel: str, title: str) -> None:
         labels = ["≤ 2 px", "2–4 px", "> 4 px"]
@@ -576,6 +586,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "tree_segment_length": metrics.summarize(sim_tree_segment_lengths),
             "branch_tortuosity": metrics.summarize(sim_image_metrics["branch_tortuosity"]),
             "path_tortuosity": metrics.summarize(sim_tortuosity_paths),
+            "pixel_diameter_px": metrics.summarize(sim_pixel_diameters),
             "bifurcation_angle_deg": metrics.summarize(sim_angles),
             "bifurcation_angle_deg_all_layers": metrics.summarize(sim_angles_all_layers),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
@@ -625,6 +636,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
                 for key, values in real_strata.items()
             },
             "branch_tortuosity": metrics.summarize(real_tortuosity),
+            "pixel_diameter_px": metrics.summarize(real_pixel_diameters),
             "per_mask": real_per_mask,
         },
     }

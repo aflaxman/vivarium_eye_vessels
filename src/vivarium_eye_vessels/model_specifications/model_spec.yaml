@@ -115,6 +115,12 @@ configuration:
         tissue_pressure: 0.0
         leak_fraction: 0.01        # Per-node tissue leak vs. median segment conductance
         shear_threshold_fraction: 0.65  # Prune terminal segments below this x median shear
+        prune_grace_days: 0.0      # Spare terminals younger than this from pruning. OFF:
+                                   # pruning also declutters -- spared dead-end stubs
+                                   # stay as repulsion sources that choke the tips, so
+                                   # 5-10 days rescues seed 7 (168 -> 80) but halves
+                                   # the fit seed's network (51 -> 122); 2.5 days is
+                                   # worse on every seed (roadmap eleventh pass)
         adaptation_rate: 0.05      # Caliber drift toward the median-shear radius
                                    # (vnv_calibrate composition fit: lower rate keeps
                                    # adaptation from hollowing out the mid calibers)

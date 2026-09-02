@@ -16,9 +16,9 @@
      seed 909 125.4 -> 154.8); 5 and 10 rescue seed 7 spectacularly
      (-> 80.3 / 86.0 at full perfusion, 22-26k particles) but halve the
      fit seed's network (-> 121.5 / 126.6, perfusion 0.87-0.89,
-     ``capillary_share`` 0.10 -> 0.35), and at 5 days seed 909 collapses
-     as well (125.4 -> 580.0, perfusion 0.59; 3-seed mean 115.0 -> 260.6).
-     Mechanism: pruning declutters
+     ``capillary_share`` 0.10 -> 0.35) and collapse seed 909 (125.4 ->
+     580.0 / 641.4, perfusion 0.59 / 0.55); 3-seed means 152.2 / 260.6 /
+     284.7 against the incumbent 115.0. Mechanism: pruning declutters
      as well as remodels -- a spared dead-end stub stays frozen and acts
      as a repulsion source that chokes the tips around it; whether the
      stubs become vessels or clutter is seed-specific. The same per-seed

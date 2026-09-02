@@ -596,9 +596,9 @@ calibration seeds rejected every value: 2.5 days is worse on all three
 (fit 51.0 → 60.1, seed 7 168.5 → 241.7, seed 909 125.4 → 154.8); 5 and
 10 days rescue seed 7 spectacularly (→ 80.3 / 86.0 at full perfusion,
 22–26k particles) but halve the fit seed's network (→ 121.5 / 126.6,
-perfusion 0.87–0.89, capillary share 0.10 → 0.35), and at 5 days seed
-909 collapses as well (125.4 → 580.0, perfusion 0.59; 3-seed mean
-115.0 → 260.6). The mechanism
+perfusion 0.87–0.89, capillary share 0.10 → 0.35) and collapse seed 909
+(125.4 → 580.0 / 641.4, perfusion 0.59 / 0.55); the 3-seed means are
+152.2 / 260.6 / 284.7 against the incumbent 115.0. The mechanism
 corrects the tenth pass's reading: pruning was not only consuming the
 held front's sprouts, it was **decluttering** — a low-shear dead-end
 stub that is spared stays frozen and acts as a `FrozenRepulsion` source

@@ -98,6 +98,10 @@ configuration:
                                         # has this many frozen particles (a real
                                         # front to lose); early on, few tips is
                                         # the natural state
+        continuation_keeps_path: false  # At a split the continuing daughter keeps
+                                        # its parent's path_id, so its own fresh
+                                        # trail stays exempt from repulsion
+                                        # (roadmap thirteenth pass)
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion

@@ -455,28 +455,33 @@ class PathFreezer(Component):
             return
 
         available = pop[~pop.frozen & (pop.path_id < 0)]
-        if len(available) >= len(active):
-            to_freeze = available.iloc[: len(active)]
+        if len(available) < len(active):
+            # Never freeze a tip without a continuation: that would end every
+            # path on the front at once, silently. Top the pool up and let the
+            # tips run on until the next freeze round
+            self.add_particles()
+            return
 
-            continuations = pd.DataFrame(
-                {
-                    "x": active.x.values,
-                    "y": active.y.values,
-                    "z": active.z.values,
-                    "vx": active.vx.values,
-                    "vy": active.vy.values,
-                    "vz": active.vz.values,
-                    "path_id": active.path_id.values,
-                    "parent_id": active.index.values,
-                    "frozen": False,
-                    "depth": active.depth.values,
-                    "radius": active.radius.values * self.config.radius_taper,
-                    "vessel_type": active.vessel_type.values,
-                    "layer_id": active.layer_id.values,
-                },
-                index=to_freeze.index,
-            )
-            self.particles.update_particles(continuations)
+        to_freeze = available.iloc[: len(active)]
+        continuations = pd.DataFrame(
+            {
+                "x": active.x.values,
+                "y": active.y.values,
+                "z": active.z.values,
+                "vx": active.vx.values,
+                "vy": active.vy.values,
+                "vz": active.vz.values,
+                "path_id": active.path_id.values,
+                "parent_id": active.index.values,
+                "frozen": False,
+                "depth": active.depth.values,
+                "radius": active.radius.values * self.config.radius_taper,
+                "vessel_type": active.vessel_type.values,
+                "layer_id": active.layer_id.values,
+            },
+            index=to_freeze.index,
+        )
+        self.particles.update_particles(continuations)
 
         frozen_originals = pd.DataFrame(
             {"frozen": True, "freeze_time": self.clock()}, index=active.index
@@ -599,6 +604,13 @@ class PathSplitter(Component):
             # branching at the growth front. 0 disables the gate (legacy)
             "crowding_radius": 0.06,
             "max_crowding": 0,
+            # At a split the continuing (major) daughter keeps the parent's
+            # path_id, so its own fresh trail stays under FrozenRepulsion's
+            # same-path delay exemption. Legacy (False) relabels it as a new
+            # path, and the trail it just laid repels it at full strength from
+            # behind -- the force spike that kills root arcades at their first
+            # split and decides, seed by seed, how many trunks survive
+            "continuation_keeps_path": False,
         }
     }
 
@@ -968,6 +980,16 @@ class PathSplitter(Component):
             )
             updates.append(original_update)
 
+            if bool(self.config.continuation_keeps_path):
+                continuation_path = original.path_id
+                minor_path = self.next_path_id
+                self.next_path_id += 1
+            else:
+                # Legacy: both daughters share one new path id (so sisters are
+                # mutually exempt from repulsion within the delay window)
+                continuation_path = minor_path = self.next_path_id
+                self.next_path_id += 2
+
             new_branch_1 = pd.DataFrame(
                 {
                     "x": [pos_1[0]],
@@ -979,7 +1001,7 @@ class PathSplitter(Component):
                     "frozen": [False],
                     "freeze_time": [pd.NaT],
                     "depth": [original.depth],
-                    "path_id": [self.next_path_id],
+                    "path_id": [continuation_path],
                     "parent_id": [orig_idx],
                     "radius": [major_radii[orig_idx]],
                     "vessel_type": [original.vessel_type],
@@ -1000,7 +1022,7 @@ class PathSplitter(Component):
                     "frozen": [False],
                     "freeze_time": [pd.NaT],
                     "depth": [original.depth + 1],
-                    "path_id": [self.next_path_id],
+                    "path_id": [minor_path],
                     "parent_id": [orig_idx],
                     "radius": [minor_radii[orig_idx]],
                     "vessel_type": [original.vessel_type],
@@ -1009,8 +1031,6 @@ class PathSplitter(Component):
                 index=[new_branches.iloc[2 * idx + 1].name],
             )
             updates.append(new_branch_2)
-
-            self.next_path_id += 2
         return updates
 
     @staticmethod

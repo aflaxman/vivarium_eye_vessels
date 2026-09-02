@@ -1,3 +1,38 @@
+**v0.21.0 - 09/02/26**
+
+ - Hypoxic survival relief: an extinction-threshold pipeline (negative
+   result, default-off)
+
+   - ``PathExtinction`` now reads its per-tip threshold from a
+     ``particle.extinction_threshold`` value pipeline (base
+     ``force_threshold``), and ``PerfusionDemand`` registers a modifier
+     that raises it by ``perfusion_demand.survival_factor`` for tips
+     within ``perfusion_radius`` of a hypoxic site of their own type --
+     hypoxia-driven VEGF is a survival signal for tip cells as well as a
+     chemoattractant. This is the extinction-side lever the eleventh
+     pass pointed at: a sprout born beside a dense frozen frontier gets
+     a new ``path_id``, so the frontier's repulsion hits it at full
+     strength from step one and pushes it over the threshold before it
+     can escape into the tissue that recruited it. The pipeline wiring
+     avoids an import cycle and keeps the mechanism with the demand
+     field it depends on. 1.0 is bit-for-bit legacy; two unit tests
+   - It ships OFF. Sweeping 1.5/2/3 on the calibration seeds: the fit
+     seed is bit-identical across all three (51.0 -> 61.8, still fully
+     perfused -- the relief is effectively binary, the same tips are
+     saved at every factor), seed 7 improves enormously (168.5 -> 70.1 /
+     67.0 / 67.0 at full perfusion) and seed 909 collapses at every
+     factor (125.4 -> 967.2 / 884.2 / 884.2, perfusion 0.99 -> 0.44 /
+     0.47; 3-seed means 366.3 / 337.7 / 337.7 against 115.0). Saved tips
+     on 909 do not build usable vessel: the network shrinks 11098 ->
+     3240-4035 particles
+   - Third lever in a row -- after the ninth pass's growth gates and
+     the eleventh's prune grace -- on a third subsystem to show the same
+     seed-7-vs-909 trade. The roadmap's twelfth pass draws the
+     conclusion: post-hoc per-tip relief cannot fix a trajectory decided
+     early, and the remaining seed variance most plausibly sits in the
+     random initial root headings; a radially-outward disc emergence (as
+     real arcades do) is the next candidate
+
 **v0.20.0 - 09/02/26**
 
  - Prune grace period (a negative result, default-off) and a DRY pass

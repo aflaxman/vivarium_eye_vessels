@@ -2,27 +2,27 @@
   "seeds": [
     {
       "seed": 11,
-      "perfused_fraction": 0.9960031974420464,
-      "skeleton_density": 0.015254974365234375,
-      "n_frozen": 18029
+      "perfused_fraction": 0.8840927258193445,
+      "skeleton_density": 0.013980865478515625,
+      "n_frozen": 6583
     },
     {
       "seed": 202,
-      "perfused_fraction": 0.9872102318145484,
-      "skeleton_density": 0.012103080749511719,
-      "n_frozen": 20390
+      "perfused_fraction": 1.0,
+      "skeleton_density": 0.009758949279785156,
+      "n_frozen": 18138
     },
     {
       "seed": 909,
-      "perfused_fraction": 0.39728217426059154,
-      "skeleton_density": 0.0025272369384765625,
-      "n_frozen": 2337
+      "perfused_fraction": 0.988009592326139,
+      "skeleton_density": 0.014135360717773438,
+      "n_frozen": 11098
     },
     {
       "seed": 4242,
-      "perfused_fraction": 0.9280575539568345,
-      "skeleton_density": 0.0033731460571289062,
-      "n_frozen": 6780
+      "perfused_fraction": 0.873701039168665,
+      "skeleton_density": 0.005349159240722656,
+      "n_frozen": 5782
     }
   ],
   "perfusion_target": 0.95,

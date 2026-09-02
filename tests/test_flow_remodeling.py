@@ -237,6 +237,16 @@ def test_remodeler_prunes_and_recycles_without_cutting_the_graph():
     assert bridges_ok.all(), "a pruned particle is still an anastomosis target"
 
 
+def test_prune_grace_spares_young_terminals():
+    # The same run prunes within 250 steps at the default grace of 0 (the
+    # test above); with a grace period longer than the run, nothing is old
+    # enough to be judged
+    sim, remodeler = make_remodeling_simulation(flow_remodeler={"prune_grace_days": 1000})
+    for _ in range(250):
+        sim.step()
+    assert remodeler.total_pruned == 0
+
+
 def test_adaptation_growth_saturates_at_cap():
     """Thickening never pushes a caliber past max_adapted_radius.
 

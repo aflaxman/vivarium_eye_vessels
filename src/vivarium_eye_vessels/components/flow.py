@@ -166,9 +166,10 @@ class FlowRemodeler(Component):
 
     - **prune**: terminal segments (degree-1 ends of the graph, so the
       network is never cut in the middle) with shear below
-      ``shear_threshold_fraction`` x their own tree's median are recycled —
-      the particle's ``unfreeze_time`` is stamped and it returns to the
-      free pool as an ordinary wandering particle;
+      ``shear_threshold_fraction`` x their own tree's median, and older than
+      ``prune_grace_days``, are recycled — the particle's ``unfreeze_time``
+      is stamped and it returns to the free pool as an ordinary wandering
+      particle;
     - **adapt**: every segment's caliber drifts by ``adaptation_rate``
       toward the radius that would put its shear at its own tree's median
       (high-shear trunks thicken, low-shear twigs thin), clipped to
@@ -192,6 +193,10 @@ class FlowRemodeler(Component):
             # Per-node leak as a fraction of the median segment conductance
             "leak_fraction": 0.01,
             "shear_threshold_fraction": 0.3,
+            # Terminal segments frozen less than this long ago are not pruned:
+            # a young sprout needs time to connect and earn its shear before
+            # regression can judge it. 0 prunes regardless of age (legacy)
+            "prune_grace_days": 0.0,
             "adaptation_rate": 0.0,
             # Adapt only segments whose shear is off their tree's median by
             # more than this factor; 1.0 adapts everything (no deadband)
@@ -319,6 +324,10 @@ class FlowRemodeler(Component):
         candidates = candidates[
             candidates.frozen & (candidates.parent_id >= 0) & (degrees[candidates.index] == 1)
         ]
+        grace = float(self.config.prune_grace_days)
+        if grace > 0:
+            ages = self.clock() - candidates.freeze_time
+            candidates = candidates[ages >= pd.Timedelta(days=grace)]
         pruned = candidates.index
         if not pruned.empty:
             self.total_pruned += len(pruned)

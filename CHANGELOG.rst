@@ -1,3 +1,41 @@
+**v0.20.0 - 09/02/26**
+
+ - Prune grace period (a negative result, default-off) and a DRY pass
+   over the stacked increments
+
+   - ``flow_remodeler.prune_grace_days``: terminal segments frozen less
+     than this long ago are not pruned, so a young sprout gets time to
+     connect and earn its shear before regression judges it. Built to
+     close the tenth pass's remaining gap (two held-out seeds settle at
+     ~0.88 perfusion because pruning consumes what the held wave front
+     builds). Age-based sparing was chosen over a position band around
+     the front: one knob, no cross-component coupling, and it also
+     protects the wave's behind-front re-sprouts. Unit-tested
+   - It ships OFF. Sweeping 2.5/5/10 days on the calibration seeds: 2.5
+     is worse on every seed (fit 51.0 -> 60.1, seed 7 168.5 -> 241.7,
+     seed 909 125.4 -> 154.8); 5 and 10 rescue seed 7 spectacularly
+     (-> 80.3 / 86.0 at full perfusion, 22-26k particles) but halve the
+     fit seed's network (-> 121.5 / 126.6, perfusion 0.87-0.89,
+     ``capillary_share`` 0.10 -> 0.35) and collapse seed 909 (125.4 ->
+     580.0 / 641.4, perfusion 0.59 / 0.55); 3-seed means 152.2 / 260.6 /
+     284.7 against the incumbent 115.0. Mechanism: pruning declutters
+     as well as remodels -- a spared dead-end stub stays frozen and acts
+     as a repulsion source that chokes the tips around it; whether the
+     stubs become vessels or clutter is seed-specific. The same per-seed
+     reshuffle signature as the ninth pass's local rules, so the wave's
+     0.87-1.00 band stands as the shipping state
+   - Behavior-preserving consolidation, verified bit-for-bit over 150
+     steps: ``PathSplitter.eligible``/``commit`` replace three copies of
+     the depth-ceiling + crowding-gate + write sequence;
+     ``PerfusionDemand.vessel_distances`` replaces the nearest-vessel
+     KDTree query duplicated in ``hypoxic_sites`` and the wave's
+     ``served_fraction`` (the wave drops its own freezer handle);
+     ``DevelopmentalWave.disc_distance`` replaces two inline norms;
+     ``vnv.simulation.with_seed``/``build_from_spec`` replace the
+     seed-override and write-then-build boilerplate in ``vnv_calibrate``
+     and ``vnv_contact_sheet``. ``docs/vnv`` is unchanged because the
+     spec's dynamics are unchanged
+
 **v0.19.0 - 09/02/26**
 
  - Developmental wave: a closed-loop growth front, on by default

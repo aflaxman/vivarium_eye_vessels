@@ -584,6 +584,40 @@ front that the wave is trying to grow; sparing the front region from
 pruning (or coupling `shear_threshold_fraction` to front distance)
 should let the equilibrium finish. The wave ships enabled.
 
+*Eleventh pass (the prune grace period — a negative result that
+corrects the tenth pass's diagnosis)*: the follow-up was built as the
+simplest possible lever, `flow_remodeler.prune_grace_days` — terminal
+segments frozen less than this long ago are not pruned, so a young
+sprout gets time to connect and earn its shear. Age-based sparing was
+chosen over a position band around the front because it needs no
+cross-component coupling and also protects the wave's behind-front
+re-sprouts (one knob, four lines, unit-tested). The sweep on the
+calibration seeds rejected every value: 2.5 days is worse on all three
+(fit 51.0 → 60.1, seed 7 168.5 → 241.7, seed 909 125.4 → 154.8); 5 and
+10 days rescue seed 7 spectacularly (→ 80.3 / 86.0 at full perfusion,
+22–26k particles) but halve the fit seed's network (→ 121.5 / 126.6,
+perfusion 0.87–0.89, capillary share 0.10 → 0.35) and collapse seed 909
+(125.4 → 580.0 / 641.4, perfusion 0.59 / 0.55); the 3-seed means are
+152.2 / 260.6 / 284.7 against the incumbent 115.0. The mechanism
+corrects the tenth pass's reading: pruning was not only consuming the
+held front's sprouts, it was **decluttering** — a low-shear dead-end
+stub that is spared stays frozen and acts as a `FrozenRepulsion` source
+that chokes the tips around it, so whether spared stubs mature into
+vessels (seed 7) or into clutter (the fit seed) is seed-specific. That
+is the ninth pass's per-seed reshuffle signature again, now on a
+remodeling knob rather than a growth knob, and the shipping state stays
+the wave's 0.87–1.00 band. The two 0.88 seeds therefore sit at a
+tip-extinction equilibrium at the held front, not a pruning one; the
+next lever to try is on the extinction side (a front-local relief of
+repulsion or of the force threshold for sprouts born from a
+`resprout_toward_stall` call), and it should be gated by the held-out
+contact sheet like everything since the ninth pass. The pass also
+consolidated the stacked increments without changing behavior
+(bit-for-bit over 150 steps): one eligibility filter and one commit path
+in `PathSplitter`, one nearest-vessel query shared by `PerfusionDemand`
+and the wave, one disc-distance helper, and one seed/build helper pair
+for the V&V CLIs.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

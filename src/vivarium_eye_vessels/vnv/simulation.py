@@ -6,6 +6,7 @@ which is unhelpful for batch V&V runs. This module builds an
 skipping visualization components.
 """
 
+import copy
 import importlib
 from pathlib import Path
 from typing import Iterable
@@ -55,6 +56,20 @@ def build_headless_simulation(spec_path: str | Path) -> InteractiveContext:
 
     configuration = spec.get("configuration", {})
     return InteractiveContext(components=components, configuration=configuration)
+
+
+def with_seed(spec: dict, seed: int) -> dict:
+    """A deep copy of ``spec`` with its random seed replaced."""
+    candidate = copy.deepcopy(spec)
+    candidate["configuration"]["randomness"]["random_seed"] = seed
+    return candidate
+
+
+def build_from_spec(spec: dict, spec_path: str | Path) -> InteractiveContext:
+    """Write ``spec`` to ``spec_path`` (a record of the run) and build it headless."""
+    with open(spec_path, "w") as f:
+        yaml.safe_dump(spec, f)
+    return build_headless_simulation(spec_path)
 
 
 def get_ellipsoid_bounds(sim: InteractiveContext) -> tuple[float, float]:

@@ -1,3 +1,48 @@
+**v0.18.0 - 09/02/26**
+
+ - Growth reliability: mechanisms, a held-out-seed V&V artifact, and an
+   honest negative result
+
+   - A field study on four fresh seeds (11/202/909/4242) found two of
+     four networks stall mid-growth -- the collapse the roadmap's
+     percolation analysis predicted. Three candidate fixes are now
+     implemented and unit-tested; all three ship default-off, because
+     every configuration that improved the calibration seeds hurt the
+     held-out seeds (details below and in the roadmap's ninth pass)
+   - Crowding gate (``path_splitter.max_crowding`` within
+     ``crowding_radius``): skip a dichotomous split when the tip already
+     has that many frozen neighbors, keeping branching at the growth
+     front where daughters can survive; comb teeth are exempt (a
+     trunk's own frozen trail dominates its neighbor count)
+   - Self-healing growth front (``path_splitter.min_active_tips``,
+     gated by new ``path_splitter.resprout_established_size``): a tree
+     whose active-tip count thins below the floor re-sprouts from its
+     own frozen vessels, but only once it is established -- early on,
+     few tips is the natural state and topping up just crowds the disc
+   - Balanced arterial inflow (``flow_remodeler.balanced_arterial_inflow``):
+     split the total arterial inflow equally across artery roots as
+     current sources instead of fixing every root pressure, so no
+     arcade can starve its siblings (the rich-get-richer failure:
+     the widest arcade takes the flow, shear adaptation amplifies it)
+   - The negative result, on record so it is not re-litigated: the best
+     multi-seed sweep config (gate 30 + tip floor 8, established at
+     200) improved the 3-seed calibration mean 581.4 -> 431.8, but
+     held-out reliability fell from 2/4 seeds perfused to 0/4.
+     Attribution probes: the tip floor alone drops seed 11 from 0.996
+     to 0.76 perfused and seed 4242 from 0.928 to 0.54; the gate at 30
+     drops seed 202 from 0.987 to 0.79 (healthy interiors run 30-44
+     frozen neighbors, so any gate low enough to fire also caps normal
+     filling -- a gate of 60 never fires at all, bit-for-bit). The
+     growth front is near-critical: these knobs reshuffle which seeds
+     fill rather than making every seed viable
+   - New ``vnv_contact_sheet`` CLI renders held-out-seed simulations
+     (11/202/909/4242, none used in calibration) beside HRF expert
+     masks, stamping each panel with perfusion and skeleton density and
+     a [STALLED] flag; ``docs/vnv/contact_sheet.json`` records the
+     seed-reliability fraction so reliability is tracked across
+     versions like every other metric -- this artifact is what caught
+     the non-generalization above
+
 **v0.17.0 - 09/01/26**
 
  - Sub-teeth: extend the comb one caliber class down, with the

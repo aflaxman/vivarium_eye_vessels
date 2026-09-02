@@ -86,6 +86,7 @@ def solve_pressures(
     boundary: pd.Series,
     leak_conductance: float,
     tissue_pressure: float = 0.0,
+    injections: pd.Series | None = None,
 ) -> pd.Series:
     """Node pressures from Kirchhoff's current law on the vessel graph.
 
@@ -94,8 +95,13 @@ def solve_pressures(
     ``leak_conductance`` — the capillary drainage that happens everywhere
     along real microvessels — which keeps dead-end branches carrying a
     trickle and the system nonsingular even for fragments with no root.
+    ``injections`` maps nodes to fixed inflow (current sources); an
+    injection node must not also carry a fixed pressure.
     """
-    nodes = pd.Index(sorted(set(edges.node_a) | set(edges.node_b) | set(boundary.index)))
+    injection_nodes = set(injections.index) if injections is not None else set()
+    nodes = pd.Index(
+        sorted(set(edges.node_a) | set(edges.node_b) | set(boundary.index) | injection_nodes)
+    )
     n = len(nodes)
     positions = pd.Series(np.arange(n), index=nodes)
     i = positions[edges.node_a].to_numpy()
@@ -108,6 +114,8 @@ def solve_pressures(
     vals = np.concatenate([g, g, -g, -g, np.full(n, leak_conductance)])
     laplacian = coo_matrix((vals, (rows, cols)), shape=(n, n)).tocsr()
     rhs = np.full(n, leak_conductance * tissue_pressure)
+    if injections is not None and len(injections):
+        rhs[positions[injections.index].to_numpy()] += injections.to_numpy(float)
 
     fixed_mask = nodes.isin(boundary.index)
     fixed = np.nonzero(fixed_mask)[0]
@@ -121,6 +129,19 @@ def solve_pressures(
             reduced_rhs = rhs[free] - laplacian[free][:, fixed] @ pressures[fixed]
             pressures[free] = spsolve(laplacian[free][:, free].tocsc(), reduced_rhs)
     return pd.Series(pressures, index=nodes)
+
+
+def root_outflows(flows: pd.DataFrame, roots: pd.Index) -> pd.Series:
+    """Net flow leaving each root node into the network.
+
+    Edge flow is signed node_b -> node_a, so edges where a root is the
+    parent (node_b) carry flow out of it and edges where it is the child
+    (node_a) carry flow into it.
+    """
+    out = pd.Series(0.0, index=roots)
+    leaving = flows[flows.node_b.isin(roots)].groupby("node_b").flow.sum()
+    entering = flows[flows.node_a.isin(roots)].groupby("node_a").flow.sum()
+    return out.add(leaving, fill_value=0.0).subtract(entering, fill_value=0.0)
 
 
 def edge_flows(edges: pd.DataFrame, pressures: pd.Series) -> pd.DataFrame:
@@ -163,6 +184,11 @@ class FlowRemodeler(Component):
             "artery_pressure": 1.0,
             "vein_pressure": -1.0,
             "tissue_pressure": 0.0,
+            # Split the total arterial inflow equally across the artery roots
+            # (current sources) instead of fixing every root's pressure, so no
+            # arcade can starve its siblings; False keeps the legacy pure-
+            # Dirichlet boundary conditions
+            "balanced_arterial_inflow": False,
             # Per-node leak as a fraction of the median segment conductance
             "leak_fraction": 0.01,
             "shear_threshold_fraction": 0.3,
@@ -236,7 +262,23 @@ class FlowRemodeler(Component):
             index=roots.index,
         )
         leak = float(self.config.leak_fraction) * float(edges.conductance.median())
-        pressures = solve_pressures(edges, boundary, leak, float(self.config.tissue_pressure))
+        tissue = float(self.config.tissue_pressure)
+        pressures = solve_pressures(edges, boundary, leak, tissue)
+        if bool(self.config.balanced_arterial_inflow):
+            # Fixed root pressures let the lowest-resistance arcade take most
+            # of the flow, and shear adaptation then amplifies the winner
+            # (rich-get-richer). Re-solve with the same total arterial inflow
+            # split equally across the artery roots — each arcade must supply
+            # its share, so under-built arcades see high shear and thicken
+            artery_roots = roots.index[roots.vessel_type == VESSEL_TYPE_ARTERY]
+            vein_boundary = boundary.drop(artery_roots, errors="ignore")
+            if len(artery_roots) and not vein_boundary.empty:
+                total = float(root_outflows(edge_flows(edges, pressures), artery_roots).sum())
+                if total > 0:
+                    injections = pd.Series(total / len(artery_roots), index=artery_roots)
+                    pressures = solve_pressures(
+                        edges, vein_boundary, leak, tissue, injections
+                    )
         return edge_flows(edges, pressures)
 
     def graph_degrees(self, pop: pd.DataFrame) -> pd.Series:

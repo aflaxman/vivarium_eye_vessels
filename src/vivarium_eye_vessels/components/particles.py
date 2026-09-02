@@ -578,6 +578,18 @@ class PathSplitter(Component):
             # only at total extinction). 1 keeps the legacy behavior of
             # re-sprouting only when a tree has no active tips at all
             "min_active_tips": 1,
+            # The tip floor applies only to an established tree (one with a
+            # real front to lose): below this many frozen particles, few tips
+            # is the natural early state and topping up just crowds the disc
+            "resprout_established_size": 800,
+            # Crowding gate: skip a split when the tip already has at least
+            # max_crowding frozen neighbors within crowding_radius. Daughters
+            # born into saturated space are pushed over the extinction
+            # threshold almost immediately, and the resulting extinction
+            # cascade is what makes marginal seeds collapse; gating keeps the
+            # branching at the growth front. 0 disables the gate (legacy)
+            "crowding_radius": 0.06,
+            "max_crowding": 0,
         }
     }
 
@@ -612,6 +624,7 @@ class PathSplitter(Component):
         self.side_branch_start = pd.Timestamp(self.config.side_branch_start_time)
         self.simulant_creator = builder.population.get_simulant_creator()
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
 
     def add_particles(self):
         self.simulant_creator(self.particles_to_add)
@@ -638,7 +651,7 @@ class PathSplitter(Component):
                 active.index, self.split_probabilities(active)
             )
             not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
-            to_split = to_consider[not_too_deep]
+            to_split = self.uncrowded(pop, to_consider[not_too_deep])
             if not to_split.empty:
                 updates.extend(self.split_unfrozen(pop, to_split) or [])
 
@@ -649,16 +662,22 @@ class PathSplitter(Component):
         frozen_on_path = pop[pop.frozen & (pop.path_id >= 0)]
         for vessel_type in np.unique(frozen_on_path.vessel_type):
             n_active = int((active.vessel_type == vessel_type).sum())
-            if n_active >= int(self.config.min_active_tips):
-                continue
+            floor = int(self.config.min_active_tips)
             candidates = frozen_on_path[frozen_on_path.vessel_type == vessel_type]
+            # The tip floor only applies to an established tree (one with a
+            # real front to lose): early on, few tips is the natural state,
+            # and topping up then just crowds the disc
+            if len(candidates) < int(self.config.resprout_established_size):
+                floor = 1
+            if n_active >= floor:
+                continue
             to_consider = self.randomness.filter_for_probability(
                 candidates.index, 0.01, f"active_empty_{vessel_type}"
             )
             not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
-            to_split = to_consider[not_too_deep]
+            to_split = self.uncrowded(pop, to_consider[not_too_deep])
             if n_active > 0:
-                to_split = to_split[: int(self.config.min_active_tips) - n_active]
+                to_split = to_split[: floor - n_active]
             if not to_split.empty:
                 updates.extend(self.split_frozen(pop, to_split) or [])
 
@@ -673,6 +692,33 @@ class PathSplitter(Component):
         if self.clock() < self.side_branch_start:
             return 0.0
         return float(self.config.side_branch_flow)
+
+    def uncrowded(self, pop: pd.DataFrame, to_split: pd.Index) -> pd.Index:
+        """Drop split candidates whose surroundings are already saturated.
+
+        A daughter born where many frozen vessels stand is pushed over the
+        extinction threshold almost immediately, and the cascade of such
+        births and deaths is what makes marginal seeds collapse. Gating the
+        split keeps branching at the growth front, where there is room.
+        """
+        limit = int(self.config.max_crowding)
+        if limit <= 0 or to_split.empty:
+            return to_split
+        candidates = pop.loc[to_split]
+        # Comb emission by wide trunks is exempt: a trunk's own frozen trail
+        # dominates its neighbor count, and suppressing teeth where teeth
+        # belong is exactly the wrong response to crowding
+        if "radius" in candidates.columns and self.side_branch_flow_now() > 0:
+            gated = candidates.radius.to_numpy(float) <= float(self.config.side_branch_radius)
+        else:
+            gated = np.ones(len(candidates), dtype=bool)
+        neighbor_lists = self.freezer.query_radius(
+            candidates, float(self.config.crowding_radius)
+        )
+        if neighbor_lists is None:
+            return to_split
+        counts = np.array([len(neighbors) for neighbors in neighbor_lists])
+        return to_split[~gated | (counts < limit)]
 
     def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
         """Per-tip split probability, reduced for wide-caliber tips.

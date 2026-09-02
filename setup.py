@@ -100,5 +100,6 @@ if __name__ == "__main__":
             vnv_growth_gif=vivarium_eye_vessels.vnv.animate:main
             vnv_compare=vivarium_eye_vessels.vnv.compare:main
             vnv_calibrate=vivarium_eye_vessels.vnv.calibrate:main
+            vnv_contact_sheet=vivarium_eye_vessels.vnv.contact_sheet:main
         """,
     )

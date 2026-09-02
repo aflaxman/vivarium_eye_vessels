@@ -618,6 +618,48 @@ in `PathSplitter`, one nearest-vessel query shared by `PerfusionDemand`
 and the wave, one disc-distance helper, and one seed/build helper pair
 for the V&V CLIs.
 
+*Twelfth pass (hypoxic survival relief — the extinction-side lever,
+another negative result, and what three of them together say)*: the
+eleventh pass's corrected diagnosis — a tip-extinction equilibrium at
+the held front — was attacked at the extinction side with the most
+biologically grounded lever available: hypoxia-driven VEGF is a
+survival signal for endothelial tip cells as well as a chemoattractant,
+so tips sitting in unserved tissue should tolerate more force before
+regressing. `PathExtinction` now reads its per-tip threshold from a
+`particle.extinction_threshold` value pipeline and `PerfusionDemand`
+raises it by `survival_factor` for tips within `perfusion_radius` of a
+hypoxic site of their type (the pipeline wiring avoids an import cycle
+and keeps the mechanism with the demand field it depends on; 1.0 is
+bit-for-bit legacy). The mechanism it targets is real: a sprout from
+`resprout_toward_stall` gets a new `path_id`, so `FrozenRepulsion`'s
+own-path `delay` exemption does not cover its frontier parent, and the
+frontier's summed repulsion pushes it over the threshold before it can
+move. The sweep rejected it anyway: the fit seed is bit-identical across
+factors 1.5/2/3 (51.0 → 61.8, still fully perfused — the relief is
+effectively binary, the same tips are saved at every factor), seed 7
+improves enormously (168.5 → 70.1 / 67.0 / 67.0 at full perfusion), and
+seed 909 collapses at every factor (125.4 → 967.2 / 884.2 / 884.2,
+perfusion 0.99 → 0.44 / 0.47, network 11098 → 3240–4035 particles);
+3-seed means 366.3 / 337.7 / 337.7 against the incumbent 115.0.
+
+That is now three independent levers on three subsystems — growth
+(ninth pass: crowding gate, tip floor), remodeling (eleventh: prune
+grace), extinction (twelfth: survival relief) — each of which rescues
+seed 7 and collapses seed 909, or the reverse, and only the wave (a
+non-local controller on the goal itself) lifted every seed. The
+consistent reading: the per-seed outcome is decided early, by the
+trajectory the six root arcades take out of the disc, and post-hoc
+per-tip relief anywhere downstream only reshuffles which trajectory
+wins. The initial root headings are the one seed-dependent input that
+has never been examined: `initial_velocity_range` draws each root's
+direction at random, so some seeds start with arcades aimed inward or
+bunched, while real arcades emerge from the disc radially in four
+quadrants. A radially-outward emergence with a small angular jitter is
+the next candidate — cheap, developmentally faithful, and the first
+lever that acts on the cause rather than the symptom — and it should
+be gated on the held-out contact sheet like everything since the ninth
+pass.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

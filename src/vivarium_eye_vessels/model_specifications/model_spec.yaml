@@ -169,8 +169,10 @@ configuration:
                                  # (vnv_calibrate fit)
         survival_factor: 1.0     # Hypoxia as a survival signal: tips within
                                  # perfusion_radius of unserved tissue tolerate this
-                                 # multiple of the extinction force threshold
-                                 # (1.0 = off; roadmap twelfth pass)
+                                 # multiple of the extinction force threshold. OFF:
+                                 # every factor 1.5-3 rescues seed 7 (168 -> 67) but
+                                 # collapses seed 909 (125 -> 884, perfusion 0.47);
+                                 # see the roadmap's twelfth pass
 
     # Closed-loop growth front (roadmap tenth pass): demand is exposed as an
     # expanding wave from the disc that advances only while the tissue behind

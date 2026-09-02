@@ -13,6 +13,7 @@ components:
         - boundaries.PointRepulsion()
         - boundaries.FrozenRepulsion()
         - boundaries.PerfusionDemand()
+        - boundaries.DevelopmentalWave()
         - visualizer.ParticleVisualizer3D()
         - observers.SaveParticles()
 
@@ -160,6 +161,28 @@ configuration:
         influence_radius: 2.0    # Hypoxic sites recruit growth tips within this distance
         magnitude: 0.35          # Attraction strength, below the extinction threshold
                                  # (vnv_calibrate fit)
+
+    # Closed-loop growth front (roadmap tenth pass): demand is exposed as an
+    # expanding wave from the disc that advances only while the tissue behind
+    # it is served, and a held front re-sprouts the stalled tree next to the
+    # unserved sites. First mechanism to improve every calibration seed at
+    # once (3-seed mean 581 -> 115) and it eliminates the catastrophic
+    # collapse mode on held-out seeds (min perfusion 0.40 -> 0.87)
+    developmental_wave:
+        enabled: true
+        start_radius: 0.15
+        wave_speed: 0.006        # Advance per step while the tissue behind is served
+        lookahead: 0.25          # Demand visible this far beyond the front
+        advance_threshold: 0.85  # Served fraction inside the front required to
+                                 # advance (0.75 outruns weak seeds, 0.95 makes
+                                 # strong seeds wait: swept, 0.85 is the balance)
+        advance_rule: combined   # Any-vessel service; per_type brakes healthy
+                                 # seeds on the artery tree's ~0.85 mid-field
+                                 # service ceiling
+        hold_resprout_steps: 15  # Held steps before targeted re-sprouting
+        resprout_count: 2        # Sprouts per stalled tree per trigger
+        gate_caliber_max: 0.0    # 0 gates every tip (the wide-tip exemption
+                                 # tested worse: it breaks the front discipline)
 
     frozen_repulsion:
         force_type: hookean

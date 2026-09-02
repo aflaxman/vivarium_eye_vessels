@@ -1,3 +1,43 @@
+**v0.19.0 - 09/02/26**
+
+ - Developmental wave: a closed-loop growth front, on by default
+
+   - New ``DevelopmentalWave`` component: vascularization advances as a
+     wave from the optic disc, as in real retinal development.
+     ``PerfusionDemand`` exposes only the demand sites within
+     ``radius + lookahead`` of the disc, so every tip chases the same
+     expanding ring; the front advances by ``wave_speed`` per step only
+     while the tissue behind it is served (``advance_threshold``); and a
+     front held ``hold_resprout_steps`` re-sprouts the stalled tree from
+     the frozen vessels nearest its unserved sites -- growth pressure
+     applied exactly where growth is missing, which is what the ninth
+     pass's untargeted tip floor lacked. The control variable is the
+     goal itself (perfusion behind the front), not a local proxy
+   - First mechanism in the project to improve every calibration seed
+     at once: 3-seed mean 581.4 -> 115.0 (fit seed 47.0 -> 51.0 at full
+     perfusion; seed 7 375.8 -> 168.5; chronic collapser seed 909
+     1321.4 -> 125.4 at 0.99 perfusion). A ten-config sweep set the
+     values: ``advance_rule: combined`` (per-type advance brakes healthy
+     seeds on the artery tree's ~0.85 mid-field service ceiling and
+     pruning grinds the held network), threshold 0.85 (0.75 outruns
+     weak seeds, 0.95 makes strong seeds wait), and no wide-tip
+     exemption (it breaks the front discipline)
+   - Held-out contact sheet: the catastrophic collapse mode is gone --
+     min perfusion across the four held-out seeds rises 0.40 -> 0.87,
+     mean 0.83 -> 0.94, mean score 574.7 -> 255.3. The honest trade:
+     strict >=95% reliability stays 2/4 because two previously-fast
+     seeds settle at a stable ~0.87-0.88-perfused equilibrium (verified
+     out to step 1200: the wave-front demand and shear pruning balance
+     just below the bar) -- a complete connected network rather than
+     legacy's collapse, but not full perfusion. The wave trades
+     legacy's bimodal outcomes (0.99 or 0.40) for a compressed 0.87-1.00
+     band; decoupling pruning from held-front regions is the natural
+     follow-up
+   - ``vnv_compare``/``vnv_contact_sheet`` artifacts regenerated under
+     the new default; ``resprout_at`` on ``PathSplitter`` gives the
+     wave its targeted re-sprout entry point; four new unit tests
+     (74 total)
+
 **v0.18.0 - 09/02/26**
 
  - Growth reliability: mechanisms, a held-out-seed V&V artifact, and an

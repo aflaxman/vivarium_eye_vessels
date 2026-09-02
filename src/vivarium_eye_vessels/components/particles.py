@@ -720,6 +720,25 @@ class PathSplitter(Component):
         counts = np.array([len(neighbors) for neighbors in neighbor_lists])
         return to_split[~gated | (counts < limit)]
 
+    def resprout_at(self, pop: pd.DataFrame, to_split: pd.Index) -> None:
+        """Sprout new branches off the given frozen particles, now.
+
+        The developmental wave calls this when its front stalls: sprouts are
+        aimed at specific frozen vessels beside unserved tissue, unlike the
+        tip floor in split_paths, which tops a tree up anywhere (and, the
+        ninth pass found, seeds cascades in healthy regions doing so).
+        Respects the depth ceiling and the crowding gate.
+        """
+        if to_split.empty:
+            return
+        not_too_deep = pop.loc[to_split, "depth"] < self.config.max_depth
+        to_split = self.uncrowded(pop, to_split[not_too_deep.to_numpy()])
+        if to_split.empty:
+            return
+        updates = self.split_frozen(pop, to_split) or []
+        if updates:
+            self.particles.update_particles(pd.concat(updates, axis=0))
+
     def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
         """Per-tip split probability, reduced for wide-caliber tips.
 

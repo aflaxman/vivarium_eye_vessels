@@ -540,6 +540,50 @@ the reliability fraction in `contact_sheet.json`, so this problem is
 tracked across versions instead of rediscovered — it is exactly what
 caught the non-generalization above.
 
+*Tenth pass (the developmental wave — growth as a closed loop)*: the
+ninth pass ended pointing at non-local mechanisms, and the first one
+tried — growth in waves, the way real retinal vascularization spreads
+from the optic disc behind a hypoxia front — is the first mechanism in
+the project's history to improve every calibration seed at once. The
+`DevelopmentalWave` component owns a front radius around the disc:
+`PerfusionDemand` exposes only demand sites within `radius + lookahead`,
+so every tip chases the same expanding ring (and unserved holes behind
+the front stay visible until filled); the front advances only while the
+tissue behind it is served, so a stalling seed concentrates demand at
+the stall instead of failing silently; and a front held too long
+re-sprouts the stalled tree from the frozen vessels nearest its
+unserved sites — the targeting the ninth pass's global tip floor
+lacked. The control variable is the goal itself (perfusion behind the
+front), not a per-tip local proxy, and that is exactly why it escapes
+the ninth pass's no-go result. One discovery mattered most in tuning:
+with per-type advance the front brakes on the artery tree's ~0.85
+mid-field service ceiling (arteries alone genuinely cannot cover
+tissue at the perfusion radius), and a healthy seed held at the brake
+is ground down by pruning — `advance_rule: combined` (any-vessel
+service) removes the brake and restores the fit seed bit-for-near
+(47.0 → 51.0 at full perfusion). The swept landscape is a textbook
+single-knob tension: threshold 0.75 outruns weak seeds (909: 376), 0.95
+makes strong seeds wait (seed 7: 432), 0.85 balances (3-seed mean
+581.4 → 115.0, with chronic collapser 909 at 125.4 and 0.99 perfusion —
+a seed no per-tip mechanism ever moved above 0.45). A wide-tip
+exemption (arcades seeing the whole field) tested worse: it breaks the
+front discipline. On the held-out contact sheet the catastrophic
+collapse mode is eliminated — min perfusion 0.40 → 0.87, mean
+0.83 → 0.94, mean score 574.7 → 255.3 — with one honest trade: strict
+≥95% reliability stays 2/4, because two previously-fast seeds settle at
+a stable ~0.87–0.88-perfused equilibrium instead of finishing. A
+long-horizon probe (seed 11 to step 1200) shows the plateau is real,
+not pacing: from step 800 on, shear pruning consumes what the held
+front builds, and the system balances just below the bar. So the wave
+converts legacy's bimodal outcome (0.99 or 0.40, a coin flip per seed)
+into a compressed 0.87–1.00 band — the floor rises dramatically, two
+ceilings come down slightly. The natural follow-up is to close the
+remaining gap on the pruning side: FlowRemodeler currently prunes
+low-shear terminals everywhere, including the young sprouts at a held
+front that the wave is trying to grow; sparing the front region from
+pruning (or coupling `shear_threshold_fraction` to front distance)
+should let the equilibrium finish. The wave ships enabled.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

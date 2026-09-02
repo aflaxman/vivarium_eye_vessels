@@ -215,10 +215,7 @@ def evaluate_spec(
     spec: dict, steps: int, references: dict | np.ndarray, workdir: Path, tag: str
 ) -> dict:
     """Run one candidate spec to completion and score it."""
-    spec_path = workdir / f"candidate_{tag}.yaml"
-    with open(spec_path, "w") as f:
-        yaml.safe_dump(spec, f)
-    sim = simulation.build_headless_simulation(spec_path)
+    sim = simulation.build_from_spec(spec, workdir / f"candidate_{tag}.yaml")
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
     simulation.run_steps(sim, steps)
@@ -303,7 +300,7 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
     with open(model_spec) as f:
         base_spec = yaml.safe_load(f)
     if seed is not None:
-        base_spec["configuration"]["randomness"]["random_seed"] = seed
+        base_spec = simulation.with_seed(base_spec, seed)
     seed_list = [int(s) for s in seeds.split(",")] if seeds else None
 
     click.echo("Computing HRF reference statistics (cached download)...")
@@ -327,9 +324,12 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
         else:
             per_seed = {}
             for s in seed_list:
-                candidate["configuration"]["randomness"]["random_seed"] = s
                 per_seed[s] = evaluate_spec(
-                    candidate, steps, references, work, f"{tag}_seed{s}"
+                    simulation.with_seed(candidate, s),
+                    steps,
+                    references,
+                    work,
+                    f"{tag}_seed{s}",
                 )
             combined = combine_seed_scores({s: r["scores"] for s, r in per_seed.items()})
             entry = {

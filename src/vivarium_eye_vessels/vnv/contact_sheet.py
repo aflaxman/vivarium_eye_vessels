@@ -34,12 +34,8 @@ PERFUSION_TARGET = 0.95  # a seed counts as reliable at or above this
 
 def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     """Run one seed and return its superficial raster and reliability vitals."""
-    candidate = yaml.safe_load(yaml.safe_dump(spec))
-    candidate["configuration"]["randomness"]["random_seed"] = seed
     spec_path = workdir / f"contact_seed{seed}.yaml"
-    with open(spec_path, "w") as f:
-        yaml.safe_dump(candidate, f)
-    sim = simulation.build_headless_simulation(spec_path)
+    sim = simulation.build_from_spec(simulation.with_seed(spec, seed), spec_path)
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
     simulation.run_steps(sim, steps)

@@ -650,8 +650,7 @@ class PathSplitter(Component):
             to_consider = self.randomness.filter_for_probability(
                 active.index, self.split_probabilities(active)
             )
-            not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
-            to_split = self.uncrowded(pop, to_consider[not_too_deep])
+            to_split = self.eligible(pop, to_consider)
             if not to_split.empty:
                 updates.extend(self.split_unfrozen(pop, to_split) or [])
 
@@ -674,18 +673,23 @@ class PathSplitter(Component):
             to_consider = self.randomness.filter_for_probability(
                 candidates.index, 0.01, f"active_empty_{vessel_type}"
             )
-            not_too_deep = pop.loc[to_consider, "depth"] < self.config.max_depth
-            to_split = self.uncrowded(pop, to_consider[not_too_deep])
+            to_split = self.eligible(pop, to_consider)
             if n_active > 0:
                 to_split = to_split[: floor - n_active]
             if not to_split.empty:
                 updates.extend(self.split_frozen(pop, to_split) or [])
 
-        if updates:
-            # Combine all updates with consistent dtypes
-            all_updates = pd.concat(updates, axis=0)
+        self.commit(updates)
 
-            self.particles.update_particles(all_updates)
+    def eligible(self, pop: pd.DataFrame, candidates: pd.Index) -> pd.Index:
+        """Split candidates below the depth ceiling and past the crowding gate."""
+        not_too_deep = pop.loc[candidates, "depth"].to_numpy() < self.config.max_depth
+        return self.uncrowded(pop, candidates[not_too_deep])
+
+    def commit(self, updates: list) -> None:
+        """Write a batch of split updates through Particle3D."""
+        if updates:
+            self.particles.update_particles(pd.concat(updates, axis=0))
 
     def side_branch_flow_now(self) -> float:
         """The comb mode's flow fraction, zero before its start time."""
@@ -729,15 +733,9 @@ class PathSplitter(Component):
         ninth pass found, seeds cascades in healthy regions doing so).
         Respects the depth ceiling and the crowding gate.
         """
-        if to_split.empty:
-            return
-        not_too_deep = pop.loc[to_split, "depth"] < self.config.max_depth
-        to_split = self.uncrowded(pop, to_split[not_too_deep.to_numpy()])
-        if to_split.empty:
-            return
-        updates = self.split_frozen(pop, to_split) or []
-        if updates:
-            self.particles.update_particles(pd.concat(updates, axis=0))
+        to_split = self.eligible(pop, to_split)
+        if not to_split.empty:
+            self.commit(self.split_frozen(pop, to_split) or [])
 
     def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
         """Per-tip split probability, reduced for wide-caliber tips.

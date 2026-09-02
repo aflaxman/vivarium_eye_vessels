@@ -500,24 +500,36 @@ class PerfusionDemand(BaseForceComponent):
             semi_axes = np.ones(3)
         self.sites = generate_demand_sites(semi_axes, float(config.site_spacing))
 
-    def hypoxic_sites(
-        self, vessel_type: int | None = None, visible_only: bool = True
-    ) -> np.ndarray:
-        """Demand sites farther than perfusion_radius from any (typed) vessel.
+    def vessel_distances(
+        self, points: np.ndarray, vessel_type: int | None = None
+    ) -> np.ndarray | None:
+        """Distance from each point to the nearest frozen (typed) vessel.
 
-        With ``vessel_type`` given, only frozen vessels of that type count as
-        perfusing; with None, any frozen vessel does. When a DevelopmentalWave
-        is present, only the sites its front currently exposes are returned,
-        unless ``visible_only`` is False (the whole hypoxic field).
+        With ``vessel_type`` given, only frozen vessels of that type count;
+        with None, any frozen vessel does. None before any such vessel exists.
         """
         frozen = self.freezer.frozen_particles()
         if frozen is not None and vessel_type is not None:
             frozen = frozen[frozen.vessel_type == vessel_type]
         if frozen is None or frozen.empty:
+            return None
+        tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
+        distances, _ = tree.query(points, k=1)
+        return distances
+
+    def hypoxic_sites(
+        self, vessel_type: int | None = None, visible_only: bool = True
+    ) -> np.ndarray:
+        """Demand sites farther than perfusion_radius from any (typed) vessel.
+
+        When a DevelopmentalWave is present, only the sites its front
+        currently exposes are returned, unless ``visible_only`` is False (the
+        whole hypoxic field).
+        """
+        distances = self.vessel_distances(self.sites, vessel_type)
+        if distances is None:
             hypoxic = self.sites
         else:
-            tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
-            distances, _ = tree.query(self.sites, k=1)
             hypoxic = self.sites[distances > self.perfusion_radius]
         if visible_only and self.wave is not None:
             hypoxic = self.wave.visible(hypoxic)
@@ -555,7 +567,6 @@ class PerfusionDemand(BaseForceComponent):
         # Chemotaxis is a capillary-sprout behavior: attenuate the pull on
         # wide tips so trunks and side branches hold their heading
         if self.caliber_exponent > 0:
-            radii = particles["radius"].to_numpy(dtype=float)
             attenuation = np.where(
                 radii > self.caliber_reference,
                 (self.caliber_reference / np.maximum(radii, 1e-12)) ** self.caliber_exponent,
@@ -621,8 +632,7 @@ class DevelopmentalWave(Component):
         self.center = np.array(
             builder.configuration.particles.initial_circle.center, dtype=float
         )
-        self.hold_steps: Dict[int, int] = {}
-        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+        self.hold_steps: Dict[int | None, int] = {}
         demands = builder.components.get_components_by_type(PerfusionDemand)
         self.demand = demands[0] if demands else None
         splitters = builder.components.get_components_by_type(PathSplitter)
@@ -630,12 +640,15 @@ class DevelopmentalWave(Component):
         if self.enabled and self.demand is None:
             raise ValueError("DevelopmentalWave requires a PerfusionDemand component")
 
+    def disc_distance(self, points: np.ndarray) -> np.ndarray:
+        """Distance of each point from the optic disc, the wave's origin."""
+        return np.linalg.norm(points - self.center, axis=1)
+
     def visible(self, sites: np.ndarray) -> np.ndarray:
         """The demand sites the current front exposes to growth tips."""
         if not self.enabled or len(sites) == 0:
             return sites
-        distances = np.linalg.norm(sites - self.center, axis=1)
-        return sites[distances <= self.radius + float(self.config.lookahead)]
+        return sites[self.disc_distance(sites) <= self.radius + float(self.config.lookahead)]
 
     def served_fraction(self, vessel_type: int | None) -> float:
         """Fraction of demand sites inside the front perfused by this tree.
@@ -644,16 +657,12 @@ class DevelopmentalWave(Component):
         advance rule).
         """
         sites = self.demand.sites
-        inside = sites[np.linalg.norm(sites - self.center, axis=1) <= self.radius]
+        inside = sites[self.disc_distance(sites) <= self.radius]
         if len(inside) == 0:
             return 1.0
-        frozen = self.freezer.frozen_particles()
-        if frozen is not None and vessel_type is not None:
-            frozen = frozen[frozen.vessel_type == vessel_type]
-        if frozen is None or frozen.empty:
+        distances = self.demand.vessel_distances(inside, vessel_type)
+        if distances is None:
             return 0.0
-        tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
-        distances, _ = tree.query(inside, k=1)
         return float((distances <= self.demand.perfusion_radius).mean())
 
     def on_time_step(self, event: Event) -> None:

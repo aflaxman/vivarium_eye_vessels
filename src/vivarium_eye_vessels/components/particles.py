@@ -488,7 +488,12 @@ class PathFreezer(Component):
 
 
 class PathExtinction(Component):
-    """Component for controlling extinction of active paths based force."""
+    """Component for controlling extinction of active paths based force.
+
+    The per-tip threshold is the ``particle.extinction_threshold`` value
+    pipeline (base ``force_threshold``), so other components can modify it —
+    PerfusionDemand raises it for tips in hypoxic tissue.
+    """
 
     CONFIGURATION_DEFAULTS = {
         "path_extinction": {
@@ -502,7 +507,7 @@ class PathExtinction(Component):
 
     def setup(self, builder: Builder) -> None:
         self.config = builder.configuration.path_extinction
-        self.force_threshold = self.config.force_threshold
+        self.force_threshold = float(self.config.force_threshold)
         self.clock = builder.time.clock()
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
@@ -511,6 +516,10 @@ class PathExtinction(Component):
         self.force_x = builder.value.get_value("particle.force.x")
         self.force_y = builder.value.get_value("particle.force.y")
         self.force_z = builder.value.get_value("particle.force.z")
+        self.threshold = builder.value.register_value_producer(
+            "particle.extinction_threshold",
+            source=lambda index: pd.Series(self.force_threshold, index=index),
+        )
 
     def on_time_step(self, event: Event) -> None:
         pop = self.population_view.get(event.index, self.required_attributes)
@@ -520,7 +529,7 @@ class PathExtinction(Component):
             return
 
         force_values = self.force_magnitude(active.index)
-        to_freeze = active[force_values > self.force_threshold]
+        to_freeze = active[force_values > self.threshold(active.index)]
 
         if not to_freeze.empty:
             updates = pd.DataFrame(

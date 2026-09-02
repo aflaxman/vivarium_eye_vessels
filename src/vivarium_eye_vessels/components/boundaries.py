@@ -470,6 +470,13 @@ class PerfusionDemand(BaseForceComponent):
             # the legacy caliber-blind attraction
             "caliber_reference": 0.004,
             "caliber_exponent": 0.0,
+            # Hypoxia is a survival signal as well as a chemoattractant: tips
+            # within perfusion_radius of a hypoxic site (of their own type)
+            # tolerate this multiple of the extinction force threshold. A
+            # sprout born beside a dense frozen frontier is otherwise pushed
+            # over the threshold by that frontier's repulsion before it can
+            # escape into the tissue that recruited it. 1.0 = legacy
+            "survival_factor": 1.0,
         }
     }
 
@@ -489,9 +496,15 @@ class PerfusionDemand(BaseForceComponent):
         self.magnitude = float(config.magnitude)
         self.caliber_reference = float(config.caliber_reference)
         self.caliber_exponent = float(config.caliber_exponent)
+        self.survival_factor = float(config.survival_factor)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
         waves = builder.components.get_components_by_type(DevelopmentalWave)
         self.wave = waves[0] if waves else None
+        builder.value.register_value_modifier(
+            "particle.extinction_threshold",
+            modifier=self.survival_relief,
+            required_resources=self.required_attributes,
+        )
 
         if "ellipsoid_containment" in builder.components.list_components():
             ellipsoid = builder.configuration.ellipsoid_containment
@@ -534,6 +547,28 @@ class PerfusionDemand(BaseForceComponent):
         if visible_only and self.wave is not None:
             hypoxic = self.wave.visible(hypoxic)
         return hypoxic
+
+    def in_hypoxic_tissue(self, tips: pd.DataFrame) -> np.ndarray:
+        """Mask of tips within perfusion_radius of a hypoxic site of their type."""
+        positions = tips[["x", "y", "z"]].to_numpy(dtype=float)
+        tip_types = tips["vessel_type"].to_numpy()
+        hypoxic = np.zeros(len(tips), dtype=bool)
+        for vessel_type in np.unique(tip_types):
+            sites = self.hypoxic_sites(int(vessel_type) if vessel_type > 0 else None)
+            if len(sites) == 0:
+                continue
+            selected = tip_types == vessel_type
+            distances, _ = cKDTree(sites).query(positions[selected], k=1)
+            hypoxic[selected] = distances <= self.perfusion_radius
+        return hypoxic
+
+    def survival_relief(self, index: pd.Index, thresholds: pd.Series) -> pd.Series:
+        """Raise the extinction threshold for tips sitting in hypoxic tissue."""
+        if self.survival_factor == 1.0 or index.empty:
+            return thresholds
+        tips = self.population_view.get(index, ["x", "y", "z", "vessel_type"])
+        relieved = self.in_hypoxic_tissue(tips)
+        return thresholds.where(~relieved, thresholds * self.survival_factor)
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
         tips = particles[["x", "y", "z"]].to_numpy(dtype=float)

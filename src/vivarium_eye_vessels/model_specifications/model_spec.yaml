@@ -167,6 +167,10 @@ configuration:
         influence_radius: 2.0    # Hypoxic sites recruit growth tips within this distance
         magnitude: 0.35          # Attraction strength, below the extinction threshold
                                  # (vnv_calibrate fit)
+        survival_factor: 1.0     # Hypoxia as a survival signal: tips within
+                                 # perfusion_radius of unserved tissue tolerate this
+                                 # multiple of the extinction force threshold
+                                 # (1.0 = off; roadmap twelfth pass)
 
     # Closed-loop growth front (roadmap tenth pass): demand is exposed as an
     # expanding wave from the disc that advances only while the tissue behind

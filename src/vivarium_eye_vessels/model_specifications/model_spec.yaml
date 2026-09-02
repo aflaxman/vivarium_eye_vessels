@@ -83,6 +83,20 @@ configuration:
                                        # comb spacing along the arcades
                                        # (vnv_calibrate: sim 26px vs HRF 22.7px;
                                        # 0.8 packs tighter but collapses seed 7)
+        # Growth-reliability mechanisms (roadmap ninth pass), both OFF: every
+        # configuration that improved the calibration seeds hurt held-out
+        # seeds -- the growth front is near-critical, and these knobs
+        # reshuffle which seeds fill rather than making every seed viable
+        # (docs/vnv/contact_sheet.png tracks held-out reliability)
+        crowding_radius: 0.06   # Neighborhood for the crowding gate
+        max_crowding: 0         # Skip splits at tips with this many frozen
+                                # neighbors (comb teeth exempt); 0 = no gate
+        min_active_tips: 1      # Re-sprout when a tree's front thins below this;
+                                # 1 = legacy re-sprout only at total extinction
+        resprout_established_size: 200  # The tip floor only applies once a tree
+                                        # has this many frozen particles (a real
+                                        # front to lose); early on, few tips is
+                                        # the natural state
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
@@ -111,6 +125,13 @@ configuration:
         adaptation_deadband: 2.0   # Segments within 2x of their tree's median shear
                                    # keep their born caliber instead of being ground
                                    # toward the cap (multi-seed caliber-profile fit)
+        balanced_arterial_inflow: false  # Split total arterial inflow equally across
+                                         # the artery roots (current sources) so no
+                                         # arcade can starve its siblings. Physically
+                                         # right (unit-tested) but off by default:
+                                         # multi-seed evaluation shows it feeds flow
+                                         # into stalled fragments on collapse-prone
+                                         # seeds, worsening their score
 
     # Stratified plexuses: superficial arcades, capillary-only deeper layers
     # connected by diving vessels

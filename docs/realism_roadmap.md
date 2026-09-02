@@ -498,6 +498,48 @@ near-critical growth model. The three stabilizer knobs stay in the
 code, default-legacy and unit-tested, for that work and for disease
 phenotypes.
 
+*Ninth pass (growth reliability — a negative result, caught by the new
+held-out artifact)*: a field study on four fresh seeds (11/202/909/4242,
+none used in calibration) confirmed the percolation prediction — two of
+four networks stalled mid-growth. Three candidate fixes from the eighth
+pass's list were implemented and unit-tested: a **crowding gate**
+(`max_crowding` within `crowding_radius`) that skips dichotomous splits
+into saturated space — the immediate-death daughters whose extinction
+cascade collapses marginal seeds — with comb teeth exempt, since a
+trunk's own frozen trail dominates its neighbor count and the ungated
+version wiped out the combs (arcade spacing 55 px vs the 22.7 px
+target); an **established self-healing front** (`min_active_tips` gated
+by `resprout_established_size`) that re-sprouts a thinning front from
+frozen vessels once a tree has a real front to lose (an ungated floor
+tops up at the start, crowds the disc, and cost the fit seed 3x); and
+**balanced arterial inflow** (`flow_remodeler.balanced_arterial_inflow`:
+inject equal flow at each artery root instead of fixing root pressures,
+so no arcade starves its siblings — the rich-get-richer failure). An
+ten-config sweep found a pair (gate 30 + floor 8 established at 200)
+that improved the 3-seed calibration mean 581.4 → 431.8 with no
+calibration seed worse — and the new held-out contact sheet then showed
+reliability falling from 2/4 seeds ≥95% perfused to 0/4. Attribution
+probes pinned each harm: the tip floor alone drops seed 11 from 0.996
+to 0.76 perfused and seed 4242 from 0.928 to 0.54 (re-sprouted tips
+near frozen mass seed the very cascades they were meant to heal); the
+gate at 30 drops seed 202 from 0.987 to 0.79, and it cannot be tuned
+around — healthy interiors run 30–44 frozen neighbors within 0.06
+(p90–max), pathological pile-ups no higher, so any gate low enough to
+fire also caps normal filling, and a gate of 60 never fires at all
+(bit-for-bit identical runs). Balance was rejected separately: on
+collapse-prone seeds it feeds flow into stalled fragments (gate+floor
+mean 504.9 → 673.6 with it on). Everything therefore ships default-off,
+and the conclusion sharpens the eighth pass's: per-seed outcomes near
+the critical point are chaotic, and per-tip local rules reshuffle which
+seeds fill rather than making every seed viable. The still-promising
+directions are the non-local ones — growth in waves (control the
+front's advance rate globally) or accepting per-seed retries. What the
+pass does ship enabled is measurement: `vnv_contact_sheet` renders the
+four held-out seeds beside HRF masks with a [STALLED] stamp and records
+the reliability fraction in `contact_sheet.json`, so this problem is
+tracked across versions instead of rediscovered — it is exactly what
+caught the non-generalization above.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -518,14 +560,25 @@ harness under `vivarium_eye_vessels.vnv`:
   steps/second) so speed regressions surface alongside the network metrics;
   compare runtimes only within the same machine, and expect them to scale
   with network size.
+- `vnv_contact_sheet` runs the model on held-out seeds (defaults: 11, 202,
+  909, 4242 — none used in calibration) and renders each superficial network
+  beside expert-labeled HRF masks in the same style, stamping every
+  simulation panel with its reliability vitals (perfused fraction, skeleton
+  density) and a `[STALLED]` flag when perfusion misses 95%. One healthy
+  retina looks much like another, so a realistic model must produce a usable
+  network on *every* seed, not just the calibration seeds;
+  `contact_sheet.json` records the per-seed vitals and the seed-reliability
+  fraction so this is tracked across versions like every other metric.
 
 The current model's outputs live in the single `docs/vnv/` folder
-(`growth.gif`, `comparison.png`, `metrics.json`). After implementing a
-change, regenerate them in place with:
+(`growth.gif`, `comparison.png`, `metrics.json`, `contact_sheet.png`,
+`contact_sheet.json`). After implementing a change, regenerate them in place
+with:
 
 ```bash
 vnv_growth_gif src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 vnv_compare src/vivarium_eye_vessels/model_specifications/model_spec.yaml
+vnv_contact_sheet src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 ```
 
 (both default to writing into `docs/vnv/`; keep `--steps` at its default of

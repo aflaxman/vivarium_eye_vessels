@@ -1,0 +1,37 @@
+{
+  "seeds": [
+    {
+      "seed": 11,
+      "perfused_fraction": 0.9960031974420464,
+      "skeleton_density": 0.015254974365234375,
+      "n_frozen": 18029
+    },
+    {
+      "seed": 202,
+      "perfused_fraction": 0.9872102318145484,
+      "skeleton_density": 0.012103080749511719,
+      "n_frozen": 20390
+    },
+    {
+      "seed": 909,
+      "perfused_fraction": 0.39728217426059154,
+      "skeleton_density": 0.0025272369384765625,
+      "n_frozen": 2337
+    },
+    {
+      "seed": 4242,
+      "perfused_fraction": 0.9280575539568345,
+      "skeleton_density": 0.0033731460571289062,
+      "n_frozen": 6780
+    }
+  ],
+  "perfusion_target": 0.95,
+  "seed_reliability": 0.5,
+  "steps": 800,
+  "masks": [
+    "03_h.tif",
+    "06_h.tif",
+    "09_h.tif",
+    "14_h.tif"
+  ]
+}

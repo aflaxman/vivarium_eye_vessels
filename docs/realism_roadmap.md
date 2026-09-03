@@ -727,6 +727,9 @@ harness under `vivarium_eye_vessels.vnv`:
   metrics on expert-labeled vessel masks from the public HRF dataset
   (downloaded on first use), and writes a side-by-side diagnostic figure
   plus a `metrics.json` for quantitative tracking across model versions.
+  The simulation panel shows a fundus-sized central window of the raster at
+  the HRF working image's pixel extent (calibers are matched in pixels, so
+  this is the like-for-like magnification), with the full field as an inset.
   `metrics.json` also records wall-clock runtime (setup, simulation,
   steps/second) so speed regressions surface alongside the network metrics;
   compare runtimes only within the same machine, and expect them to scale

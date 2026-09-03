@@ -1,13 +1,13 @@
 {
-  "generated": "2026-09-03T03:34:09",
+  "generated": "2026-09-03T04:39:58",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
   "has_calibers": true,
   "runtime": {
-    "setup_seconds": 0.26,
-    "simulation_seconds": 942.58,
-    "steps_per_second": 0.85
+    "setup_seconds": 0.23,
+    "simulation_seconds": 792.5,
+    "steps_per_second": 1.01
   },
   "simulation": {
     "n_particles": 36500,

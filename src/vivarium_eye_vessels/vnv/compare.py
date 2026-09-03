@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
 from skimage.morphology import dilation, disk, skeletonize
 
 from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
@@ -157,6 +158,23 @@ def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(output_path, dpi=110, facecolor="white")
     plt.close(fig)
+
+
+def fundus_window(
+    raster: np.ndarray, reference_shape: tuple[int, int]
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Central crop of ``raster`` with the pixel extent of a reference image.
+
+    Returns the crop and its (row0, col0, rows, cols) placement. Because the
+    simulation is rasterized at the same pixels-per-caliber scale as the HRF
+    masks, a window the size of the HRF working image shows the two at the
+    same magnification and aspect.
+    """
+    rows = min(reference_shape[0], raster.shape[0])
+    cols = min(reference_shape[1], raster.shape[1])
+    row0 = (raster.shape[0] - rows) // 2
+    col0 = (raster.shape[1] - cols) // 2
+    return raster[row0 : row0 + rows, col0 : col0 + cols], (row0, col0, rows, cols)
 
 
 def plexus_metrics(pop, edges, layer_z) -> dict:
@@ -349,18 +367,31 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     ax = axes[0, 0]
     sim_display = sim_raster if has_calibers else displayable(sim_raster)
-    sim_panel_title = (
-        "Simulation: superficial network with calibers (x–y)"
-        if has_calibers
-        else "Simulation: rasterized superficial network (x–y)"
+    # Calibers are matched to HRF in pixels, so a window of the simulation
+    # raster with the HRF working image's pixel extent is the like-for-like
+    # view: same magnification and aspect, the ellipse's empty corners
+    # trimmed, and the disc landing where fundus photographs place it
+    window, (row0, col0, rows, cols) = fundus_window(sim_display, example_binary.shape)
+    ax.imshow(~window, cmap="gray", interpolation="nearest")
+    ax.set_title(
+        "Simulation: superficial network, fundus-sized window at HRF pixel scale",
+        color=INK,
+        fontsize=10,
     )
-    ax.imshow(~sim_display, cmap="gray", interpolation="nearest")
-    ax.set_title(sim_panel_title, color=INK, fontsize=10)
     for spine in ax.spines.values():
         spine.set_color(SIM_COLOR)
         spine.set_linewidth(2)
     ax.set_xticks([])
     ax.set_yticks([])
+    inset = ax.inset_axes([0.02, 0.02, 0.26, 0.26])
+    inset.imshow(~sim_display, cmap="gray", interpolation="nearest")
+    inset.add_patch(
+        Rectangle((col0, row0), cols, rows, fill=False, edgecolor=SIM_COLOR, linewidth=1.2)
+    )
+    inset.set_xticks([])
+    inset.set_yticks([])
+    for spine in inset.spines.values():
+        spine.set_color(MUTED)
 
     ax = axes[0, 1]
     ax.imshow(~example_binary, cmap="gray", interpolation="nearest")

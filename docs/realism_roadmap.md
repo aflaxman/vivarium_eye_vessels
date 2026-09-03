@@ -711,6 +711,42 @@ pointing at was right — the outcome is decided early — but the cause
 was not a parameter at all; it was a labeling convention that turned a
 vessel's own trail into its repulsor.
 
+*Fourteenth pass (a bug hunt, and what it says about the measurements)*:
+finding the seed lottery in a labeling convention rather than a
+parameter prompted a systematic audit — parallel agents over the growth
+components, the force/flow/plexus components, and the V&V measurement
+code, each hunting the same species (labels that silently change
+physics, destructive writes, stale reads, sim-vs-real measurement
+mismatch). The growth audit found four more bugs, all fixed and
+unit-tested: a **free-pool double-claim** where the active-split and
+re-sprout phases wrote new branches to overlapping particle slots and
+the later silently overwrote the earlier (the same destructive-write
+species as the freezer bug, firing in the tree-collapse state); a
+**shared sprout path id** (re-sprouts never advanced the id counter, so
+unrelated vessels were mutually exempt from repulsion — the same
+label-decides-physics species as the split relabeling); **out-of-plane
+splits** (the rotation axis tilted daughters into z for x-heading tips,
+where the terminal-velocity clamp stalled them, ~43% of tips affected);
+and a **dropped OU state** at freezer handoff (capping the tortuosity
+persistence time). The healthy model came out more robust — the 3-seed
+mean held (67.2 → 64.8) while the per-seed spread tightened (44–111 →
+57–69), held-out reliability stayed 4/4. The force/flow/plexus audit
+cleared the suspected prune-orphans-a-tip hazard (zero occurrences over
+15,871 prunes) and left minor latent notes (a dormant force-cache
+staleness, a soft-core disc repulsion whose magnitude rises with
+distance). The measurement audit is the consequential one: it found
+that **roughly half the calibration score is measurement artifact, not
+model error** — the simulation's density is computed over the
+ellipsoid's bounding box (whose corners are ~22% empty by construction)
+while the HRF frame is nearly filled, and the HRF masks are binarized
+with a threshold that thickens real vessels ~28% while the simulation is
+rasterized crisp, so the caliber and composition terms agree partly by
+cancellation. Measuring both sides on a common field of view and a
+common binarization would collapse the area-density gap from 38% to 8%
+and re-baseline most of the distributional targets. That re-baselining
+is a deliberate, judgment-heavy change to the calibration foundation and
+is tracked as its own follow-up rather than folded into the bug fixes.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

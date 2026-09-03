@@ -114,21 +114,27 @@ def test_caliber_stiffness_straightens_wide_paths():
     assert arcade_tortuosity(1.5) < arcade_tortuosity(0.0)
 
 
-def test_persistence_reduces_tortuosity():
-    """Longer steering memory means straighter vessels.
+def test_persistence_makes_curvature_coherent():
+    """Longer steering memory turns step-scale jitter into coherent arcs.
 
-    Deterministic seeds make this an exact comparison, not a statistical one.
+    The steering's stationary spread is fixed, so persistence does not
+    straighten vessels: consecutive turns share a sign (the lag-1 turning
+    autocorrelation rises) and the coherent curvature raises path
+    tortuosity -- the pathology dial of roadmap idea 7. Deterministic seeds
+    make this an exact comparison, not a statistical one.
     """
 
-    def median_tortuosity(persistence_time: float) -> float:
+    def chain_statistics(persistence_time: float) -> tuple[float, float]:
         sim = make_simulation(persistence_time)
         simulation.run_steps(sim, 250)
         pop = sim.get_population(["x", "y", "z", "frozen", "path_id", "parent_id", "depth"])
         assert pop.frozen.sum() > 100, "network failed to grow"
-        ratios = metrics.path_tortuosity(pop)
-        assert len(ratios) > 0
-        return float(np.median(ratios))
+        coherence = metrics.path_turning_coherence(pop)
+        tortuosity = metrics.path_tortuosity(pop)
+        assert len(coherence) > 0 and len(tortuosity) > 0
+        return float(np.median(coherence)), float(np.median(tortuosity))
 
-    wiggly = median_tortuosity(0.05)  # correlation time of a single step
-    smooth = median_tortuosity(2.0)
-    assert smooth < wiggly
+    wiggly_coherence, wiggly_tortuosity = chain_statistics(0.05)  # one-step memory
+    smooth_coherence, smooth_tortuosity = chain_statistics(2.0)
+    assert smooth_coherence > wiggly_coherence
+    assert smooth_tortuosity > wiggly_tortuosity

@@ -427,14 +427,13 @@ def tree_segment_lengths(pop: pd.DataFrame) -> np.ndarray:
     return np.array(lengths)
 
 
-def path_tortuosity(pop: pd.DataFrame) -> np.ndarray:
-    """Arc-length over chord-length for each root-to-leaf chain of a path.
+def path_chains(pop: pd.DataFrame):
+    """Yield the root-to-leaf coordinate array of every chain of a path.
 
     A ``path_id`` group is a chain of particles linked by ``parent_id``
     (occasionally two chains, since sibling branches from one split share a
     path id); each leaf is walked back to the group's root.
     """
-    ratios = []
     on_path = pop[pop.path_id >= 0]
     for _, group in on_path.groupby("path_id"):
         members = set(group.index)
@@ -448,15 +447,40 @@ def path_tortuosity(pop: pd.DataFrame) -> np.ndarray:
                     chain.append(parent)
                 else:
                     break
-            if len(chain) < 3:
-                continue
-            points = group.loc[chain, ["x", "y", "z"]].values
-            steps = np.linalg.norm(np.diff(points, axis=0), axis=1)
-            arc = steps.sum()
-            chord = np.linalg.norm(points[-1] - points[0])
-            if chord > 1e-12:
-                ratios.append(arc / chord)
+            yield group.loc[chain[::-1], ["x", "y", "z"]].to_numpy(dtype=float)
+
+
+def path_tortuosity(pop: pd.DataFrame) -> np.ndarray:
+    """Arc-length over chord-length for each root-to-leaf chain of a path."""
+    ratios = []
+    for points in path_chains(pop):
+        if len(points) < 3:
+            continue
+        arc = np.linalg.norm(np.diff(points, axis=0), axis=1).sum()
+        chord = np.linalg.norm(points[-1] - points[0])
+        if chord > 1e-12:
+            ratios.append(arc / chord)
     return np.array(ratios)
+
+
+def path_turning_coherence(pop: pd.DataFrame, min_turns: int = 6) -> np.ndarray:
+    """Lag-1 autocorrelation of the signed in-plane turning angle along each chain.
+
+    Consecutive turns of the same sign (an arc) score toward +1; turns that
+    flip sign at every node (jitter) score toward -1. This separates
+    coherent curvature from step-scale wiggle, which arc-over-chord alone
+    cannot, so it is the direct readout of the steering persistence
+    (roadmap idea 7). Chains with fewer than ``min_turns`` turns are skipped.
+    """
+    coherence = []
+    for points in path_chains(pop):
+        steps = np.diff(points[:, :2], axis=0)
+        headings = np.arctan2(steps[:, 1], steps[:, 0])
+        turns = np.angle(np.exp(1j * np.diff(headings)))
+        if len(turns) < min_turns or np.std(turns) < 1e-9:
+            continue  # too short, or constant curvature (autocorrelation undefined)
+        coherence.append(np.corrcoef(turns[:-1], turns[1:])[0, 1])
+    return np.array(coherence)
 
 
 #############

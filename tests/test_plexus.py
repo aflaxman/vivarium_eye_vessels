@@ -33,7 +33,10 @@ CONFIGURATION = {
         "overall_max_velocity_change": 0.2,
         "initial_velocity_range": [-0.2, 0.2],
         "terminal_velocity": 0.15,
-        "initial_circle": {"center": [1.0, 0.0, 0.0], "radius": 0.05, "n_vessels": 4},
+        # Roots start on the superficial plane, so the stratification test
+        # measures how well vessels hold their layer, not how fast the
+        # spring pulls an off-plane start onto it
+        "initial_circle": {"center": [1.0, 0.0, LAYER_Z[0]], "radius": 0.05, "n_vessels": 4},
         "root_radius": 0.02,
         "artery_caliber_ratio": 0.67,
     },

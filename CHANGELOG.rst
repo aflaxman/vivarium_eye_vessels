@@ -1,3 +1,58 @@
+**v0.23.0 - 09/03/26**
+
+ - Bug hunt: four PathSplitter/PathFreezer defects fixed
+
+   - A parallel-agent audit of the components, prompted by the seed
+     lottery, turned up four bugs of the same species as that one --
+     labels that silently change physics, and destructive writes that
+     lose vessels without a trace. All four are fixed and unit-tested
+     (``tests/test_split_pool.py``), and the healthy model is more
+     robust for it: the 3-seed calibration mean holds (67.2 -> 64.8)
+     while the per-seed spread tightens from 44-111 to 57-69, every
+     seed fully perfused
+   - **Free-pool double-claim (critical)**: ``split_paths`` carved the
+     free-particle pool once, then let the active-split phase, the
+     re-sprout phase, and the two vessel types within the re-sprout loop
+     all draw from the same snapshot. When two phases fired in one round
+     -- exactly the tree-collapse state the model fights -- they wrote
+     new branches to overlapping particle slots, and the later phase's
+     write silently overwrote the earlier's, amputating the healthy
+     tree's continuations mid-rescue. The pool is now carved
+     sequentially across every phase
+   - **Shared sprout path id**: ``split_frozen`` never advanced
+     ``next_path_id``, so every re-sprout in a round shared one path id
+     (and collided with the next split's minor daughter), exempting
+     unrelated vessels from ``FrozenRepulsion``'s same-path rule so they
+     grew through each other. Each sprout now gets a fresh id
+   - **Out-of-plane splits**: the split rotation axis (x_hat x heading)
+     tilted out of the plexus plane for tips heading along +/-x,
+     throwing daughters into z where the terminal-velocity clamp (z
+     weighted heavily by the thin ellipsoid) stalled them; ~43% of tips
+     were tilted more than 30 degrees. ``split_axis`` now rotates about
+     the plexus normal projected perpendicular to the heading, keeping
+     every split in-plane; identical to the old axis for in-plane tips
+   - **Dropped OU steering state**: ``PathFreezer`` continuations did
+     not carry ``wx/wy/wz``, capping the tortuosity persistence time
+     (roadmap idea 7) at the freeze interval regardless of the
+     configured value. Continuations now carry it; a no-op at the
+     shipped white-noise default
+   - Two existing tests held only because of the bugs and are restated:
+     ``test_persistence_makes_curvature_coherent`` (was
+     ``..._reduces_tortuosity``) asserts what roadmap idea 7 documents --
+     persistent steering of fixed spread produces coherent curvature (new
+     ``metrics.path_turning_coherence``, the lag-1 autocorrelation of the
+     signed turning angle: 0.09 -> 0.54) and *raises* path tortuosity
+     (1.010 -> 1.024); the old "straighter" assertion passed only while
+     the freezer reset the steering every three steps. The plexus
+     stratification test starts its roots on the
+     superficial plane, so it measures how well vessels hold their layer
+     rather than how fast the spring pulls an off-plane start onto it
+     (the in-plane split axis removed the incidental z kicks that had
+     been doing that job). In the shipped spec the intermediate and deep
+     plexuses stratify better after the fixes (median |z error| 0.022 ->
+     0.014 and 0.038 -> 0.034), the superficial slightly worse (0.011 ->
+     0.013)
+
 **v0.22.0 - 09/03/26**
 
  - Root trunks survive their first split: the seed lottery, found and

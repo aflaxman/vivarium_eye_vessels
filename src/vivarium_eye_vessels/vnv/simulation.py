@@ -87,6 +87,19 @@ def get_ellipsoid_semi_axes(sim: InteractiveContext) -> tuple[float, float, floa
         return 2.0, 2.0, 2.0
 
 
+def get_perfusion_params(sim: InteractiveContext) -> tuple[float, float]:
+    """The (site_spacing, perfusion_radius) the PerfusionDemand component runs with.
+
+    The perfused-fraction metric mirrors that component's site lattice, so
+    it must read the same numbers the model does rather than assume them.
+    """
+    try:
+        config = sim.configuration.perfusion_demand
+        return float(config.site_spacing), float(config.perfusion_radius)
+    except AttributeError:
+        return 0.1, 0.15
+
+
 def get_network(sim: InteractiveContext) -> pd.DataFrame:
     """Get the particle table attributes needed for network analysis."""
     return sim.get_population(TREE_ATTRIBUTES)

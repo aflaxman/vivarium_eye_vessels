@@ -1,3 +1,47 @@
+**v0.24.0 - 09/03/26**
+
+ - Re-baseline the V&V measurement: one pipeline for sim and HRF
+
+   - The V&V audit found that much of the calibration score was
+     measurement convention rather than model error. Every convention is
+     now applied identically to both sources (``vnv.metrics`` module
+     docstring): binarization is a majority vote (HRF block-average
+     threshold 0.1 -> 0.5; the simulation is drawn by the exact
+     pixel-center rule that is the limit of drawing fine and
+     majority-downsampling, replacing dilation by a rounded integer
+     radius); densities are per imaged pixel (convex hull of the vessel
+     pixels) rather than per frame pixel; the skeleton is pruned of spurs
+     shorter than a countable branch before anything is counted; branch
+     length is the arc length of the pixel chain (diagonal steps sqrt 2,
+     so a 45-degree line has tortuosity 1, not 0.71); box counting uses a
+     fixed 2-128 px box range instead of one derived from the frame
+   - The HRF-derived ``TARGETS`` are re-derived under the new conventions
+     and reproducible with ``vnv_calibrate --derive-targets``. The two KS
+     targets are now leave-one-out: target and scale are what one real
+     eye scores against the other fourteen pooled (log-length 0.052 +/-
+     0.028, caliber profile 0.049 +/- 0.029) instead of zero with a
+     judgment scale. Branch tortuosity is 1.075 +/- 0.003 (was 1.000, a
+     pixel-count artifact); capillary share 0.37 +/- 0.13 (was 0.065 --
+     half the HRF skeleton is 1 px wide once thin vessels are no longer
+     thickened); wide share 0.22 +/- 0.04 (was 0.345)
+   - ``compare.py`` scores through ``calibrate.scoring_stats`` instead of
+     its own copy of the statistics; ``image_stats`` measures a real mask
+     and a simulated raster with the same function; the perfusion lattice
+     parameters are read from the spec (``simulation.get_perfusion_params``)
+     rather than hard-coded in three places; the superficial plexus's own
+     perfused fraction and the imaged-region share are reported (unscored)
+   - Spec-seed score 57.0 -> 193.2, reported plainly and decomposed in the
+     roadmap's fifteenth pass: area density 19.1 -> 0.5 and fractal
+     dimension 7.9 -> 2.0 were measurement; the skeleton-density gap is
+     real (the field of view nets out); and the caliber profile now
+     carries 157 points -- the model's finest superficial vessels are 3 px
+     wide where half a real eye's skeleton is 1 px, which the old
+     threshold had hidden. That is the next modeling target
+   - New unit tests for every convention (majority raster widths,
+     sub-half-pixel vessels vanishing, majority binarization, hull
+     densities, spur pruning, diagonal tortuosity, padding-invariant
+     fractal dimension)
+
 **v0.23.0 - 09/03/26**
 
  - Bug hunt: four PathSplitter/PathFreezer defects fixed

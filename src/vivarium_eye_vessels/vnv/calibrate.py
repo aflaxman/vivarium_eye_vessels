@@ -13,6 +13,14 @@ Usage::
     vnv_calibrate src/vivarium_eye_vessels/model_specifications/model_spec.yaml \
         --budget 24 --log calibration_log.json
 
+The HRF-derived entries of ``TARGETS`` are reproducible: ``vnv_calibrate
+--derive-targets`` measures the 15 masks with the current
+:mod:`~vivarium_eye_vessels.vnv.metrics` conventions and prints the
+across-mask mean and sd of every image target, plus the leave-one-out
+spread of the two KS statistics (each eye against the pooled others),
+which is what a real eye scores and therefore the target and scale for
+the simulation. Re-run it whenever a measurement convention changes.
+
 The search is coordinate descent over ``SEARCH_SPACE``: one knob at a time,
 try the candidate values around the current setting, keep the best, move to
 the next knob, and repeat until the budget runs out or a full pass makes no
@@ -39,32 +47,41 @@ from scipy.stats import ks_2samp
 from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
 
 # (target, scale): score component is ((value - target) / scale) ** 2.
-# HRF-derived targets use the across-mask mean and sd; clinical targets use
-# literature values with a judgment scale; "one_sided" components only score
-# deviations in the bad direction.
+# HRF-derived targets use the across-mask mean and sd (``--derive-targets``
+# reprints them under the current measurement conventions); clinical targets
+# use literature values with a judgment scale; "one_sided" components only
+# score deviations in the bad direction.
 TARGETS = {
-    "skeleton_density": {"target": 0.0321, "scale": 0.0029},
-    "area_density": {"target": 0.1193, "scale": 0.0103},
-    "fractal_dimension": {"target": 1.3536, "scale": 0.0242},
-    "branch_tortuosity_median": {"target": 1.000, "scale": 0.02},
-    "ks_log_length": {"target": 0.0, "scale": 0.05, "one_sided": "above"},
-    "capillary_share": {"target": 0.0647, "scale": 0.05, "one_sided": "above"},
-    # HRF branches are 34.5% wide (>4 px); shares sum to 1, so scoring the
-    # capillary and wide shares also pins the mid (2-4 px) share
-    "wide_share": {"target": 0.345, "scale": 0.08},
+    "skeleton_density": {"target": 0.0373, "scale": 0.0031},
+    "area_density": {"target": 0.1080, "scale": 0.0098},
+    "fractal_dimension": {"target": 1.3489, "scale": 0.0229},
+    # Arc length over chord of skeleton branches (median). Real branches
+    # bend a little between junctions; a chord-straight network is as wrong
+    # as a meandering one
+    "branch_tortuosity_median": {"target": 1.0750, "scale": 0.0026},
+    # KS statistics: the target and scale are what a real eye scores against
+    # the pooled other eyes (leave-one-out mean and sd), one-sided because
+    # matching the pool more closely than a real eye does costs nothing
+    "ks_log_length": {"target": 0.0522, "scale": 0.0277, "one_sided": "above"},
+    # Diameter composition by branch count. Half the HRF skeleton runs in
+    # 1-px vessels, so the capillary share is large but varies widely
+    # between eyes (a knife-edge on whether a thin vessel is 1 or 2 px);
+    # shares sum to 1, so scoring the capillary and wide shares also pins
+    # the mid (2-4 px) share
+    "capillary_share": {"target": 0.3698, "scale": 0.1311},
+    "wide_share": {"target": 0.2223, "scale": 0.0388},
     # Real arcades run straight: the 90th-percentile tortuosity of wide
-    # (>4 px) branches is 1.11 across the HRF masks (sd 0.017). One-sided
-    # with a judgment scale: only meandering wide vessels are penalized
-    "wide_tortuosity_q90": {"target": 1.11, "scale": 0.05, "one_sided": "above"},
+    # (>4 px) branches. One-sided: only meandering wide vessels are penalized
+    "wide_tortuosity_q90": {"target": 1.0892, "scale": 0.0070, "one_sided": "above"},
     # Comb-like side branching: real arcades carry a branch point every
-    # ~23 px of wide (>4 px) skeleton (HRF across-mask mean 22.71, sd 1.77,
-    # counting connected junction clusters once)
-    "wide_junction_spacing_px": {"target": 22.71, "scale": 1.77},
+    # ~21 px of wide (>4 px) skeleton (connected junction clusters counted
+    # once, spurs pruned)
+    "wide_junction_spacing_px": {"target": 20.73, "scale": 1.97},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
     # "length x width" across the whole caliber range
-    "ks_caliber_profile": {"target": 0.0, "scale": 0.05, "one_sided": "above"},
+    "ks_caliber_profile": {"target": 0.0491, "scale": 0.0286, "one_sided": "above"},
     # Fundus-visible (superficial-tree) bifurcation geometry: healthy
     # arteriolar branch angles are unimodal around ~75-84 degrees; obtuse
     # (>100 degree) junctions are rare. Judgment scales from the literature
@@ -120,61 +137,41 @@ def calibration_score(stats: dict) -> dict:
     return scores
 
 
-def hrf_references() -> dict:
-    """Pooled HRF reference distributions for the distributional targets."""
-    lengths: list[float] = []
-    pixel_diameters: list[np.ndarray] = []
-    for path in reference_data.fetch_hrf_masks():
-        binary = metrics.binarize_mask(reference_data.load_mask(path))
-        lengths.extend(metrics.image_metrics(binary)["branch_length_px"])
-        pixel_diameters.append(metrics.skeleton_pixel_diameters(binary))
-    return {
-        "lengths": np.asarray(lengths, dtype=float),
-        "pixel_diameters": np.concatenate(pixel_diameters),
-    }
+HRF_IMAGE_TARGETS = (
+    "skeleton_density",
+    "area_density",
+    "fractal_dimension",
+    "branch_tortuosity_median",
+    "capillary_share",
+    "wide_share",
+    "wide_tortuosity_q90",
+    "wide_junction_spacing_px",
+)
 
 
-def pooled_hrf_lengths() -> np.ndarray:
-    return hrf_references()["lengths"]
+def image_stats(image: dict, references: dict | None = None) -> dict:
+    """The scored image statistics of one binary vessel image.
 
-
-def scoring_stats(pop, edges, bounds, semi_axes, references: dict | np.ndarray) -> dict:
-    """The scored summary statistics for one finished simulation."""
+    ``image`` is a :func:`~vivarium_eye_vessels.vnv.metrics.image_metrics`
+    result; with ``references`` (pooled HRF ``lengths`` and
+    ``pixel_diameters``) the two KS statistics are included. The same
+    function measures a simulated raster and a real mask, which is what
+    makes the HRF targets and the simulation's statistics comparable.
+    """
     from vivarium_eye_vessels.vnv.compare import stratify_by_diameter
 
-    if isinstance(references, np.ndarray):  # legacy callers passed lengths only
-        references = {"lengths": references, "pixel_diameters": np.array([])}
-    real_lengths = references["lengths"]
-
-    # Fundus photographs image the superficial vasculature; the deep
-    # capillary-only plexuses are essentially invisible to them (OCTA sees
-    # them instead), so the HRF comparison rasterizes layer 0 only
-    fundus = edges[edges.layer_id == 0]
-    raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
-    image = metrics.image_metrics(raster)
-    pixel_diameters = metrics.skeleton_pixel_diameters(raster)
     lengths = np.asarray(image["branch_length_px"], dtype=float)
-    strata = stratify_by_diameter(lengths, image["branch_diameter_px"])
     tortuosity = np.asarray(image["branch_tortuosity"], dtype=float)
     diameter = np.asarray(image["branch_diameter_px"], dtype=float)
+    pixel_diameters = np.asarray(image["pixel_diameter_px"], dtype=float)
+    strata = stratify_by_diameter(lengths, diameter)
     wide_tortuosity = tortuosity[diameter > 4.0]
-    # Bifurcation geometry is judged on the superficial tree, like the raster
-    angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
-    arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
-    veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
-    return {
+    stats = {
         "skeleton_density": image["skeleton_density"],
         "area_density": image["area_density"],
         "fractal_dimension": image["fractal_dimension"],
         "branch_tortuosity_median": (
-            float(np.median(image["branch_tortuosity"]))
-            if image["branch_tortuosity"]
-            else float("nan")
-        ),
-        "ks_log_length": (
-            float(ks_2samp(np.log10(lengths), np.log10(real_lengths)).statistic)
-            if len(lengths)
-            else float("nan")
+            float(np.median(tortuosity)) if len(tortuosity) else float("nan")
         ),
         "capillary_share": len(strata["diameter_le_2px"]) / max(len(lengths), 1),
         "wide_share": len(strata["diameter_gt_4px"]) / max(len(lengths), 1),
@@ -182,26 +179,124 @@ def scoring_stats(pop, edges, bounds, semi_axes, references: dict | np.ndarray) 
             float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
         ),
         "wide_junction_spacing_px": image["wide_junction_spacing_px"],
-        "ks_caliber_profile": (
+    }
+    if references is not None:
+        stats["ks_log_length"] = (
+            float(ks_2samp(np.log10(lengths), np.log10(references["lengths"])).statistic)
+            if len(lengths) and len(references["lengths"])
+            else float("nan")
+        )
+        stats["ks_caliber_profile"] = (
             float(ks_2samp(pixel_diameters, references["pixel_diameters"]).statistic)
             if len(pixel_diameters) and len(references["pixel_diameters"])
             else float("nan")
+        )
+    return stats
+
+
+def hrf_references() -> dict:
+    """HRF reference data: pooled distributions plus per-mask image metrics.
+
+    ``lengths`` and ``pixel_diameters`` pool the 15 masks for the KS
+    targets; ``per_mask`` keeps each mask's full
+    :func:`~vivarium_eye_vessels.vnv.metrics.image_metrics` result (with
+    its ``file`` name) for the per-mask statistics and figures.
+    """
+    per_mask = []
+    for path in reference_data.fetch_hrf_masks():
+        binary = metrics.binarize_mask(reference_data.load_mask(path))
+        image = metrics.image_metrics(binary)
+        image["file"] = path.name
+        per_mask.append(image)
+    return {
+        "lengths": np.concatenate(
+            [np.asarray(m["branch_length_px"], dtype=float) for m in per_mask]
         ),
-        "bifurcation_angle_median": (
-            float(np.median(angles)) if len(angles) else float("nan")
+        "pixel_diameters": np.concatenate(
+            [np.asarray(m["pixel_diameter_px"], dtype=float) for m in per_mask]
         ),
-        "bifurcation_obtuse_share": (
-            float((angles > 100).mean()) if len(angles) else float("nan")
-        ),
-        "artery_vein_caliber_ratio": (
-            float(arteries.radius.mean() / veins.radius.mean())
-            if len(arteries) and len(veins)
-            else float("nan")
-        ),
-        "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, 0.1, 0.15),
-        "n_frozen": int(pop.frozen.sum()),
-        "graph_cycles": metrics.graph_cycles(pop),
+        "per_mask": per_mask,
     }
+
+
+def derive_hrf_targets(references: dict) -> dict:
+    """Across-mask mean and sd of every HRF-derived target, under current conventions.
+
+    The KS entries are leave-one-out: each mask's statistic against the
+    other masks pooled, so the target is what a real eye scores.
+    """
+    per_mask = references["per_mask"]
+    table = {
+        name: np.array([image_stats(m)[name] for m in per_mask]) for name in HRF_IMAGE_TARGETS
+    }
+    loo_lengths, loo_diameters = [], []
+    for i, mask in enumerate(per_mask):
+        others = {
+            key: np.concatenate(
+                [np.asarray(m[field], dtype=float) for j, m in enumerate(per_mask) if j != i]
+            )
+            for key, field in (
+                ("lengths", "branch_length_px"),
+                ("pixel_diameters", "pixel_diameter_px"),
+            )
+        }
+        stats = image_stats(mask, others)
+        loo_lengths.append(stats["ks_log_length"])
+        loo_diameters.append(stats["ks_caliber_profile"])
+    table["ks_log_length"] = np.array(loo_lengths)
+    table["ks_caliber_profile"] = np.array(loo_diameters)
+    return {
+        name: {"target": float(np.mean(values)), "scale": float(np.std(values))}
+        for name, values in table.items()
+    }
+
+
+def scoring_stats(pop, edges, bounds, semi_axes, references: dict, perfusion) -> dict:
+    """The scored summary statistics for one finished simulation.
+
+    ``perfusion`` is the model's (site_spacing, perfusion_radius); see
+    :func:`~vivarium_eye_vessels.vnv.simulation.get_perfusion_params`.
+    Besides the scored entries, the result carries a few unscored vitals
+    (frozen count, loops, the imaged-region share of the frame, and the
+    perfusion the superficial plexus alone would deliver).
+    """
+    # Fundus photographs image the superficial vasculature; the deep
+    # capillary-only plexuses are essentially invisible to them (OCTA sees
+    # them instead), so the HRF comparison rasterizes layer 0 only
+    fundus = edges[edges.layer_id == 0]
+    raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
+    image = metrics.image_metrics(raster)
+    stats = image_stats(image, references)
+    # Bifurcation geometry is judged on the superficial tree, like the raster.
+    # Angles are measured in 3D on the tree; the plexus is nearly planar, so
+    # they agree with the fundus (x-y) projection the literature reports
+    angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
+    arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
+    veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
+    superficial = pop[pop.layer_id == 0]
+    stats.update(
+        {
+            "bifurcation_angle_median": (
+                float(np.median(angles)) if len(angles) else float("nan")
+            ),
+            "bifurcation_obtuse_share": (
+                float((angles > 100).mean()) if len(angles) else float("nan")
+            ),
+            "artery_vein_caliber_ratio": (
+                float(arteries.radius.mean() / veins.radius.mean())
+                if len(arteries) and len(veins)
+                else float("nan")
+            ),
+            "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, *perfusion),
+            "superficial_perfused_fraction": metrics.perfused_fraction(
+                superficial, semi_axes, *perfusion
+            ),
+            "fov_fraction": image["fov_fraction"],
+            "n_frozen": int(pop.frozen.sum()),
+            "graph_cycles": metrics.graph_cycles(pop),
+        }
+    )
+    return stats
 
 
 def apply_overrides(spec: dict, overrides: dict) -> dict:
@@ -211,17 +306,16 @@ def apply_overrides(spec: dict, overrides: dict) -> dict:
     return candidate
 
 
-def evaluate_spec(
-    spec: dict, steps: int, references: dict | np.ndarray, workdir: Path, tag: str
-) -> dict:
+def evaluate_spec(spec: dict, steps: int, references: dict, workdir: Path, tag: str) -> dict:
     """Run one candidate spec to completion and score it."""
     sim = simulation.build_from_spec(spec, workdir / f"candidate_{tag}.yaml")
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
+    perfusion = simulation.get_perfusion_params(sim)
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
-    stats = scoring_stats(pop, edges, bounds, semi_axes, references)
+    stats = scoring_stats(pop, edges, bounds, semi_axes, references, perfusion)
     return {"stats": stats, "scores": calibration_score(stats)}
 
 
@@ -293,8 +387,34 @@ def combine_seed_scores(per_seed: dict) -> dict:
     type=click.Path(),
     help="Scratch directory for candidate specs (not for committing).",
 )
-def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, workdir: str):
+@click.option(
+    "--derive-targets",
+    is_flag=True,
+    help="Print the HRF-derived TARGETS (mean/sd across masks) under the "
+    "current measurement conventions and exit, without simulating.",
+)
+def main(
+    model_spec: str,
+    budget: int,
+    steps: int,
+    seed,
+    seeds,
+    log_path: str,
+    workdir: str,
+    derive_targets: bool,
+):
     """Fit MODEL_SPEC's knobs against the HRF-derived calibration targets."""
+    click.echo("Computing HRF reference statistics (cached download)...")
+    references = hrf_references()
+    if derive_targets:
+        for name, spec in derive_hrf_targets(references).items():
+            current = TARGETS[name]
+            click.echo(
+                f"  {name:28s} target {spec['target']:.4f}  scale {spec['scale']:.4f}"
+                f"   (TARGETS: {current['target']:.4f} / {current['scale']:.4f})"
+            )
+        return
+
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     with open(model_spec) as f:
@@ -302,9 +422,6 @@ def main(model_spec: str, budget: int, steps: int, seed, seeds, log_path: str, w
     if seed is not None:
         base_spec = simulation.with_seed(base_spec, seed)
     seed_list = [int(s) for s in seeds.split(",")] if seeds else None
-
-    click.echo("Computing HRF reference statistics (cached download)...")
-    references = hrf_references()
 
     log: list[dict] = []
     cache: dict[tuple, float] = {}

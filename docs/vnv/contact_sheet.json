@@ -3,25 +3,25 @@
     {
       "seed": 11,
       "perfused_fraction": 0.9992006394884093,
-      "skeleton_density": 0.02099132537841797,
+      "skeleton_density": 0.02338539892443695,
       "n_frozen": 30059
     },
     {
       "seed": 202,
       "perfused_fraction": 0.9992006394884093,
-      "skeleton_density": 0.027828216552734375,
+      "skeleton_density": 0.027346480854323736,
       "n_frozen": 28065
     },
     {
       "seed": 909,
       "perfused_fraction": 0.9992006394884093,
-      "skeleton_density": 0.02658557891845703,
+      "skeleton_density": 0.030123135928649642,
       "n_frozen": 35612
     },
     {
       "seed": 4242,
       "perfused_fraction": 0.996802557953637,
-      "skeleton_density": 0.028598785400390625,
+      "skeleton_density": 0.029005023138246995,
       "n_frozen": 37292
     }
   ],

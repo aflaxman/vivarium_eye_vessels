@@ -30,7 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
-from skimage.morphology import dilation, disk, skeletonize
+from skimage.morphology import dilation, disk
 
 from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
 
@@ -217,6 +217,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     setup_seconds = time.perf_counter() - setup_start
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
+    perfusion = simulation.get_perfusion_params(sim)
     run_start = time.perf_counter()
     simulation.run_steps(sim, steps)
     simulation_seconds = time.perf_counter() - run_start
@@ -257,101 +258,40 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         else None
     )
     sim_junction_exponents = metrics.junction_exponents(superficial_pop)
-    sim_perfused_fraction = metrics.perfused_fraction(
-        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15
-    )
-    sim_arterial_supply = metrics.perfused_fraction(
-        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15, vessel_type=1
-    )
-    sim_venous_drainage = metrics.perfused_fraction(
-        pop, semi_axes, site_spacing=0.1, perfusion_radius=0.15, vessel_type=2
-    )
+    sim_arterial_supply = metrics.perfused_fraction(pop, semi_axes, *perfusion, vessel_type=1)
+    sim_venous_drainage = metrics.perfused_fraction(pop, semi_axes, *perfusion, vessel_type=2)
     arteries = pop[(pop.vessel_type == 1) & (pop.path_id >= 0) & (pop.radius > 0)]
     veins = pop[(pop.vessel_type == 2) & (pop.path_id >= 0) & (pop.radius > 0)]
-    # Clinical AVR is measured on the major arcades near the disc, so compare
-    # the depth-0 trunks rather than averaging over capillary-scale tails
-    arcade_arteries = arteries[arteries.depth == 0]
-    arcade_veins = veins[veins.depth == 0]
-    if len(arcade_arteries) and len(arcade_veins):
-        sim_avr = float(arcade_arteries.radius.mean() / arcade_veins.radius.mean())
-    else:
-        sim_avr = float("nan")
 
-    # --- Real reference data ---
-    mask_paths = reference_data.fetch_hrf_masks()
-    real_per_mask = []
-    real_lengths: list[float] = []
-    real_tortuosity: list[float] = []
-    real_diameters: list[float] = []
-    real_pixel_diameters: list[np.ndarray] = []
-    example_binary = None
-    for path in mask_paths:
-        binary = metrics.binarize_mask(reference_data.load_mask(path))
-        real_pixel_diameters.append(metrics.skeleton_pixel_diameters(binary))
-        if example_binary is None:
-            example_binary = binary
-        m = metrics.image_metrics(binary)
-        m["file"] = path.name
-        real_lengths.extend(m.pop("branch_length_px"))
-        real_tortuosity.extend(m.pop("branch_tortuosity"))
-        real_diameters.extend(m.pop("branch_diameter_px"))
-        real_per_mask.append(m)
-
-    sim_strata = stratify_by_diameter(
-        sim_image_metrics["branch_length_px"], sim_image_metrics["branch_diameter_px"]
-    )
-    real_strata = stratify_by_diameter(real_lengths, real_diameters)
-    real_pixel_diameters = np.concatenate(real_pixel_diameters)
-    sim_pixel_diameters = metrics.skeleton_pixel_diameters(sim_raster)
-
-    # Calibration score: squared z-like deviation from each validation target
-    from scipy.stats import ks_2samp
-
+    # --- Real reference data, measured by the same conventions ---
     from vivarium_eye_vessels.vnv import calibrate
 
+    references = calibrate.hrf_references()
+    real_per_mask = references["per_mask"]
+    mask_names = [m["file"] for m in real_per_mask]
+    example_binary = metrics.binarize_mask(
+        reference_data.load_mask(reference_data.fetch_hrf_masks()[0])
+    )
+    real_lengths = references["lengths"]
+    real_tortuosity = np.concatenate([m["branch_tortuosity"] for m in real_per_mask])
+    real_diameters = np.concatenate([m["branch_diameter_px"] for m in real_per_mask])
+    real_pixel_diameters = references["pixel_diameters"]
+
     sim_lengths = np.asarray(sim_image_metrics["branch_length_px"], dtype=float)
-    sim_branch_tortuosity = np.asarray(sim_image_metrics["branch_tortuosity"], dtype=float)
-    sim_branch_diameter = np.asarray(sim_image_metrics["branch_diameter_px"], dtype=float)
-    sim_wide_tortuosity = sim_branch_tortuosity[sim_branch_diameter > 4.0]
-    calibration_stats = {
-        "skeleton_density": sim_image_metrics["skeleton_density"],
-        "area_density": sim_image_metrics["area_density"],
-        "fractal_dimension": sim_image_metrics["fractal_dimension"],
-        "branch_tortuosity_median": (
-            float(np.median(sim_image_metrics["branch_tortuosity"]))
-            if sim_image_metrics["branch_tortuosity"]
-            else float("nan")
-        ),
-        "ks_log_length": (
-            float(
-                ks_2samp(np.log10(sim_lengths), np.log10(np.asarray(real_lengths))).statistic
-            )
-            if len(sim_lengths)
-            else float("nan")
-        ),
-        "capillary_share": len(sim_strata["diameter_le_2px"]) / max(len(sim_lengths), 1),
-        "wide_share": len(sim_strata["diameter_gt_4px"]) / max(len(sim_lengths), 1),
-        "wide_tortuosity_q90": (
-            float(np.quantile(sim_wide_tortuosity, 0.9))
-            if len(sim_wide_tortuosity)
-            else float("nan")
-        ),
-        "wide_junction_spacing_px": sim_image_metrics["wide_junction_spacing_px"],
-        "ks_caliber_profile": (
-            float(ks_2samp(sim_pixel_diameters, real_pixel_diameters).statistic)
-            if len(sim_pixel_diameters)
-            else float("nan")
-        ),
-        "bifurcation_angle_median": (
-            float(np.median(sim_angles)) if len(sim_angles) else float("nan")
-        ),
-        "bifurcation_obtuse_share": (
-            float((sim_angles > 100).mean()) if len(sim_angles) else float("nan")
-        ),
-        "artery_vein_caliber_ratio": sim_avr,
-        "perfused_fraction": sim_perfused_fraction,
-    }
+    sim_pixel_diameters = np.asarray(sim_image_metrics["pixel_diameter_px"], dtype=float)
+    sim_strata = stratify_by_diameter(sim_lengths, sim_image_metrics["branch_diameter_px"])
+    real_strata = stratify_by_diameter(real_lengths, real_diameters)
+
+    # Calibration score: squared z-like deviation from each validation
+    # target, from the same statistics the calibration harness scores
+    calibration_stats = calibrate.scoring_stats(
+        pop, edges, bounds, semi_axes, references, perfusion
+    )
     calibration_scores = calibrate.calibration_score(calibration_stats)
+    sim_perfused_fraction = calibration_stats["perfused_fraction"]
+    # Clinical AVR is measured on the major arcades near the disc (depth-0
+    # trunks), not averaged over capillary-scale tails
+    sim_avr = calibration_stats["artery_vein_caliber_ratio"]
 
     real_fd = np.array([m["fractal_dimension"] for m in real_per_mask])
     real_density = np.array([m["skeleton_density"] for m in real_per_mask])
@@ -396,7 +336,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax = axes[0, 1]
     ax.imshow(~example_binary, cmap="gray", interpolation="nearest")
     ax.set_title(
-        f"HRF healthy eye ({mask_paths[0].name}): expert-labeled vessels",
+        f"HRF healthy eye ({mask_names[0]}): expert-labeled vessels",
         color=INK,
         fontsize=10,
     )
@@ -407,7 +347,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     ax.set_yticks([])
 
     ax = axes[0, 2]
-    ax.imshow(~displayable(skeletonize(example_binary)), cmap="gray", interpolation="nearest")
+    ax.imshow(
+        ~displayable(metrics.vessel_skeleton(example_binary)),
+        cmap="gray",
+        interpolation="nearest",
+    )
     ax.set_title("HRF skeleton (as measured)", color=INK, fontsize=10)
     for spine in ax.spines.values():
         spine.set_color(REAL_COLOR)
@@ -417,10 +361,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     length_bins = np.geomspace(
         metrics.MIN_BRANCH_PIXELS,
-        max(
-            max(real_lengths, default=100),
-            max(sim_image_metrics["branch_length_px"], default=100),
-        ),
+        max(real_lengths.max(initial=100), sim_lengths.max(initial=100)),
         30,
     )
     ax = axes[1, 0]
@@ -558,13 +499,15 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     headline = (
         f"Fractal dimension (skeleton): sim {sim_image_metrics['fractal_dimension']:.2f}  vs  "
         f"HRF {real_fd.mean():.2f} ± {real_fd.std():.2f}      "
-        f"Skeleton density: sim {sim_image_metrics['skeleton_density']*100:.2f}%  vs  "
+        f"Skeleton density (of imaged region): sim "
+        f"{sim_image_metrics['skeleton_density']*100:.2f}%  vs  "
         f"HRF {real_density.mean()*100:.2f}% ± {real_density.std()*100:.2f}%"
     )
     area_line = (
         f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
-        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%      "
+        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%"
+        f" (superficial alone {calibration_stats['superficial_perfused_fraction']*100:.1f}%)      "
         f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)      "
         f"Loops: {sim_graph_cycles}      Pruned: {sim_n_pruned}      "
         f"Calibration score: {calibration_scores['total']:.1f}"
@@ -589,6 +532,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         "steps": steps,
         "raster_size": metrics.RASTER_SIZE,
         "has_calibers": has_calibers,
+        "perfusion": {"site_spacing": perfusion[0], "perfusion_radius": perfusion[1]},
         # Wall-clock runtime on the machine that generated this file; useful
         # for tracking the trend across model versions, not as an absolute
         "runtime": {
@@ -600,6 +544,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "n_particles": int(len(pop)),
             "n_frozen": int(pop.frozen.sum()),
             "n_segments": int(len(edges)),
+            "fov_fraction": sim_image_metrics["fov_fraction"],
             "fractal_dimension": sim_image_metrics["fractal_dimension"],
             "skeleton_density": sim_image_metrics["skeleton_density"],
             "area_density": sim_image_metrics["area_density"],
@@ -622,6 +567,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "bifurcation_angle_deg_all_layers": metrics.summarize(sim_angles_all_layers),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
             "perfused_fraction": sim_perfused_fraction,
+            "superficial_perfused_fraction": calibration_stats[
+                "superficial_perfused_fraction"
+            ],
             "arterial_supply_fraction": sim_arterial_supply,
             "venous_drainage_fraction": sim_venous_drainage,
             "n_artery_segments": int(len(arteries)),
@@ -643,6 +591,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         },
         "real_hrf": {
             "n_masks": len(real_per_mask),
+            "fov_fraction": {
+                "mean": float(np.mean([m["fov_fraction"] for m in real_per_mask])),
+                "std": float(np.std([m["fov_fraction"] for m in real_per_mask])),
+            },
             "fractal_dimension": {
                 "mean": float(real_fd.mean()),
                 "std": float(real_fd.std()),
@@ -668,7 +620,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             },
             "branch_tortuosity": metrics.summarize(real_tortuosity),
             "pixel_diameter_px": metrics.summarize(real_pixel_diameters),
-            "per_mask": real_per_mask,
+            # Scalar metrics only; the per-branch and per-pixel lists are
+            # summarized above
+            "per_mask": [
+                {key: value for key, value in m.items() if not isinstance(value, list)}
+                for m in real_per_mask
+            ],
         },
     }
     metrics_path = output_dir / "metrics.json"

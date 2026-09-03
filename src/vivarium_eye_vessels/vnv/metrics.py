@@ -11,8 +11,28 @@ Two families of metrics:
 
 Spatial scale in the simulation is arbitrary, so image-based metrics are
 computed at a common raster resolution and reported in pixels or as fractions
-of the field of view. They support before/after comparison across model
+of the imaged region. They support before/after comparison across model
 versions, not absolute physiological claims.
+
+Measurement conventions, applied identically to both sources so that the
+comparison is apples to apples:
+
+- **Binarization is a majority vote.** A pixel is vessel when more than half
+  of it is covered. HRF masks are block-averaged down to the common
+  resolution and thresholded at 0.5; simulated segments are drawn by the
+  exact pixel-center rule that is the limit of drawing at infinite
+  resolution and majority-downsampling. Vessels narrower than half a pixel
+  vanish from both, as they do from a fundus photograph.
+- **Densities are per imaged pixel**, the convex hull of the vessel pixels,
+  not per frame pixel: a fundus camera's circular field and the model's
+  elliptical territory both leave empty corners.
+- **The skeleton is pruned of spurs** shorter than ``MIN_BRANCH_PIXELS``
+  before anything is counted, so ragged edges do not manufacture branch
+  points, and branch length is the arc length of the pixel chain (diagonal
+  steps count sqrt 2), so a straight 45-degree line has tortuosity 1.
+- **Box counting uses a fixed range of box sizes** (2..128 px) rather than
+  one derived from the frame, so padding a skeleton into a larger canvas
+  does not change its fractal dimension.
 """
 
 from typing import Any
@@ -21,12 +41,17 @@ import numpy as np
 import pandas as pd
 from scipy import ndimage
 from scipy.optimize import brentq
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
-from skimage.morphology import dilation, disk, skeletonize
+from skimage.morphology import convex_hull_image, skeletonize
 
 RASTER_SIZE = 1024
 MIN_BRANCH_PIXELS = 5
+BOX_SIZES = 2 ** np.arange(1, 8)  # 2..128 px; both sources span at least 512 px
+NEIGHBOR_KERNEL = np.ones((3, 3), dtype=int)
+NEIGHBOR_KERNEL[1, 1] = 0
 
 
 ##################
@@ -54,8 +79,10 @@ def rasterize_network(
         Output image size in pixels (longest dimension).
     radii
         Optional per-segment vessel radii (in simulation units, aligned with
-        ``edges``). When given, segments are drawn with their caliber instead
-        of one pixel wide.
+        ``edges``). When given, a pixel is vessel when its center lies within
+        a segment's radius — the majority-vote rule the HRF masks are
+        binarized by (see the module docstring). Without radii, segments are
+        drawn one pixel wide.
     """
     a, b = bounds
     aspect = b / a
@@ -66,32 +93,44 @@ def rasterize_network(
     if edges.empty:
         return image
 
-    def to_pixel(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        col = np.clip(((x + a) / (2 * a) * (width - 1)).round().astype(int), 0, width - 1)
-        row = np.clip(((y + b) / (2 * b) * (height - 1)).round().astype(int), 0, height - 1)
-        return row, col
-
-    r0, c0 = to_pixel(edges.x0.values, edges.y0.values)
-    r1, c1 = to_pixel(edges.x1.values, edges.y1.values)
+    # Endpoints in continuous pixel coordinates (pixel centers at integers)
+    scale_x, scale_y = (width - 1) / (2 * a), (height - 1) / (2 * b)
+    c0, c1 = (edges.x0.values + a) * scale_x, (edges.x1.values + a) * scale_x
+    r0, r1 = (edges.y0.values + b) * scale_y, (edges.y1.values + b) * scale_y
 
     if radii is None:
-        widths_px = np.ones(len(edges), dtype=int)
-    else:
-        px_per_unit = (width - 1) / (2 * a)
-        widths_px = np.maximum(
-            np.round(2 * np.asarray(radii, dtype=float) * px_per_unit).astype(int), 1
-        )
+        rows = np.clip(np.round([r0, r1]).astype(int), 0, height - 1)
+        cols = np.clip(np.round([c0, c1]).astype(int), 0, width - 1)
+        for i in range(len(edges)):
+            rr, cc = draw_line(rows[0, i], cols[0, i], rows[1, i], cols[1, i])
+            image[rr, cc] = True
+        return image
 
-    # Draw segments in buckets of equal pixel width, thickened by dilation
-    for width_px in np.unique(widths_px):
-        layer = np.zeros_like(image)
-        for i in np.nonzero(widths_px == width_px)[0]:
-            rr, cc = draw_line(r0[i], c0[i], r1[i], c1[i])
-            layer[rr, cc] = True
-        dilation_radius = int(round((width_px - 1) / 2))
-        if dilation_radius > 0:
-            layer = dilation(layer, disk(dilation_radius))
-        image |= layer
+    # A tube of radius r covers more than half of a pixel centered at
+    # distance d when d < r (r >= 0.5 px); a thinner tube only where
+    # d <= 0.5 - r, and one narrower than half a pixel nowhere
+    radii_px = np.asarray(radii, dtype=float) * scale_x
+    reach = np.where(radii_px >= 0.5, radii_px, np.where(radii_px > 0.25, 0.5 - radii_px, 0))
+    for i in np.nonzero(reach > 0)[0]:
+        rmin, rmax = max(int(np.floor(min(r0[i], r1[i]) - reach[i])), 0), min(
+            int(np.ceil(max(r0[i], r1[i]) + reach[i])), height - 1
+        )
+        cmin, cmax = max(int(np.floor(min(c0[i], c1[i]) - reach[i])), 0), min(
+            int(np.ceil(max(c0[i], c1[i]) + reach[i])), width - 1
+        )
+        if rmax < rmin or cmax < cmin:
+            continue
+        rows = np.arange(rmin, rmax + 1)[:, None]
+        cols = np.arange(cmin, cmax + 1)[None, :]
+        dr, dc = r1[i] - r0[i], c1[i] - c0[i]
+        length2 = dr * dr + dc * dc
+        along = (
+            np.clip(((rows - r0[i]) * dr + (cols - c0[i]) * dc) / length2, 0.0, 1.0)
+            if length2 > 0
+            else 0.0
+        )
+        distance2 = (rows - r0[i] - along * dr) ** 2 + (cols - c0[i] - along * dc) ** 2
+        image[rmin : rmax + 1, cmin : cmax + 1] |= distance2 < reach[i] ** 2
     return image
 
 
@@ -125,8 +164,10 @@ def perfused_fraction(
 def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:
     """Downsample a real vessel mask to the common raster resolution.
 
-    Uses block averaging followed by a low threshold so that thin vessels
-    survive the downsampling.
+    Block averaging followed by a majority vote: a downsampled pixel is
+    vessel when more than half of its block is. This keeps calibers true
+    (a lower threshold would thicken every thin vessel by a pixel or two)
+    and matches the rule :func:`rasterize_network` draws the simulation by.
     """
     mask = np.asarray(mask, dtype=float)
     if mask.max() > 1:
@@ -139,7 +180,14 @@ def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:
         mask = mask.reshape(
             mask.shape[0] // factor, factor, mask.shape[1] // factor, factor
         ).mean(axis=(1, 3))
-    return mask > 0.1
+    return mask > 0.5
+
+
+def imaged_region(binary: np.ndarray) -> np.ndarray:
+    """The convex hull of the vessel pixels: the part of the frame that was imaged."""
+    if binary.sum() < 3:  # no hull to speak of
+        return binary.astype(bool)
+    return convex_hull_image(binary)
 
 
 ########################
@@ -147,15 +195,10 @@ def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:
 ########################
 
 
-def box_counting_dimension(image: np.ndarray) -> float:
-    """Box-counting fractal dimension of a binary image."""
-    pixels = np.argwhere(image)
-    if len(pixels) < 10:
+def box_counting_dimension(image: np.ndarray, sizes: np.ndarray = BOX_SIZES) -> float:
+    """Box-counting fractal dimension of a binary image over a fixed box range."""
+    if image.sum() < 10:
         return float("nan")
-
-    max_dim = max(image.shape)
-    max_exp = int(np.floor(np.log2(max_dim / 4)))
-    sizes = 2 ** np.arange(1, max_exp + 1)
 
     counts = []
     for box in sizes:
@@ -170,38 +213,90 @@ def box_counting_dimension(image: np.ndarray) -> float:
     return float(-coeffs[0])
 
 
+def neighbor_counts(skeleton: np.ndarray) -> np.ndarray:
+    """Number of 8-connected skeleton neighbors of every pixel."""
+    return ndimage.convolve(skeleton.astype(int), NEIGHBOR_KERNEL, mode="constant", cval=0)
+
+
+def prune_spurs(skeleton: np.ndarray, max_length: int = MIN_BRANCH_PIXELS) -> np.ndarray:
+    """Remove terminal branches shorter than ``max_length`` pixels.
+
+    Thinning a vessel with a ragged edge leaves short spurs at the edge
+    bumps; each one adds a junction that is not a branch point. A spur is a
+    branch that ends in an endpoint, touches a junction, and is shorter
+    than a countable branch. Removal can expose a new spur, so the pass
+    repeats a few times; the skeleton is re-thinned after each pass to
+    tidy the junction remnants.
+    """
+    skeleton = skeleton.astype(bool).copy()
+    for _ in range(3):
+        counts = neighbor_counts(skeleton)
+        junctions = skeleton & (counts >= 3)
+        endpoints = skeleton & (counts == 1)
+        labels, n_labels = ndimage.label(skeleton & ~junctions, structure=np.ones((3, 3)))
+        if n_labels == 0:
+            break
+        index = np.arange(1, n_labels + 1)
+        sizes = ndimage.sum(np.ones_like(labels), labels, index=index)
+        has_endpoint = ndimage.maximum(endpoints, labels, index=index) > 0
+        beside_junction = neighbor_counts(junctions) > 0
+        touches_junction = ndimage.maximum(beside_junction, labels, index=index) > 0
+        spur = (sizes < max_length) & has_endpoint & touches_junction
+        if not spur.any():
+            break
+        skeleton &= ~np.isin(labels, index[spur])
+        skeleton = skeletonize(skeleton)
+    return skeleton
+
+
+def vessel_skeleton(binary: np.ndarray) -> np.ndarray:
+    """The measured centerline: thinned, then pruned of spurs."""
+    return prune_spurs(skeletonize(binary))
+
+
+def chain_arc_length(coords: np.ndarray) -> float:
+    """Arc length of a set of 8-connected pixels, in px.
+
+    The minimum spanning tree over neighboring pixels (orthogonal steps 1,
+    diagonal steps sqrt 2) — a pixel count would read a 45-degree line as
+    30% shorter than it is.
+    """
+    n_pixels = len(coords)
+    if n_pixels < 2:
+        return 0.0
+    pairs = cKDTree(coords).query_pairs(r=1.5, output_type="ndarray")
+    if len(pairs) == 0:
+        return 0.0
+    weights = np.linalg.norm(coords[pairs[:, 0]] - coords[pairs[:, 1]], axis=1)
+    graph = coo_matrix((weights, (pairs[:, 0], pairs[:, 1])), shape=(n_pixels, n_pixels))
+    return float(minimum_spanning_tree(graph).sum())
+
+
 def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) -> pd.DataFrame:
     """Decompose a skeleton into branches between junctions.
 
     Junction pixels (3+ skeleton neighbors) are removed; each remaining
-    connected component is one branch. Returns per-branch pixel counts
-    (length) and endpoint chord distances (for tortuosity). When the
-    ``binary`` vessel image is given, each branch also gets a ``diameter_px``:
-    twice the mean distance-transform value along the branch (the medial-axis
-    width estimate), which recovers local caliber even from masks that carry
-    no explicit radii.
+    connected component of at least ``MIN_BRANCH_PIXELS`` is one branch.
+    Returns per-branch arc lengths and endpoint chord distances (their ratio
+    is the tortuosity). When the ``binary`` vessel image is given, each
+    branch also gets a ``diameter_px``: twice the mean distance-transform
+    value along the branch (the medial-axis width estimate), which recovers
+    local caliber even from masks that carry no explicit radii.
     """
     skeleton = skeleton.astype(bool)
-    kernel = np.ones((3, 3), dtype=int)
-    kernel[1, 1] = 0
-    neighbor_count = ndimage.convolve(skeleton.astype(int), kernel, mode="constant", cval=0)
-    junctions = skeleton & (neighbor_count >= 3)
+    junctions = skeleton & (neighbor_counts(skeleton) >= 3)
     branches = skeleton & ~junctions
 
     edt = None if binary is None else ndimage.distance_transform_edt(binary)
     labels, n_labels = ndimage.label(branches, structure=np.ones((3, 3)))
     records = []
     for slc, label in zip(ndimage.find_objects(labels), range(1, n_labels + 1)):
-        coords = np.argwhere(labels[slc] == label)
-        n_pixels = len(coords)
-        if n_pixels < MIN_BRANCH_PIXELS:
+        branch_img = labels[slc] == label
+        coords = np.argwhere(branch_img)
+        if len(coords) < MIN_BRANCH_PIXELS:
             continue
         # Endpoints: branch pixels with at most one neighbor within the branch
-        branch_img = labels[slc] == label
-        local_neighbors = ndimage.convolve(
-            branch_img.astype(int), kernel, mode="constant", cval=0
-        )
-        ends = np.argwhere(branch_img & (local_neighbors <= 1))
+        ends = np.argwhere(branch_img & (neighbor_counts(branch_img) <= 1))
         if len(ends) >= 2:
             dists = np.linalg.norm(ends[:, None, :] - ends[None, :, :], axis=-1)
             chord = dists.max()
@@ -209,7 +304,7 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
             chord = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0)))
         if chord < 1:
             continue
-        record = {"length_px": n_pixels, "chord_px": chord}
+        record = {"length_px": chain_arc_length(coords.astype(float)), "chord_px": chord}
         if edt is not None:
             offset = np.array([s.start for s in slc])
             rows, cols = (coords + offset).T
@@ -222,7 +317,9 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
     return frame
 
 
-def skeleton_pixel_diameters(binary: np.ndarray) -> np.ndarray:
+def skeleton_pixel_diameters(
+    binary: np.ndarray, skeleton: np.ndarray | None = None
+) -> np.ndarray:
     """Local vessel diameter (2 x EDT) at every skeleton pixel, in px.
 
     Each skeleton pixel is one unit of centerline length at its local
@@ -230,7 +327,8 @@ def skeleton_pixel_diameters(binary: np.ndarray) -> np.ndarray:
     of the network — matching it matches "length x width" without any
     binning into diameter strata.
     """
-    skeleton = skeletonize(binary)
+    if skeleton is None:
+        skeleton = vessel_skeleton(binary)
     edt = ndimage.distance_transform_edt(binary)
     return 2.0 * edt[skeleton]
 
@@ -249,10 +347,7 @@ def wide_junction_spacing(
     stays comparable. NaN when there is no wide skeleton.
     """
     skeleton = skeleton.astype(bool)
-    kernel = np.ones((3, 3), dtype=int)
-    kernel[1, 1] = 0
-    neighbor_count = ndimage.convolve(skeleton.astype(int), kernel, mode="constant", cval=0)
-    junctions = skeleton & (neighbor_count >= 3)
+    junctions = skeleton & (neighbor_counts(skeleton) >= 3)
     edt = ndimage.distance_transform_edt(binary)
     wide = skeleton & (2.0 * edt > min_diameter_px)
     n_wide = int(wide.sum())
@@ -267,17 +362,24 @@ def wide_junction_spacing(
 
 
 def image_metrics(binary: np.ndarray) -> dict[str, Any]:
-    """All image-based metrics for one binary vessel image."""
-    skeleton = skeletonize(binary)
+    """All image-based metrics for one binary vessel image.
+
+    Densities are fractions of the imaged region (the vessel pixels' convex
+    hull), whose share of the frame is reported as ``fov_fraction``.
+    """
+    skeleton = vessel_skeleton(binary)
+    region = imaged_region(binary)
     branches = skeleton_branches(skeleton, binary)
     return {
+        "fov_fraction": float(region.mean()),
         "fractal_dimension": box_counting_dimension(skeleton),
-        "skeleton_density": float(skeleton.mean()),
-        "area_density": float(binary.mean()),
+        "skeleton_density": float(skeleton[region].mean()) if region.any() else 0.0,
+        "area_density": float(binary[region].mean()) if region.any() else 0.0,
         "n_branches": int(len(branches)),
         "branch_length_px": branches.length_px.tolist(),
         "branch_tortuosity": branches.tortuosity.tolist(),
         "branch_diameter_px": branches.diameter_px.tolist(),
+        "pixel_diameter_px": skeleton_pixel_diameters(binary, skeleton).tolist(),
         "wide_junction_spacing_px": wide_junction_spacing(skeleton, binary),
     }
 

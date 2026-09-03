@@ -660,6 +660,56 @@ lever that acts on the cause rather than the symptom — and it should
 be gated on the held-out contact sheet like everything since the ninth
 pass.
 
+*Thirteenth pass (the seed lottery, found and fixed)*: the twelfth
+pass's hypothesis died on contact with the code — `initialize_circle_positions`
+already sends every root out radially, evenly spaced and deterministically;
+`initial_velocity_range` only randomizes the idle pool, which exerts no
+forces. So the divergence was measured instead of guessed: an
+early-trajectory telemetry (active tips, frozen count, trunks alive,
+extinctions every 25 steps) showed all three calibration seeds identical
+at step 25 with six root arcades alive, and by step 50 the fit seed
+keeping 5, seed 7 keeping 4, seed 909 keeping 3 — with every downstream
+number scaling with the survivors. The seed lottery is trunk survival
+through the first split rounds (steps 15–45). A wider disc circle (0.15,
+putting roots outside each other's repulsion radius) was falsified next:
+the fit seed improves to 47.7 but seed 909 has no trunks alive by step
+100. The actual killer is in `split_unfrozen`: both daughters of a split
+received a *new* `path_id`, including the continuing trunk, so
+`FrozenRepulsion`'s same-path delay exemption no longer covered the
+trail the trunk had just laid — a dozen Hookean springs within 0.12
+pushed it from behind at full strength, and the stacked force crossed
+the extinction threshold. Which trunks split first, and so which died,
+was the comb-emission draw: the whole lottery. The fix is one line of
+semantics (`continuation_keeps_path`: the continuing daughter keeps its
+parent's path; legacy behavior, sisters sharing one new id and all, is
+preserved bit-for-bit when off) — and the moment trunks survived, a
+second defect surfaced: `PathFreezer.freeze_particles` froze every tip
+even when the free pool could not supply continuations, silently ending
+the whole front (seed 7: 33 active tips → 2 in one freeze round, no
+extinction marks). Faster growth drained the pool first, which is why
+this never showed under legacy dynamics and why the ninth pass's
+pool-size probe was bit-identical. It now tops the pool up and skips the
+round. Together (incumbent 51.0 / 168.5 / 125.4, mean 115.0): **44.6 /
+111.4 / 45.6, mean 67.2**, every seed fully perfused — the fit seed's
+best score yet, and seed 909, unmovable above 0.45 perfusion by any
+per-tip lever, now matches it with a 41k-particle network. The freezer
+fix alone (51.0 / 80.5 / 126.7, mean 86.1) rescues seed 7 by itself —
+the silent mass freeze was hitting it under legacy dynamics too — while
+the path fix is what lifts the fit seed and 909. On the held-out contact
+sheet (seeds 11/202/909/4242) perfusion goes 0.88 / 1.00 / 0.99 / 0.87 →
+1.00 / 1.00 / 1.00 / 1.00, reliability 2/4 → 4/4, mean score 255.3 →
+68.4: for the first time every seed the project tracks builds a complete
+network, and the percolation problem the eighth pass named as central is
+closed. One measurement had to follow the semantics:
+`true_bifurcations` recognized freezer continuations by shared
+`path_id` and went NaN under the fix; it now recognizes them by caliber
+(the one child keeping ≥98% of the parent's radius — split daughters are
+born at Murray calibers below that), the structural definition,
+unchanged for legacy trees. The lesson the three negative passes were
+pointing at was right — the outcome is decided early — but the cause
+was not a parameter at all; it was a labeling convention that turned a
+vessel's own trail into its repulsor.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V

@@ -287,20 +287,33 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
 #######################
 
 
+CONTINUATION_CALIBER_RATIO = 0.98
+
+
 def true_bifurcations(pop: pd.DataFrame):
     """Yield (parent, daughters) at true bifurcations of the vessel tree.
 
-    A parent's same-path continuation child (created by PathFreezer, with the
-    parent's own path id and nearly its radius) is not a daughter branch, so
-    it is excluded; only parents with two or more new-path daughters count.
-    Sprout points — a continuation plus one side branch — are therefore
-    skipped rather than fit as if they were bifurcations.
+    A parent's continuation child (created by PathFreezer, at nearly the
+    parent's radius) is not a daughter branch, so it is excluded; only
+    parents with two or more daughters count. The continuation is recognized
+    by caliber rather than by path label: it is the one child that keeps at
+    least ``CONTINUATION_CALIBER_RATIO`` of the parent's radius, while split
+    daughters are born at Murray calibers below that. A freezer continuation
+    never comes in pairs, so when two or more children keep the caliber
+    (daughters clipped to the caliber floor, or an uncalibered tree) they are
+    all daughters. Sprout points — a continuation plus one side branch — are
+    therefore skipped rather than fit as if they were bifurcations.
     """
     children = pop[pop.parent_id >= 0]
     children = children[children.parent_id.isin(pop.index)]
+    calibered = "radius" in pop.columns
     for parent_id, group in children.groupby("parent_id"):
         parent = pop.loc[parent_id]
-        daughters = group[group.path_id != parent.path_id]
+        daughters = group
+        if calibered:
+            keeps_caliber = group.radius >= CONTINUATION_CALIBER_RATIO * parent.radius
+            if keeps_caliber.sum() == 1:
+                daughters = group[~keeps_caliber]
         if len(daughters) >= 2:
             yield parent, daughters
 

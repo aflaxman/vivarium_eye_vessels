@@ -98,6 +98,14 @@ configuration:
                                         # has this many frozen particles (a real
                                         # front to lose); early on, few tips is
                                         # the natural state
+        continuation_keeps_path: true   # At a split the continuing daughter keeps
+                                        # its parent's path_id, so its own fresh
+                                        # trail stays exempt from repulsion. Legacy
+                                        # relabeling killed root arcades at their
+                                        # first split and was the seed lottery:
+                                        # with it fixed, every calibration and
+                                        # held-out seed reaches full perfusion
+                                        # (roadmap thirteenth pass)
 
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion

@@ -1,3 +1,48 @@
+**v0.22.0 - 09/03/26**
+
+ - Root trunks survive their first split: the seed lottery, found and
+   fixed
+
+   - Early-trajectory telemetry located the seed lottery: every seed
+     has all six root arcades alive at step 25; by step 50 the fit seed
+     keeps 5, seed 7 keeps 4, seed 909 keeps 3, and every downstream
+     metric scales with the survivors. Two defects, both fixed
+   - ``path_splitter.continuation_keeps_path`` (now on):
+     ``split_unfrozen`` relabeled the continuing daughter with a new
+     ``path_id``, so ``FrozenRepulsion``'s same-path delay exemption no
+     longer covered the trail it had just laid -- a dozen springs pushed
+     it from behind at full strength and the stacked force crossed the
+     extinction threshold at the first split rounds (steps 15-45). The
+     continuation now keeps its parent's path. False reproduces legacy
+     bit-for-bit, including its quirk that both sisters shared one new id
+   - ``PathFreezer.freeze_particles`` froze every tip even when the free
+     pool could not supply continuations -- a silent end of the whole
+     front. It now tops the pool up and skips the round. This surfaced
+     only once trunks survived (faster growth drained the pool): with a
+     2000-particle pool seed 7 kept 5 trunks to step 175 and reached
+     13.2k particles by step 300 against 3.0k
+   - Calibration seeds (incumbent 51.0 / 168.5 / 125.4, mean 115.0):
+     44.6 / 111.4 / 45.6, mean 67.2, every seed fully perfused -- the fit
+     seed's best score yet, and seed 909, the chronic collapser, now
+     matches it. The freezer fix alone (51.0 / 80.5 / 126.7, mean 86.1)
+     rescues seed 7 by itself -- the silent mass freeze was hitting it
+     under legacy dynamics too -- while the path fix is what lifts the
+     fit seed and 909
+   - Held-out contact sheet (seeds 11/202/909/4242): perfusion
+     0.88 / 1.00 / 0.99 / 0.87 -> 1.00 / 1.00 / 1.00 / 1.00, reliability
+     2/4 -> 4/4, mean score 255.3 -> 68.4 (the freezer fix alone reaches
+     3/4 at 208.8 / 181.7 / 126.7 / 326.8). For the first time every
+     seed the project tracks builds a complete network
+   - The bifurcation-angle metric no longer depends on path labels:
+     ``true_bifurcations`` recognized a freezer continuation by its
+     shared ``path_id``; it now recognizes it by caliber (the one child
+     keeping at least 98% of the parent's radius), the structural
+     definition, unchanged for legacy trees
+   - Falsified on the way: the twelfth pass's radial-emergence
+     hypothesis (roots already emerge radially and deterministically),
+     and a wider disc circle (radius 0.15 lifts the fit seed to 47.7 but
+     leaves seed 909 with no trunks alive by step 100)
+
 **v0.21.0 - 09/02/26**
 
  - Hypoxic survival relief: an extinction-threshold pipeline (negative

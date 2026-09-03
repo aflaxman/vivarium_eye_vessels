@@ -30,8 +30,9 @@
      fit seed and 909
    - Held-out contact sheet (seeds 11/202/909/4242): perfusion
      0.88 / 1.00 / 0.99 / 0.87 -> 1.00 / 1.00 / 1.00 / 1.00, reliability
-     2/4 -> 4/4, mean score 255.3 -> 68.4. For the first time every seed
-     the project tracks builds a complete network
+     2/4 -> 4/4, mean score 255.3 -> 68.4 (the freezer fix alone reaches
+     3/4 at 208.8 / 181.7 / 126.7 / 326.8). For the first time every
+     seed the project tracks builds a complete network
    - The bifurcation-angle metric no longer depends on path labels:
      ``true_bifurcations`` recognized a freezer continuation by its
      shared ``path_id``; it now recognizes it by caliber (the one child

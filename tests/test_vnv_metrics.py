@@ -99,6 +99,34 @@ def test_path_tortuosity_straight_chain_is_one():
     np.testing.assert_allclose(ratios, [1.0], atol=1e-9)
 
 
+def chain_population(points) -> pd.DataFrame:
+    points = np.asarray(points, dtype=float)
+    return pd.DataFrame(
+        {
+            "x": points[:, 0],
+            "y": points[:, 1],
+            "z": 0.0,
+            "frozen": True,
+            "path_id": 3,
+            "parent_id": [-1] + list(range(len(points) - 1)),
+            "depth": 0,
+        }
+    )
+
+
+def test_turning_coherence_separates_arcs_from_jitter():
+    # A tightening spiral: every turn is a little larger than the last
+    turns = np.radians(np.linspace(5, 25, 11))
+    headings = np.concatenate([[0.0], np.cumsum(turns)])
+    steps = np.column_stack([np.cos(headings), np.sin(headings)])
+    arc = chain_population(np.vstack([[0.0, 0.0], np.cumsum(steps, axis=0)]))
+    zigzag = chain_population([(i, 0.3 * (-1) ** i) for i in range(12)])
+    (arc_coherence,) = metrics.path_turning_coherence(arc, min_turns=4)
+    (zigzag_coherence,) = metrics.path_turning_coherence(zigzag, min_turns=4)
+    assert arc_coherence > 0.9
+    assert zigzag_coherence < -0.9
+
+
 def test_skeleton_pixel_diameters_recover_bar_widths():
     """A wide bar and a thin bar contribute pixels at their own diameters."""
     image = np.zeros((40, 220), dtype=bool)

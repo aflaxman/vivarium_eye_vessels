@@ -784,6 +784,50 @@ carry the rest, consistent with anatomy), and the deep plexus sits a
 median 0.034 from its plane against a 0.04 layer gap, i.e. it barely
 stratifies — a plexus-spring question for a later pass.
 
+*Sixteenth pass (thin vessels: the adaptation cap was the 3-px class)*:
+the autopsy of the caliber profile took one histogram. Binning the
+superficial frozen particles by radius, 52% sat *exactly* at
+`flow_remodeler.max_adapted_radius` = 0.006 (3 px) — not near it, at it.
+The mechanism: shear adaptation drifts every segment toward its tree's
+*median* shear, and the median is set by the ~20,000 deep-plexus
+capillaries, most of which the same adaptation has already thinned to
+the 0.001 floor (68% of deep vessels are sub-pixel). Against that
+median nearly every superficial segment reads as high-shear, so the
+deadband never spares it and it is ground up to the cap; the cap, not
+Murray's law, was setting the caliber of the fundus-visible fine
+vessels. The seventh pass had seen this pile-up and treated it as a
+feature to fill the 5–7 px band — which the old 0.1 binarization
+threshold had manufactured by thickening HRF's thin vessels. Lowering
+the cap to 0.003 (1.5 px, a precapillary arteriole) moves that mass into
+the 1–2 px class: 3-seed mean 165 → 27, caliber KS 0.34–0.41 → 0.03–0.05
+(a real eye scores 0.05 ± 0.03 against the others), junction spacing
+14 → 19 px (target 21), every seed fully perfused. The second knob
+follows from the same anatomy: `plexus_layers.dive_radius` 0.004 →
+0.003, so tips of 1.5–2 px — precapillary arterioles and venules, which
+fundus photographs show in the superficial plexus — stay superficial
+instead of diving; superficial skeleton density 2.7% → 3.1% (HRF 3.7%),
+superficial perfusion 76% → 95%, mean 27 → 22.5 (23/20/25, the tightest
+spread the project has had). Swept and rejected on the calibration
+seeds: cap 0.0035 (32), dive probability 0.02 (37 — it keeps deep-plexus
+mesh geometry superficial and the obtuse-angle share doubles), dive
+radius 0.0025 (36 — overshoots the 1-px class, KS back to 0.13),
+`max_depth` 5 (37), side-branch probability 0.8 (28). On the spec seed
+the score is 193 → 23 and the diameter composition by branch count is
+38/44/18% against HRF's 38/40/22%. The remainder is spread thin and
+partly noise: the A:V ratio (0.81 vs 0.67) is a depth-0 lottery of how
+far each tapering trunk runs; area density 8.8% vs 10.8% and skeleton
+density 3.16% vs 3.73% say the superficial network is still ~15% short
+of length. One measurement fix rode along: the branch-tortuosity
+*median* was quantized — most branches are a few pixels long, their
+arc/chord takes a handful of discrete values, and every simulation
+scored the identical 1.0706 (13 distinct values across the 15 masks) —
+so the target is now the clipped mean (HRF 1.0787 ± 0.0073), which is
+continuous and which knobs can move. The lesson is the same one the
+measurement pass taught from the other side: a caliber class that
+appears in *both* the model and the reference at the same pixel width
+is not evidence the model is right, when a cap on one side and a
+threshold on the other are what put it there.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -851,7 +895,10 @@ the HRF masks, which is what makes the comparison apples to apples):
 - The skeleton is pruned of spurs shorter than a countable branch (5 px)
   before anything is counted, so ragged edges do not manufacture branch
   points; branch length is the arc length of the pixel chain (diagonal steps
-  count √2), so a straight 45° line has tortuosity 1.
+  count √2), so a straight 45° line has tortuosity 1. Branch tortuosity is
+  scored by its mean (clipped at 2), not its median: most branches are a
+  few pixels long, so the median lands on one of a handful of discrete
+  values.
 - Box counting uses a fixed range of box sizes (2–128 px) rather than one
   derived from the frame size.
 - The HRF-derived targets are the across-mask mean and sd of each metric

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-03T16:05:19",
+  "generated": "2026-09-03T18:14:20",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
@@ -9,108 +9,108 @@
     "perfusion_radius": 0.15
   },
   "runtime": {
-    "setup_seconds": 0.16,
-    "simulation_seconds": 575.45,
-    "steps_per_second": 1.39
+    "setup_seconds": 0.1,
+    "simulation_seconds": 446.5,
+    "steps_per_second": 1.79
   },
   "simulation": {
     "n_particles": 32000,
-    "n_frozen": 31092,
-    "n_segments": 31169,
-    "fov_fraction": 0.7959184646606445,
-    "fractal_dimension": 1.3162048302402058,
-    "skeleton_density": 0.026642111430765857,
-    "area_density": 0.10101955352446318,
+    "n_frozen": 30914,
+    "n_segments": 31039,
+    "fov_fraction": 0.931208610534668,
+    "fractal_dimension": 1.358390165601196,
+    "skeleton_density": 0.03161270038292046,
+    "area_density": 0.08832773648845862,
     "branch_length_px": {
-      "n": 711,
-      "median": 23.798989873223334,
-      "q25": 11.82842712474619,
-      "q75": 43.57716446627535
+      "n": 954,
+      "median": 23.65685424949238,
+      "q25": 11.313708498984761,
+      "q75": 43.28122292025696
     },
     "branch_diameter_px": {
-      "n": 711,
-      "median": 3.5316530909855444,
-      "q25": 3.235816724382955,
-      "q75": 4.059968881380995
+      "n": 954,
+      "median": 2.165685424949238,
+      "q25": 2.0,
+      "q75": 3.368679230853386
     },
     "branch_length_by_diameter": {
       "diameter_le_2px": {
-        "n": 34,
-        "median": 11.15685424949238,
-        "q25": 5.0,
-        "q75": 22.01776695296637,
-        "share": 0.04781997187060478,
-        "length_share": 0.025208546845190333
+        "n": 364,
+        "median": 19.435028842544405,
+        "q25": 8.82842712474619,
+        "q75": 38.37741699796952,
+        "share": 0.38155136268343814,
+        "length_share": 0.3227127952196219
       },
       "diameter_2_4px": {
-        "n": 488,
-        "median": 25.056349186104047,
-        "q25": 13.467514421272202,
-        "q75": 46.69848480983498,
-        "share": 0.6863572433192686,
-        "length_share": 0.7450676180153479
+        "n": 419,
+        "median": 28.38477631085024,
+        "q25": 14.399494936611667,
+        "q75": 49.60660171779821,
+        "share": 0.4392033542976939,
+        "length_share": 0.50566204243065
       },
       "diameter_gt_4px": {
-        "n": 189,
-        "median": 20.899494936611664,
-        "q25": 9.82842712474619,
-        "q75": 38.52691193458118,
-        "share": 0.26582278481012656,
-        "length_share": 0.2297238351394618
+        "n": 171,
+        "median": 23.242640687119287,
+        "q25": 10.828427124746192,
+        "q75": 40.71320343559643,
+        "share": 0.1792452830188679,
+        "length_share": 0.1716251623497282
       }
     },
     "tree_segment_length": {
-      "n": 1476,
-      "median": 0.15231543874215586,
-      "q25": 0.08793690204312707,
-      "q75": 0.23823344404216693
+      "n": 1658,
+      "median": 0.15185043345495525,
+      "q25": 0.08237911161471063,
+      "q75": 0.23690739050373555
     },
     "branch_tortuosity": {
-      "n": 711,
-      "median": 1.0706040453940164,
-      "q25": 1.0478294123103749,
-      "q75": 1.080896889460729
+      "n": 954,
+      "median": 1.0698957983347928,
+      "q25": 1.0485281374238569,
+      "q75": 1.0815389650284586
     },
     "path_tortuosity": {
-      "n": 732,
-      "median": 1.251694122486851,
-      "q25": 1.0598982847197598,
-      "q75": 1.8556424867903232
+      "n": 834,
+      "median": 1.2011212241050928,
+      "q25": 1.0554631411737265,
+      "q75": 1.7599747104683885
     },
     "pixel_diameter_px": {
-      "n": 22235,
-      "median": 4.0,
-      "q25": 2.8284271247461903,
+      "n": 30868,
+      "median": 2.0,
+      "q25": 2.0,
       "q75": 4.0
     },
     "bifurcation_angle_deg": {
-      "n": 260,
-      "median": 76.84774407196122,
-      "q25": 69.9219440818115,
-      "q75": 85.13934657879318
+      "n": 412,
+      "median": 77.28589693149118,
+      "q25": 70.11017693022032,
+      "q75": 85.3506780346487
     },
     "bifurcation_angle_deg_all_layers": {
-      "n": 643,
-      "median": 89.50622918677757,
-      "q25": 74.51920514378737,
-      "q75": 116.68940287970756
+      "n": 747,
+      "median": 85.4679312182738,
+      "q25": 74.20635016126295,
+      "q75": 112.1726058882945
     },
     "junction_exponent": {
-      "n": 151,
-      "median": 3.342250492037252,
-      "q25": 3.0,
-      "q75": 4.499158747597547
+      "n": 315,
+      "median": 3.0000000000000004,
+      "q25": 2.9999999999999996,
+      "q75": 3.6558181703484065
     },
-    "perfused_fraction": 0.996802557953637,
-    "superficial_perfused_fraction": 0.7617905675459632,
-    "arterial_supply_fraction": 0.6666666666666666,
-    "venous_drainage_fraction": 0.9944044764188649,
-    "n_artery_segments": 8147,
-    "n_vein_segments": 22872,
-    "artery_vein_caliber_ratio": 0.72023862329316,
-    "n_anastomoses": 70,
-    "graph_cycles": 65,
-    "n_pruned": 8725,
+    "perfused_fraction": 0.9976019184652278,
+    "superficial_perfused_fraction": 0.9456434852118305,
+    "arterial_supply_fraction": 0.6402877697841727,
+    "venous_drainage_fraction": 0.996802557953637,
+    "n_artery_segments": 4262,
+    "n_vein_segments": 26538,
+    "artery_vein_caliber_ratio": 0.8140780912017505,
+    "n_anastomoses": 107,
+    "graph_cycles": 102,
+    "n_pruned": 10630,
     "plexus_layers": {
       "layer_z": [
         0.04,
@@ -122,73 +122,73 @@
           "layer": 0,
           "name": "superficial",
           "z_plane": 0.04,
-          "n_segments": 6583,
+          "n_segments": 9513,
           "max_radius": 0.02,
-          "median_abs_z_error": 0.013183175750324416
+          "median_abs_z_error": 0.013890614092427304
         },
         {
           "layer": 1,
           "name": "intermediate",
           "z_plane": 0.0,
-          "n_segments": 3442,
-          "max_radius": 0.006,
-          "median_abs_z_error": 0.013590931174050785
+          "n_segments": 4175,
+          "max_radius": 0.003,
+          "median_abs_z_error": 0.009963486891487652
         },
         {
           "layer": 2,
           "name": "deep",
           "z_plane": -0.04,
-          "n_segments": 21080,
-          "max_radius": 0.006,
-          "median_abs_z_error": 0.03368676506660585
+          "n_segments": 17250,
+          "max_radius": 0.003,
+          "median_abs_z_error": 0.03640838961419213
         }
       ],
-      "n_diving_vessels": 537
+      "n_diving_vessels": 585
     },
     "calibration": {
       "stats": {
-        "skeleton_density": 0.026642111430765857,
-        "area_density": 0.10101955352446318,
-        "fractal_dimension": 1.3162048302402058,
-        "branch_tortuosity_median": 1.0706040453940164,
-        "capillary_share": 0.04781997187060478,
-        "wide_share": 0.26582278481012656,
-        "wide_tortuosity_q90": 1.082134828543096,
-        "wide_junction_spacing_px": 14.15820895522388,
-        "ks_log_length": 0.03841924745457123,
-        "ks_caliber_profile": 0.40695231942265075,
-        "bifurcation_angle_median": 76.84774407196122,
-        "bifurcation_obtuse_share": 0.05,
-        "artery_vein_caliber_ratio": 0.72023862329316,
-        "perfused_fraction": 0.996802557953637,
-        "superficial_perfused_fraction": 0.7617905675459632,
-        "fov_fraction": 0.7959184646606445,
-        "n_frozen": 31092,
-        "graph_cycles": 65
+        "skeleton_density": 0.03161270038292046,
+        "area_density": 0.08832773648845862,
+        "fractal_dimension": 1.358390165601196,
+        "branch_tortuosity_mean": 1.088023121942996,
+        "capillary_share": 0.38155136268343814,
+        "wide_share": 0.1792452830188679,
+        "wide_tortuosity_q90": 1.0822278192733856,
+        "wide_junction_spacing_px": 17.830645161290324,
+        "ks_log_length": 0.03803161182007185,
+        "ks_caliber_profile": 0.08025398096748504,
+        "bifurcation_angle_median": 77.28589693149118,
+        "bifurcation_obtuse_share": 0.0970873786407767,
+        "artery_vein_caliber_ratio": 0.8140780912017505,
+        "perfused_fraction": 0.9976019184652278,
+        "superficial_perfused_fraction": 0.9456434852118305,
+        "fov_fraction": 0.931208610534668,
+        "n_frozen": 30914,
+        "graph_cycles": 102
       },
       "scores": {
-        "skeleton_density": 11.820040453091762,
-        "area_density": 0.5073576946879885,
-        "fractal_dimension": 2.0384320009568033,
-        "branch_tortuosity_median": 2.8586415529390137,
+        "skeleton_density": 3.365804051449853,
+        "area_density": 4.029549684168286,
+        "fractal_dimension": 0.1717420398888761,
+        "branch_tortuosity_mean": 1.631086559654263,
         "ks_log_length": 0.0,
-        "capillary_share": 6.031877105952983,
-        "wide_share": 1.258258580633292,
+        "capillary_share": 0.008034726108408644,
+        "wide_share": 1.2313401094200922,
         "wide_tortuosity_q90": 0.0,
-        "wide_junction_spacing_px": 11.12845925847087,
-        "ks_caliber_profile": 156.55812327763078,
-        "bifurcation_angle_median": 0.000927274704918053,
-        "bifurcation_obtuse_share": 0.0,
-        "artery_vein_caliber_ratio": 1.0095677081568146,
+        "wide_junction_spacing_px": 2.166059027738209,
+        "ks_caliber_profile": 1.186574563698005,
+        "bifurcation_angle_median": 0.0032694822174429063,
+        "bifurcation_obtuse_share": 0.8868884909039493,
+        "artery_vein_caliber_ratio": 8.303398545735964,
         "perfused_fraction": 0.0,
-        "total": 193.21168490722522
+        "total": 22.983747280983348
       }
     },
     "wall_shear": {
-      "n": 31156,
-      "median": 0.00017780999714765955,
-      "q25": 1.6345929768684078e-12,
-      "q75": 0.0006518509553949073
+      "n": 31015,
+      "median": 0.00025568329141758303,
+      "q25": 3.1602797885179504e-11,
+      "q75": 0.0010089037023103594
     }
   },
   "real_hrf": {
@@ -198,8 +198,8 @@
       "std": 0.004529789104439084
     },
     "fractal_dimension": {
-      "mean": 1.3489379146799994,
-      "std": 0.02294002929690163
+      "mean": 1.3489379146799991,
+      "std": 0.02294002929690159
     },
     "skeleton_density": {
       "mean": 0.037311346102331694,
@@ -271,7 +271,7 @@
       },
       {
         "fov_fraction": 0.8402764746356415,
-        "fractal_dimension": 1.3516928857043544,
+        "fractal_dimension": 1.3516928857043535,
         "skeleton_density": 0.03805318792570812,
         "area_density": 0.1138013176015186,
         "n_branches": 541,
@@ -289,7 +289,7 @@
       },
       {
         "fov_fraction": 0.83688895665228,
-        "fractal_dimension": 1.3478798457844414,
+        "fractal_dimension": 1.3478798457844423,
         "skeleton_density": 0.0369436094352535,
         "area_density": 0.10900431869089244,
         "n_branches": 542,
@@ -298,7 +298,7 @@
       },
       {
         "fov_fraction": 0.8314509445174204,
-        "fractal_dimension": 1.3440920130773095,
+        "fractal_dimension": 1.3440920130773104,
         "skeleton_density": 0.036263656175871094,
         "area_density": 0.10500591268040728,
         "n_branches": 490,
@@ -334,7 +334,7 @@
       },
       {
         "fov_fraction": 0.8366035685244261,
-        "fractal_dimension": 1.3439056749918044,
+        "fractal_dimension": 1.343905674991804,
         "skeleton_density": 0.03590946580902024,
         "area_density": 0.08991034900103506,
         "n_branches": 556,
@@ -343,7 +343,7 @@
       },
       {
         "fov_fraction": 0.8382709388878464,
-        "fractal_dimension": 1.3659418448573541,
+        "fractal_dimension": 1.365941844857354,
         "skeleton_density": 0.04023122519505837,
         "area_density": 0.09911949744197218,
         "n_branches": 694,
@@ -352,7 +352,7 @@
       },
       {
         "fov_fraction": 0.8335600800650529,
-        "fractal_dimension": 1.3383987892267657,
+        "fractal_dimension": 1.3383987892267661,
         "skeleton_density": 0.03525265221510379,
         "area_density": 0.10881585982421747,
         "n_branches": 480,
@@ -370,7 +370,7 @@
       },
       {
         "fov_fraction": 0.8330596734847063,
-        "fractal_dimension": 1.3230530569387462,
+        "fractal_dimension": 1.323053056938747,
         "skeleton_density": 0.033790886479891126,
         "area_density": 0.1011567882115538,
         "n_branches": 490,
@@ -388,7 +388,7 @@
       },
       {
         "fov_fraction": 0.8270391568149121,
-        "fractal_dimension": 1.2944104580473477,
+        "fractal_dimension": 1.2944104580473472,
         "skeleton_density": 0.03099267312692035,
         "area_density": 0.09210352162609312,
         "n_branches": 380,

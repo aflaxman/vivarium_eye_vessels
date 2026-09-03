@@ -55,10 +55,13 @@ TARGETS = {
     "skeleton_density": {"target": 0.0373, "scale": 0.0031},
     "area_density": {"target": 0.1080, "scale": 0.0098},
     "fractal_dimension": {"target": 1.3489, "scale": 0.0229},
-    # Arc length over chord of skeleton branches (median). Real branches
-    # bend a little between junctions; a chord-straight network is as wrong
-    # as a meandering one
-    "branch_tortuosity_median": {"target": 1.0750, "scale": 0.0026},
+    # Arc length over chord of skeleton branches, mean (clipped at 2). Real
+    # branches bend a little between junctions; a chord-straight network is
+    # as wrong as a meandering one. The mean, not the median: most branches
+    # are a few pixels long, so their tortuosity takes a handful of discrete
+    # values and the median is a lottery among them (13 distinct values
+    # across 15 masks) that no model knob can move
+    "branch_tortuosity_mean": {"target": 1.0787, "scale": 0.0073},
     # KS statistics: the target and scale are what a real eye scores against
     # the pooled other eyes (leave-one-out mean and sd), one-sided because
     # matching the pool more closely than a real eye does costs nothing
@@ -141,7 +144,7 @@ HRF_IMAGE_TARGETS = (
     "skeleton_density",
     "area_density",
     "fractal_dimension",
-    "branch_tortuosity_median",
+    "branch_tortuosity_mean",
     "capillary_share",
     "wide_share",
     "wide_tortuosity_q90",
@@ -170,8 +173,8 @@ def image_stats(image: dict, references: dict | None = None) -> dict:
         "skeleton_density": image["skeleton_density"],
         "area_density": image["area_density"],
         "fractal_dimension": image["fractal_dimension"],
-        "branch_tortuosity_median": (
-            float(np.median(tortuosity)) if len(tortuosity) else float("nan")
+        "branch_tortuosity_mean": (
+            float(np.clip(tortuosity, 1.0, 2.0).mean()) if len(tortuosity) else float("nan")
         ),
         "capillary_share": len(strata["diameter_le_2px"]) / max(len(lengths), 1),
         "wide_share": len(strata["diameter_gt_4px"]) / max(len(lengths), 1),

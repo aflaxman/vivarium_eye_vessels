@@ -1,3 +1,43 @@
+**v0.25.0 - 09/03/26**
+
+ - Thin vessels: the adaptation cap was the 3-px class
+
+   - The re-baselined measurement put 157 of 193 calibration points on
+     the caliber profile: half a real eye's fundus-visible skeleton is
+     1 px wide, the model's finest superficial vessels were 3 px. The
+     cause is ``flow_remodeler.max_adapted_radius``: the shear-adaptation
+     set point is each tree's median shear, which the ~20,000 deep-plexus
+     capillaries dominate, so nearly every superficial segment reads as
+     high-shear and is ground up to the cap -- 52% of superficial length
+     sat exactly at 0.006 (3 px). Lowering the cap to 0.003 (1.5 px, a
+     precapillary arteriole) moves that mass to the 1-2 px class the real
+     eye carries: 3-seed mean 165 -> 27, caliber KS 0.34-0.41 -> 0.03-0.05
+     (a real eye scores 0.05), junction spacing back on target, every
+     seed still fully perfused
+   - ``plexus_layers.dive_radius`` 0.004 -> 0.003: tips of 1.5-2 px are
+     precapillary arterioles and venules, which real fundi show in the
+     superficial plexus; keeping them there lifts superficial skeleton
+     density 2.7% -> 3.1% (HRF 3.7%) and superficial perfusion 76% ->
+     95%, 3-seed mean 27 -> 22.5 (23/20/25). Held-out seeds 11/202/909/
+     4242 all fully perfused (4/4), superficial skeleton density
+     2.3-3.0% -> 3.0-3.4%. Swept and rejected: cap
+     0.0035 (32), dive probability 0.02 (37; keeps deep-plexus geometry
+     superficial, obtuse share doubles), dive radius 0.0025 (36;
+     overshoots the 1-px class), ``max_depth`` 5 (37), side-branch
+     probability 0.8 (28)
+   - Spec seed: 193.2 -> 23.0. Diameter composition by branch count is
+     now 38/44/18% against HRF's 38/40/22%. What remains is spread thin:
+     A:V ratio 8.3 (0.81 vs 0.67, a depth-0 arcade-length lottery),
+     area density 4.0 (8.8% vs 10.8%), skeleton density 3.4 (3.16% vs
+     3.73%), junction spacing 2.2
+   - Measurement: ``branch_tortuosity_median`` -> ``branch_tortuosity_mean``
+     (clipped at 2). Most branches are a few pixels long, so their
+     tortuosity takes a handful of discrete values and the median was a
+     lottery among them (13 distinct values across 15 masks; every
+     simulation scored the same 1.0706) that no knob could move. The mean
+     is continuous (HRF 1.0787 +/- 0.0073; re-derived with
+     ``--derive-targets``)
+
 **v0.24.0 - 09/03/26**
 
  - Re-baseline the V&V measurement: one pipeline for sim and HRF

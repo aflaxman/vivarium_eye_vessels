@@ -190,6 +190,49 @@ def test_path_tortuosity_straight_chain_is_one():
     np.testing.assert_allclose(ratios, [1.0], atol=1e-9)
 
 
+def test_paired_perfusion_needs_both_trees():
+    """A site reached by arteries only is colonized, not perfused."""
+    semi_axes, spacing, radius = (2.0, 2.0, 0.25), 0.25, 0.3
+    arteries = pd.DataFrame(
+        {"x": [-1.0, 0.0, 1.0], "y": 0.0, "z": 0.0, "frozen": True, "vessel_type": 1}
+    )
+    veins = pd.DataFrame(
+        {"x": [1.0], "y": [0.0], "z": [0.0], "frozen": True, "vessel_type": 2}
+    )
+    pop = pd.concat([arteries, veins], ignore_index=True)
+    any_vessel = metrics.perfused_fraction(pop, semi_axes, spacing, radius)
+    arterial = metrics.perfused_fraction(pop, semi_axes, spacing, radius, vessel_type=1)
+    paired = metrics.paired_perfused_fraction(pop, semi_axes, spacing, radius)
+    assert any_vessel == arterial > paired > 0
+    assert paired == metrics.perfused_fraction(pop, semi_axes, spacing, radius, vessel_type=2)
+
+
+def test_arcade_caliber_ratio_reads_the_disc_zone_only():
+    """Trunk tails beyond the zone, however thin, do not move the ratio."""
+    disc = (1.0, 0.0)
+    rows = []
+    # Near-disc arcade segments: artery 0.67 of the vein caliber
+    for k in range(5):
+        x = disc[0] + 0.15 + 0.05 * k
+        rows.append(dict(x=x, y=0.1, z=0.0, depth=0, radius=0.0134, vessel_type=1))
+        rows.append(dict(x=x, y=-0.1, z=0.0, depth=0, radius=0.02, vessel_type=2))
+    # Far tails: the vein trunk ran on and tapered to a thread
+    for k in range(40):
+        rows.append(
+            dict(
+                x=disc[0] - 0.6 - 0.03 * k, y=0.0, z=0.0, depth=0, radius=0.004, vessel_type=2
+            )
+        )
+    pop = pd.DataFrame(rows)
+    pop["frozen"] = True
+    pop["path_id"] = 0
+    pop["parent_id"] = -1
+    naive = pop[pop.vessel_type == 1].radius.mean() / pop[pop.vessel_type == 2].radius.mean()
+    assert naive > 1.0  # the whole-trunk mean is fooled by the tail
+    np.testing.assert_allclose(metrics.arcade_caliber_ratio(pop, disc), 0.67)
+    assert np.isnan(metrics.arcade_caliber_ratio(pop[pop.vessel_type == 2], disc))
+
+
 def chain_population(points) -> pd.DataFrame:
     points = np.asarray(points, dtype=float)
     return pd.DataFrame(

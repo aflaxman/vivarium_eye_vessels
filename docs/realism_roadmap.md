@@ -828,6 +828,50 @@ appears in *both* the model and the reference at the same pixel width
 is not evidence the model is right, when a cap on one side and a
 threshold on the other are what put it there.
 
+*Seventeenth pass (the AVR term, and the starved artery tree behind
+it)*: the A:V term (8.3 points, 0.81 against a configured 0.67) was a
+measurement artifact of a familiar kind — the estimator averaged every
+depth-0 particle, so it mixed distance bands with different type
+composition and taper, and read anywhere from 0.63 to 0.85 depending on
+how far each trunk happened to run. Read in a zone near the disc, as
+the clinical CRAE/CRVE is, it is 0.66–0.71 on every seed. Behind it,
+though, the per-type diagnostics exposed a real asymmetry: the artery
+tree was 3–6× smaller than the vein tree and supplied only 59–64% of
+the tissue on two of three calibration seeds while veins drained 99%.
+Six single-seed counterfactuals and a per-lineage bookkeeping run
+located it. Not the caliber thresholds (equal root calibers: still
+7× asymmetric, because a tree that falls behind stays behind), not the
+pruning reference (a network-wide median instead of per-tree: 0.16 →
+0.20), not the tissue pressure, not anastomosis consuming the fusing
+tips (a gate that fused only in tissue the tip's own tree already
+supplied made it worse). The bookkeeping found the asymmetry in the
+first 100 steps — vein trunks spawned 50 lineages to the arteries' 18,
+mostly second- and third-generation comb teeth — and the comb rule is
+why: `side_branch_radius` is one absolute number, vein teeth (0.0106)
+sit above it for the whole run while artery teeth (0.0071) taper below
+it after a fifth of the run, so the vein tree gets a comb of combs and
+the artery tree one generation less. From there the lead feeds itself:
+both trees carry the same flow, the smaller one through thinner and
+fewer vessels, so its per-tree pruning median runs 5× higher and 93% of
+its terminal twigs fall below the threshold against 44% for veins.
+`type_scaled_comb` judges the comb threshold on each tree's own caliber
+scale (arteries at `side_branch_radius × artery_caliber_ratio`, the
+observation that arterioles run at about two thirds of venule caliber
+at every level): arterial supply 0.64/0.59/0.91 → 0.85/0.76/0.96 on the
+calibration seeds, the artery tree 4.3k → 10.6k particles, superficial
+skeleton density 3.16% → 3.33%. The score itself moves little under
+the old targets (mean 17.8 → 19.7: more 1-px length than the caliber
+profile wants), which exposed the last blind spot in the objective —
+`perfused_fraction` counted any vessel, so a tissue fed by veins alone
+scored as perfused. It now requires both supply and drainage (a site
+within reach of an artery *and* a vein), the any-vessel fraction stays
+as the colonization vital and the contact sheet's reliability gate, and
+the paired fraction (0.84 on the spec seed, against 0.999 colonized) is
+deliberately the largest term in the score — 47.8 of 66.6, the other
+terms summing to 18.8 where the whole score was 23.0 before: the network
+colonizes its territory but does not yet perfuse a sixth of it, and
+that, not density, is the next target.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -906,6 +950,12 @@ the HRF masks, which is what makes the comparison apples to apples):
   real eye scores against the other fourteen pooled. `vnv_calibrate
   --derive-targets` reprints them, so a convention change re-derives the
   targets in one step.
+- The A:V caliber ratio is read on the depth-0 arcades within a fixed zone
+  of the disc (`metrics.AVR_ZONE`), as the clinical CRAE/CRVE is, not over
+  each trunk's whole tapering run. Perfusion requires both supply and
+  drainage: a demand site is perfused when an artery *and* a vein lie
+  within `perfusion_radius`; the any-vessel fraction is reported as the
+  colonized fraction and gates the contact sheet's seed reliability.
 
 *Comparability caveats that remain*: real fundus masks are 2D projections of
 a curved surface while the sim is projected from a thin ellipsoid; bifurcation

@@ -53,11 +53,13 @@ CONFIGURATION = {
 }
 
 
-def make_splitter() -> PathSplitter:
+def make_splitter(**splitter_overrides) -> PathSplitter:
+    config = copy.deepcopy(CONFIGURATION)
+    config["path_splitter"].update(splitter_overrides)
     splitter = PathSplitter()
     InteractiveContext(
         components=[Particle3D(), PathFreezer(), splitter, EllipsoidContainment()],
-        configuration=copy.deepcopy(CONFIGURATION),
+        configuration=config,
     )
     return splitter
 
@@ -71,6 +73,28 @@ def test_side_branching_trunks_are_exempt_from_cadence_damping():
     # Below side_branch_radius the caliber cadence still applies
     np.testing.assert_allclose(probabilities[2], 0.45)
     np.testing.assert_allclose(probabilities[3], 0.9)
+
+
+def test_type_scaled_comb_judges_arteries_on_their_own_caliber_scale():
+    from vivarium_eye_vessels.components.particles import (
+        VESSEL_TYPE_ARTERY,
+        VESSEL_TYPE_VEIN,
+    )
+
+    types = np.array([VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN, 0])
+    # Off (the default): one absolute threshold for everyone
+    np.testing.assert_allclose(make_splitter().comb_threshold(types), 0.008)
+    splitter = make_splitter(type_scaled_comb=True)
+    ratio = splitter.artery_caliber_ratio
+    np.testing.assert_allclose(splitter.comb_threshold(types), [0.008 * ratio, 0.008, 0.008])
+    # An artery tooth of 0.006 combs under the scaled threshold, not the absolute one
+    active = pd.DataFrame(
+        {"radius": [0.006, 0.006], "vessel_type": [VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN]},
+        index=[1, 2],
+    )
+    probabilities = splitter.split_probabilities(active)
+    np.testing.assert_allclose(probabilities[1], 0.9)  # side-branch emission rate
+    np.testing.assert_allclose(probabilities[2], 0.9 * (0.002 / 0.006))  # cadence-damped
 
 
 def test_side_branch_split_is_asymmetric_and_near_perpendicular():

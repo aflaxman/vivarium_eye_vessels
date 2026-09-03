@@ -84,6 +84,17 @@ configuration:
                                        # comb spacing along the arcades
                                        # (vnv_calibrate: sim 26px vs HRF 22.7px;
                                        # 0.8 packs tighter but collapses seed 7)
+        type_scaled_comb: true     # Judge the comb threshold on each tree's own
+                                   # caliber scale (arteries: side_branch_radius x
+                                   # artery_caliber_ratio). With one absolute
+                                   # threshold, artery teeth (0.0071) fell out of comb
+                                   # mode after a fifth of the run while vein teeth
+                                   # (0.0106) combed throughout, the vein tree
+                                   # out-sprouted the artery tree 3:1 from the first
+                                   # 100 steps, and the artery tree ended 6x smaller
+                                   # with only 59-64% of the tissue under arterial
+                                   # supply on two of three calibration seeds. Scaled:
+                                   # 76-96% (roadmap seventeenth pass)
         # Growth-reliability mechanisms (roadmap ninth pass), both OFF: every
         # configuration that improved the calibration seeds hurt held-out
         # seeds -- the growth front is near-critical, and these knobs

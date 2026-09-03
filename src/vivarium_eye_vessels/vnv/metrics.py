@@ -47,8 +47,17 @@ from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
 from skimage.morphology import convex_hull_image, skeletonize
 
+from vivarium_eye_vessels.components.particles import (
+    VESSEL_TYPE_ARTERY,
+    VESSEL_TYPE_VEIN,
+)
+
 RASTER_SIZE = 1024
 MIN_BRANCH_PIXELS = 5
+# Distance band from the disc center (simulation units) in which the
+# artery:vein caliber ratio is read off the arcades -- the analog of the
+# clinical measurement zone around the disc margin
+AVR_ZONE = (0.1, 0.5)
 BOX_SIZES = 2 ** np.arange(1, 8)  # 2..128 px; both sources span at least 512 px
 NEIGHBOR_KERNEL = np.ones((3, 3), dtype=int)
 NEIGHBOR_KERNEL[1, 1] = 0
@@ -134,6 +143,20 @@ def rasterize_network(
     return image
 
 
+def site_reach(
+    pop: pd.DataFrame, sites: np.ndarray, perfusion_radius: float, vessel_type: int | None
+) -> np.ndarray:
+    """Mask of demand sites within perfusion_radius of a frozen (typed) vessel."""
+    frozen = pop[pop.frozen]
+    if vessel_type is not None:
+        frozen = frozen[frozen.vessel_type == vessel_type]
+    positions = frozen[["x", "y", "z"]].to_numpy(dtype=float)
+    if len(positions) == 0 or len(sites) == 0:
+        return np.zeros(len(sites), dtype=bool)
+    distances, _ = cKDTree(positions).query(sites, k=1)
+    return distances <= perfusion_radius
+
+
 def perfused_fraction(
     pop: pd.DataFrame,
     semi_axes,
@@ -146,19 +169,58 @@ def perfused_fraction(
     The direct measure of how completely the network colonizes its territory
     (roadmap idea 2). Mirrors the PerfusionDemand component's site lattice.
     With ``vessel_type`` given, only frozen vessels of that type count (e.g.
-    arterial supply coverage vs. venous drainage coverage).
+    arterial supply coverage vs. venous drainage coverage). This is the
+    growth-completeness measure; :func:`paired_perfused_fraction` is the
+    physiological one.
     """
     from vivarium_eye_vessels.components.boundaries import generate_demand_sites
 
     sites = generate_demand_sites(np.asarray(semi_axes, dtype=float), site_spacing)
-    frozen = pop[pop.frozen]
-    if vessel_type is not None:
-        frozen = frozen[frozen.vessel_type == vessel_type]
-    frozen_positions = frozen[["x", "y", "z"]].to_numpy(dtype=float)
-    if len(frozen_positions) == 0 or len(sites) == 0:
+    if len(sites) == 0:
         return 0.0
-    distances, _ = cKDTree(frozen_positions).query(sites, k=1)
-    return float((distances <= perfusion_radius).mean())
+    return float(site_reach(pop, sites, perfusion_radius, vessel_type).mean())
+
+
+def paired_perfused_fraction(
+    pop: pd.DataFrame, semi_axes, site_spacing: float, perfusion_radius: float
+) -> float:
+    """Fraction of demand sites within perfusion_radius of both an artery and a vein.
+
+    Tissue is perfused when blood can arrive and leave: a capillary bed needs
+    an arteriole to feed it and a venule to drain it. A site reached by one
+    tree only is colonized, not perfused, so this is the scored perfusion
+    target; the any-vessel fraction measures growth completeness.
+    """
+    from vivarium_eye_vessels.components.boundaries import generate_demand_sites
+
+    sites = generate_demand_sites(np.asarray(semi_axes, dtype=float), site_spacing)
+    if len(sites) == 0:
+        return 0.0
+    supplied = site_reach(pop, sites, perfusion_radius, VESSEL_TYPE_ARTERY)
+    drained = site_reach(pop, sites, perfusion_radius, VESSEL_TYPE_VEIN)
+    return float((supplied & drained).mean())
+
+
+def arcade_caliber_ratio(
+    pop: pd.DataFrame, disc_center, zone: tuple[float, float] = AVR_ZONE
+) -> float:
+    """Mean artery over mean vein caliber of the depth-0 arcades near the disc.
+
+    Clinical AVR (CRAE/CRVE) is read on the major arcades in a fixed zone
+    around the disc margin. Averaging each trunk's whole length instead
+    makes the ratio depend on how far each tapering trunk happens to run
+    -- a seed lottery of 0.63-0.85 at a configured 0.67 -- so only depth-0
+    particles between ``zone[0]`` and ``zone[1]`` from the disc center
+    count. NaN when either tree is absent from the zone.
+    """
+    trunks = pop[(pop.depth == 0) & (pop.radius > 0) & (pop.vessel_type > 0)]
+    distance = np.hypot(trunks.x - disc_center[0], trunks.y - disc_center[1])
+    in_zone = trunks[(distance >= zone[0]) & (distance < zone[1])]
+    arteries = in_zone[in_zone.vessel_type == VESSEL_TYPE_ARTERY]
+    veins = in_zone[in_zone.vessel_type == VESSEL_TYPE_VEIN]
+    if arteries.empty or veins.empty:
+        return float("nan")
+    return float(arteries.radius.mean() / veins.radius.mean())
 
 
 def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:

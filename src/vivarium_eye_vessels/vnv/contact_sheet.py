@@ -4,8 +4,8 @@ One healthy retina looks much like another, so a realistic model must
 produce a usable network on *every* seed, not just the calibration seeds.
 This sheet runs the model on held-out seeds, renders each superficial
 network beside expert-labeled HRF masks in the same style, and stamps each
-simulation panel with its reliability vitals (perfused fraction, skeleton
-density, frozen count). The JSON alongside records the same numbers so
+simulation panel with its reliability vitals (colonized fraction, arterial
+supply, skeleton density, frozen count). The JSON alongside records the same numbers so
 seed reliability is tracked across model versions like every other metric.
 
 Usage::
@@ -36,18 +36,26 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     """Run one seed and return its superficial raster and reliability vitals."""
     spec_path = workdir / f"contact_seed{seed}.yaml"
     sim = simulation.build_from_spec(simulation.with_seed(spec, seed), spec_path)
-    bounds = simulation.get_ellipsoid_bounds(sim)
-    semi_axes = simulation.get_ellipsoid_semi_axes(sim)
-    perfusion = simulation.get_perfusion_params(sim)
+    geometry = simulation.get_geometry(sim)
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
     fundus = edges[edges.layer_id == 0]
-    raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
+    raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
     return {
         "seed": seed,
         "raster": raster,
-        "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, *perfusion),
+        # Any-vessel reach: the growth-completeness vital the reliability
+        # gate is about; arterial supply is the tree that lags when it lags
+        "colonized_fraction": metrics.perfused_fraction(
+            pop, geometry.semi_axes, *geometry.perfusion
+        ),
+        "arterial_supply_fraction": metrics.perfused_fraction(
+            pop,
+            geometry.semi_axes,
+            *geometry.perfusion,
+            vessel_type=metrics.VESSEL_TYPE_ARTERY,
+        ),
         "skeleton_density": metrics.image_metrics(raster)["skeleton_density"],
         "n_frozen": int(pop.frozen.sum()),
     }
@@ -79,7 +87,8 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
         runs.append(run_seed(spec, seed, steps, output))
         run = runs[-1]
         click.echo(
-            f"seed {seed}: perfused {run['perfused_fraction']:.2f}, "
+            f"seed {seed}: colonized {run['colonized_fraction']:.2f}, "
+            f"arterial {run['arterial_supply_fraction']:.2f}, "
             f"skeleton {run['skeleton_density']*100:.2f}%, "
             f"n_frozen {run['n_frozen']} "
             f"({(time.time() - start) / 60:.1f} min)"
@@ -93,9 +102,10 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
         ax.axis("off")
     for ax, run in zip(axes[0], runs):
         ax.imshow(~run["raster"], cmap="gray", interpolation="nearest")
-        reliable = run["perfused_fraction"] >= PERFUSION_TARGET
+        reliable = run["colonized_fraction"] >= PERFUSION_TARGET
         ax.set_title(
-            f"sim seed {run['seed']} — perfused {run['perfused_fraction']:.0%}, "
+            f"sim seed {run['seed']} — colonized {run['colonized_fraction']:.0%} "
+            f"(arterial {run['arterial_supply_fraction']:.0%}), "
             f"skeleton {run['skeleton_density']*100:.1f}%"
             + ("" if reliable else "  [STALLED]"),
             fontsize=11,
@@ -108,11 +118,11 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
         ax.set_title(f"HRF {name}", fontsize=11)
 
     reliability = float(
-        np.mean([run["perfused_fraction"] >= PERFUSION_TARGET for run in runs])
+        np.mean([run["colonized_fraction"] >= PERFUSION_TARGET for run in runs])
     )
     fig.suptitle(
         f"Held-out seeds (top) vs HRF expert masks (bottom) — "
-        f"{reliability:.0%} of seeds reach {PERFUSION_TARGET:.0%} perfusion",
+        f"{reliability:.0%} of seeds colonize {PERFUSION_TARGET:.0%} of the tissue",
         fontsize=14,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.95))

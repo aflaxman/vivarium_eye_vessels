@@ -215,9 +215,8 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     setup_start = time.perf_counter()
     sim = simulation.build_headless_simulation(model_spec)
     setup_seconds = time.perf_counter() - setup_start
-    bounds = simulation.get_ellipsoid_bounds(sim)
-    semi_axes = simulation.get_ellipsoid_semi_axes(sim)
-    perfusion = simulation.get_perfusion_params(sim)
+    geometry = simulation.get_geometry(sim)
+    bounds = geometry.bounds
     run_start = time.perf_counter()
     simulation.run_steps(sim, steps)
     simulation_seconds = time.perf_counter() - run_start
@@ -258,8 +257,6 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         else None
     )
     sim_junction_exponents = metrics.junction_exponents(superficial_pop)
-    sim_arterial_supply = metrics.perfused_fraction(pop, semi_axes, *perfusion, vessel_type=1)
-    sim_venous_drainage = metrics.perfused_fraction(pop, semi_axes, *perfusion, vessel_type=2)
     arteries = pop[(pop.vessel_type == 1) & (pop.path_id >= 0) & (pop.radius > 0)]
     veins = pop[(pop.vessel_type == 2) & (pop.path_id >= 0) & (pop.radius > 0)]
 
@@ -284,13 +281,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
 
     # Calibration score: squared z-like deviation from each validation
     # target, from the same statistics the calibration harness scores
-    calibration_stats = calibrate.scoring_stats(
-        pop, edges, bounds, semi_axes, references, perfusion
-    )
+    calibration_stats = calibrate.scoring_stats(pop, edges, geometry, references)
     calibration_scores = calibrate.calibration_score(calibration_stats)
     sim_perfused_fraction = calibration_stats["perfused_fraction"]
-    # Clinical AVR is measured on the major arcades near the disc (depth-0
-    # trunks), not averaged over capillary-scale tails
+    sim_arterial_supply = calibration_stats["arterial_supply_fraction"]
+    sim_venous_drainage = calibration_stats["venous_drainage_fraction"]
+    # Clinical AVR is read on the major arcades in a zone near the disc
     sim_avr = calibration_stats["artery_vein_caliber_ratio"]
 
     real_fd = np.array([m["fractal_dimension"] for m in real_per_mask])
@@ -506,11 +502,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     area_line = (
         f"Vessel area density: sim {sim_image_metrics['area_density']*100:.2f}%  vs  "
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
-        f"Perfused tissue: sim {sim_perfused_fraction*100:.1f}%"
-        f" (superficial alone {calibration_stats['superficial_perfused_fraction']*100:.1f}%)      "
-        f"A:V caliber ratio: sim {sim_avr:.2f} (clinical ~0.67)      "
-        f"Loops: {sim_graph_cycles}      Pruned: {sim_n_pruned}      "
-        f"Calibration score: {calibration_scores['total']:.1f}"
+        f"Perfused (artery + vein in reach): sim {sim_perfused_fraction*100:.1f}%"
+        f" (colonized {calibration_stats['colonized_fraction']*100:.0f}%,"
+        f" arterial {sim_arterial_supply*100:.0f}%)     "
+        f"A:V ratio: sim {sim_avr:.2f} (clinical 0.67)     "
+        f"Loops: {sim_graph_cycles}     Pruned: {sim_n_pruned}     "
+        f"Score: {calibration_scores['total']:.1f}"
     )
     fig.suptitle(
         "Vessel network diagnostics: simulation vs. HRF public dataset",
@@ -532,7 +529,11 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         "steps": steps,
         "raster_size": metrics.RASTER_SIZE,
         "has_calibers": has_calibers,
-        "perfusion": {"site_spacing": perfusion[0], "perfusion_radius": perfusion[1]},
+        "perfusion": {
+            "site_spacing": geometry.perfusion[0],
+            "perfusion_radius": geometry.perfusion[1],
+        },
+        "avr_zone": list(metrics.AVR_ZONE),
         # Wall-clock runtime on the machine that generated this file; useful
         # for tracking the trend across model versions, not as an absolute
         "runtime": {
@@ -567,8 +568,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "bifurcation_angle_deg_all_layers": metrics.summarize(sim_angles_all_layers),
             "junction_exponent": metrics.summarize(sim_junction_exponents),
             "perfused_fraction": sim_perfused_fraction,
-            "superficial_perfused_fraction": calibration_stats[
-                "superficial_perfused_fraction"
+            "colonized_fraction": calibration_stats["colonized_fraction"],
+            "superficial_colonized_fraction": calibration_stats[
+                "superficial_colonized_fraction"
             ],
             "arterial_supply_fraction": sim_arterial_supply,
             "venous_drainage_fraction": sim_venous_drainage,

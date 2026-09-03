@@ -1,3 +1,59 @@
+**v0.26.0 - 09/04/26**
+
+ - The AVR term, and the starved artery tree behind it
+
+   - **Measurement.** ``artery_vein_caliber_ratio`` is now read on the
+     depth-0 arcades within ``metrics.AVR_ZONE`` (0.1-0.5 units) of the
+     disc, the analog of the clinical measurement zone, instead of over
+     every depth-0 particle. The whole-trunk mean mixed distance bands
+     with different type composition and taper, so the ratio read
+     0.63-0.85 on trees seeded at 0.67 (a seed lottery of how far each
+     tapering trunk ran); in the zone it reads 0.66-0.71 on every seed.
+     ``simulation.Geometry`` bundles the containment, perfusion lattice
+     and disc position the metrics need (``get_geometry``)
+   - **Finding.** The artery tree was 3-6x smaller than the vein tree
+     (4,313 vs 26,601 frozen particles on the spec seed) and supplied
+     only 59-64% of the tissue on two of three calibration seeds while
+     veins drained 99%. Per-lineage bookkeeping traced it to the first
+     100 steps: vein trunks spawned 50 new lineages to the arteries' 18,
+     mostly second- and third-generation comb teeth. The comb threshold
+     (``side_branch_radius`` 0.006) is absolute: vein teeth (0.0106)
+     comb for the whole run, artery teeth (0.0071) taper out of comb mode
+     after a fifth of it, and the lead then feeds itself (the smaller
+     tree's twigs carry the same flow through thinner vessels, so its
+     per-tree pruning median is 5x higher and 93% of its terminals fall
+     below the pruning threshold against 44% for veins)
+   - **Model.** ``path_splitter.type_scaled_comb`` (on): the comb
+     threshold is judged on each tree's own caliber scale
+     (arteries: ``side_branch_radius x artery_caliber_ratio``), since
+     arterioles run at about two thirds of venule caliber at the same
+     branching level. Arterial supply 0.64/0.59/0.91 -> 0.85/0.76/0.96 on
+     the calibration seeds, artery tree 4.3k -> 10.6k particles, skeleton
+     density 3.16 -> 3.33% on the spec seed; held-out seeds 11/202/909/
+     4242 all colonize >= 99% of the tissue (4/4) with arterial supply
+     0.92/0.99/0.96/0.75. The old-target score is unchanged within noise
+     (3-seed mean 17.8 -> 19.7: more 1-px length than the caliber profile
+     wants), so the knob is shipped for the arterial supply, not the score
+   - **Scoring.** ``perfused_fraction`` now requires both supply and
+     drainage: a demand site counts as perfused when it is within
+     ``perfusion_radius`` of an artery *and* a vein
+     (``metrics.paired_perfused_fraction``). The any-vessel fraction is
+     kept as ``colonized_fraction`` (the growth-completeness vital and
+     the contact sheet's reliability gate) alongside per-tree coverage.
+     This is the honest perfusion and it costs the model on purpose: the
+     paired fraction is 0.84 on the spec seed (colonized 0.999), so the
+     spec-seed score reads 23.0 -> 66.6, of which 47.8 is this one term
+     (the other terms sum to 18.8, down from 23.0 with the AVR term gone)
+     -- the largest term in the score again, and it names the next target
+   - Swept and rejected on the spec seed, all reverted: a
+     supply-gated anastomosis (fuse only where the tip's own tree already
+     supplies the tissue; A:V tree ratio 0.16 -> 0.12), a network-wide
+     pruning reference instead of per-tree medians (0.16 -> 0.20),
+     tissue pressure at the venous end (-0.5: 0.29, -0.7: 0.17),
+     equal root calibers (0.14: the feedback, not the caliber, decides
+     once a tree is behind), no anastomosis at all (0.64, by letting
+     terminal tips run unchecked -- not a fix)
+
 **v0.25.0 - 09/03/26**
 
  - Thin vessels: the adaptation cap was the 3-px class

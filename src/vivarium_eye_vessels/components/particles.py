@@ -588,6 +588,15 @@ class PathSplitter(Component):
             # random side. 0 disables the mode (dichotomous splitting only)
             "side_branch_flow": 0.0,
             "side_branch_radius": 0.008,
+            # Judge the comb threshold on each tree's own caliber scale: an
+            # artery counts as a comb-worthy trunk above
+            # side_branch_radius x artery_caliber_ratio. Arterioles run at
+            # about two thirds the caliber of the venules at the same
+            # branching level, so one absolute threshold makes artery teeth
+            # drop out of comb mode after a fraction of the run while vein
+            # teeth comb throughout, and the artery tree ends several times
+            # smaller than the vein tree. False keeps the absolute threshold
+            "type_scaled_comb": False,
             # Combs form after the arcades establish (retinal development
             # spreads the trunks from the disc first; secondary branching
             # follows). The default predates any simulation start = always on
@@ -653,6 +662,9 @@ class PathSplitter(Component):
         self.randomness = builder.randomness.get_stream("path_splitter")
         self.clock = builder.time.clock()
         self.side_branch_start = pd.Timestamp(self.config.side_branch_start_time)
+        self.artery_caliber_ratio = float(
+            builder.configuration.particles.artery_caliber_ratio
+        )
         self.simulant_creator = builder.population.get_simulant_creator()
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
@@ -745,6 +757,19 @@ class PathSplitter(Component):
             return 0.0
         return float(self.config.side_branch_flow)
 
+    def comb_threshold(self, vessel_types) -> np.ndarray:
+        """Per-tip caliber above which a tip side-branches instead of bifurcating.
+
+        With ``type_scaled_comb`` the threshold is scaled by
+        ``artery_caliber_ratio`` for arteries, so both trees are judged on
+        their own caliber scale.
+        """
+        threshold = np.full(len(vessel_types), float(self.config.side_branch_radius))
+        if bool(self.config.type_scaled_comb):
+            arteries = np.asarray(vessel_types) == VESSEL_TYPE_ARTERY
+            threshold[arteries] *= self.artery_caliber_ratio
+        return threshold
+
     def uncrowded(self, pop: pd.DataFrame, to_split: pd.Index) -> pd.Index:
         """Drop split candidates whose surroundings are already saturated.
 
@@ -761,7 +786,9 @@ class PathSplitter(Component):
         # dominates its neighbor count, and suppressing teeth where teeth
         # belong is exactly the wrong response to crowding
         if "radius" in candidates.columns and self.side_branch_flow_now() > 0:
-            gated = candidates.radius.to_numpy(float) <= float(self.config.side_branch_radius)
+            gated = candidates.radius.to_numpy(float) <= self.comb_threshold(
+                candidates.vessel_type.to_numpy()
+            )
         else:
             gated = np.ones(len(candidates), dtype=bool)
         neighbor_lists = self.freezer.query_radius(
@@ -811,7 +838,12 @@ class PathSplitter(Component):
         # arcades emit side branches at short, comb-like intervals, at
         # their own emission probability
         if self.side_branch_flow_now() > 0:
-            wide = radii > float(self.config.side_branch_radius)
+            types = (
+                active.vessel_type.to_numpy()
+                if "vessel_type" in active.columns
+                else np.full(len(active), VESSEL_TYPE_NONE)
+            )
+            wide = radii > self.comb_threshold(types)
             probabilities[wide] = float(self.config.side_branch_probability)
         return pd.Series(probabilities, index=active.index)
 
@@ -921,7 +953,12 @@ class PathSplitter(Component):
         if side_flow > 0:
             # Comb mode: a wide trunk keeps nearly its own caliber and sheds
             # a small side branch (flow fraction ~ side_branch_flow, +/-25%)
-            side_branching = parent_radii > float(self.config.side_branch_radius)
+            types = (
+                pop.loc[to_split, "vessel_type"].to_numpy()
+                if "vessel_type" in pop.columns
+                else np.full(len(to_split), VESSEL_TYPE_NONE)
+            )
+            side_branching = parent_radii > self.comb_threshold(types)
             flow_fractions = flow_fractions.where(
                 ~side_branching, side_flow * (0.75 + 0.5 * draw)
             )

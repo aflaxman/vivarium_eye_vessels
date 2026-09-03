@@ -90,7 +90,11 @@ TARGETS = {
     # (>100 degree) junctions are rare. Judgment scales from the literature
     "bifurcation_angle_median": {"target": 77.0, "scale": 5.0},
     "bifurcation_obtuse_share": {"target": 0.05, "scale": 0.05, "one_sided": "above"},
+    # Clinical AVR, read on the depth-0 arcades within metrics.AVR_ZONE of the
+    # disc (the measurement zone), not over each trunk's whole tapering run
     "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
+    # Tissue within perfusion_radius of both an artery and a vein: a bed
+    # with supply but no drainage (or the reverse) is colonized, not perfused
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
 
@@ -254,29 +258,34 @@ def derive_hrf_targets(references: dict) -> dict:
     }
 
 
-def scoring_stats(pop, edges, bounds, semi_axes, references: dict, perfusion) -> dict:
+def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -> dict:
     """The scored summary statistics for one finished simulation.
 
-    ``perfusion`` is the model's (site_spacing, perfusion_radius); see
-    :func:`~vivarium_eye_vessels.vnv.simulation.get_perfusion_params`.
-    Besides the scored entries, the result carries a few unscored vitals
-    (frozen count, loops, the imaged-region share of the frame, and the
-    perfusion the superficial plexus alone would deliver).
+    ``geometry`` carries the model's containment, perfusion lattice, and
+    disc position (:func:`~vivarium_eye_vessels.vnv.simulation.get_geometry`).
+    Besides the scored entries, the result carries unscored vitals: frozen
+    count, loops, the imaged-region share of the frame, the any-vessel
+    colonized fraction (whole network and superficial plexus alone), and
+    the coverage of each tree.
     """
     # Fundus photographs image the superficial vasculature; the deep
     # capillary-only plexuses are essentially invisible to them (OCTA sees
     # them instead), so the HRF comparison rasterizes layer 0 only
     fundus = edges[edges.layer_id == 0]
-    raster = metrics.rasterize_network(fundus, bounds, radii=fundus.radius.values)
+    raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
     image = metrics.image_metrics(raster)
     stats = image_stats(image, references)
     # Bifurcation geometry is judged on the superficial tree, like the raster.
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so
     # they agree with the fundus (x-y) projection the literature reports
     angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
-    arteries = pop[(pop.vessel_type == 1) & (pop.depth == 0) & (pop.radius > 0)]
-    veins = pop[(pop.vessel_type == 2) & (pop.depth == 0) & (pop.radius > 0)]
     superficial = pop[pop.layer_id == 0]
+
+    def perfused(vessels, vessel_type=None) -> float:
+        return metrics.perfused_fraction(
+            vessels, geometry.semi_axes, *geometry.perfusion, vessel_type=vessel_type
+        )
+
     stats.update(
         {
             "bifurcation_angle_median": (
@@ -285,15 +294,18 @@ def scoring_stats(pop, edges, bounds, semi_axes, references: dict, perfusion) ->
             "bifurcation_obtuse_share": (
                 float((angles > 100).mean()) if len(angles) else float("nan")
             ),
-            "artery_vein_caliber_ratio": (
-                float(arteries.radius.mean() / veins.radius.mean())
-                if len(arteries) and len(veins)
-                else float("nan")
+            "artery_vein_caliber_ratio": metrics.arcade_caliber_ratio(
+                pop, geometry.disc_center
             ),
-            "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, *perfusion),
-            "superficial_perfused_fraction": metrics.perfused_fraction(
-                superficial, semi_axes, *perfusion
+            # Scored perfusion needs both supply and drainage; the any-vessel
+            # and per-tree fractions are the growth diagnostics behind it
+            "perfused_fraction": metrics.paired_perfused_fraction(
+                pop, geometry.semi_axes, *geometry.perfusion
             ),
+            "colonized_fraction": perfused(pop),
+            "superficial_colonized_fraction": perfused(superficial),
+            "arterial_supply_fraction": perfused(pop, metrics.VESSEL_TYPE_ARTERY),
+            "venous_drainage_fraction": perfused(pop, metrics.VESSEL_TYPE_VEIN),
             "fov_fraction": image["fov_fraction"],
             "n_frozen": int(pop.frozen.sum()),
             "graph_cycles": metrics.graph_cycles(pop),
@@ -312,13 +324,11 @@ def apply_overrides(spec: dict, overrides: dict) -> dict:
 def evaluate_spec(spec: dict, steps: int, references: dict, workdir: Path, tag: str) -> dict:
     """Run one candidate spec to completion and score it."""
     sim = simulation.build_from_spec(spec, workdir / f"candidate_{tag}.yaml")
-    bounds = simulation.get_ellipsoid_bounds(sim)
-    semi_axes = simulation.get_ellipsoid_semi_axes(sim)
-    perfusion = simulation.get_perfusion_params(sim)
+    geometry = simulation.get_geometry(sim)
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
-    stats = scoring_stats(pop, edges, bounds, semi_axes, references, perfusion)
+    stats = scoring_stats(pop, edges, geometry, references)
     return {"stats": stats, "scores": calibration_score(stats)}
 
 

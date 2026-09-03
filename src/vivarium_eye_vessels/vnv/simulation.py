@@ -8,6 +8,7 @@ skipping visualization components.
 
 import copy
 import importlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -98,6 +99,41 @@ def get_perfusion_params(sim: InteractiveContext) -> tuple[float, float]:
         return float(config.site_spacing), float(config.perfusion_radius)
     except AttributeError:
         return 0.1, 0.15
+
+
+def get_disc_center(sim: InteractiveContext) -> tuple[float, float]:
+    """The (x, y) of the optic disc: the center of the root circle."""
+    try:
+        center = sim.configuration.particles.initial_circle.center
+        return float(center[0]), float(center[1])
+    except (AttributeError, IndexError, TypeError):
+        return 0.0, 0.0
+
+
+@dataclass(frozen=True)
+class Geometry:
+    """The spatial facts of a model the V&V metrics have to agree with.
+
+    Read from the built simulation (:func:`get_geometry`) rather than
+    assumed, so a spec change moves the metrics with it.
+    """
+
+    semi_axes: tuple[float, float, float]  # containment ellipsoid (a, b, c)
+    perfusion: tuple[float, float]  # PerfusionDemand (site_spacing, perfusion_radius)
+    disc_center: tuple[float, float]  # optic disc (x, y): the root circle's center
+
+    @property
+    def bounds(self) -> tuple[float, float]:
+        """The (a, b) semi-axes the x-y raster spans."""
+        return self.semi_axes[0], self.semi_axes[1]
+
+
+def get_geometry(sim: InteractiveContext) -> Geometry:
+    return Geometry(
+        semi_axes=get_ellipsoid_semi_axes(sim),
+        perfusion=get_perfusion_params(sim),
+        disc_center=get_disc_center(sim),
+    )
 
 
 def get_network(sim: InteractiveContext) -> pd.DataFrame:

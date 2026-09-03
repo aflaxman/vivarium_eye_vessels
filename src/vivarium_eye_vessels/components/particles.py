@@ -383,6 +383,9 @@ class PathFreezer(Component):
             "vx",
             "vy",
             "vz",
+            "wx",
+            "wy",
+            "wz",
             "frozen",
             "freeze_time",
             "depth",
@@ -471,6 +474,13 @@ class PathFreezer(Component):
                 "vx": active.vx.values,
                 "vy": active.vy.values,
                 "vz": active.vz.values,
+                # Carry the OU steering state: the tip's identity moves to this
+                # particle, so its correlated-noise memory must move with it,
+                # or the persistence time (roadmap idea 7) is capped at the
+                # freeze interval. A no-op when noise is white (the default)
+                "wx": active.wx.values,
+                "wy": active.wy.values,
+                "wz": active.wz.values,
                 "path_id": active.path_id.values,
                 "parent_id": active.index.values,
                 "frozen": False,
@@ -665,6 +675,23 @@ class PathSplitter(Component):
         extinct could never grow again while the other tree keeps splitting.
         """
         updates = []
+        # The free pool is carved sequentially across every branch-making
+        # phase below: each helper claims particles from the front of
+        # ``available``, and the claimed slots are removed before the next
+        # phase. Without this, the active-split and re-sprout phases (and the
+        # two vessel types within the re-sprout loop) all drew from the same
+        # snapshot and wrote to overlapping slots, so the later phase's
+        # updates silently overwrote the earlier phase's new branches.
+        available = pop[~pop.frozen & (pop.path_id < 0)]
+
+        def claim(new_updates: list | None) -> None:
+            nonlocal available
+            new_updates = new_updates or []
+            if new_updates:
+                consumed = pd.Index([frame.index[0] for frame in new_updates])
+                available = available.drop(index=consumed, errors="ignore")
+            updates.extend(new_updates)
+
         active = pop[~pop.frozen & (pop.path_id >= 0)]
 
         if not active.empty:
@@ -673,7 +700,7 @@ class PathSplitter(Component):
             )
             to_split = self.eligible(pop, to_consider)
             if not to_split.empty:
-                updates.extend(self.split_unfrozen(pop, to_split) or [])
+                claim(self.split_unfrozen(pop, to_split, available))
 
         # Per-type re-sprouting from frozen vessels (angiogenic sprouting):
         # a tree whose growth front thins below min_active_tips tops itself
@@ -698,7 +725,7 @@ class PathSplitter(Component):
             if n_active > 0:
                 to_split = to_split[: floor - n_active]
             if not to_split.empty:
-                updates.extend(self.split_frozen(pop, to_split) or [])
+                claim(self.split_frozen(pop, to_split, available))
 
         self.commit(updates)
 
@@ -756,7 +783,8 @@ class PathSplitter(Component):
         """
         to_split = self.eligible(pop, to_split)
         if not to_split.empty:
-            self.commit(self.split_frozen(pop, to_split) or [])
+            available = pop[~pop.frozen & (pop.path_id < 0)]
+            self.commit(self.split_frozen(pop, to_split, available) or [])
 
     def split_probabilities(self, active: pd.DataFrame) -> pd.Series:
         """Per-tip split probability, reduced for wide-caliber tips.
@@ -787,8 +815,7 @@ class PathSplitter(Component):
             probabilities[wide] = float(self.config.side_branch_probability)
         return pd.Series(probabilities, index=active.index)
 
-    def split_frozen(self, pop, to_split):
-        available = pop[~pop.frozen & (pop.path_id < 0)]
+    def split_frozen(self, pop, to_split, available):
         if len(available) < len(to_split):
             self.add_particles()
             return
@@ -815,12 +842,9 @@ class PathSplitter(Component):
             if speed == 0:
                 continue
 
-            # Calculate normalized velocity and perpendicular vector
+            # Rotation axis keeps the split in the plexus plane
             vel_norm = vel / speed
-            perp = np.array([0, -vel_norm[2], vel_norm[1]])
-            if np.allclose(perp, 0):
-                perp = np.array([-vel_norm[1], vel_norm[0], 0])
-            perp = perp / np.linalg.norm(perp)
+            perp = self.split_axis(vel_norm)
 
             # Calculate new velocities for both branches
             rot_matrix_1 = self._rotation_matrix(perp, angle_rad[orig_idx])
@@ -852,9 +876,32 @@ class PathSplitter(Component):
                 },
                 index=[new_branches.iloc[idx].name],
             )
+            # Each sprout is its own vessel: give it a fresh path id so its
+            # trail is not exempted from FrozenRepulsion for an unrelated
+            # sprout or the next split's minor daughter (they shared one id
+            # before, letting duplicate sprouts grow through each other)
+            self.next_path_id += 1
             updates.append(new_branch_1)
 
         return updates
+
+    def split_axis(self, vel_norm: np.ndarray) -> np.ndarray:
+        """Rotation axis for a split, so both daughters stay in the plexus plane.
+
+        The daughters are the heading rotated by +/- the branch angle about
+        this axis, so the split is planar in the plane spanned by the heading
+        and the axis. Using the plexus normal (z) made perpendicular to the
+        heading keeps that plane horizontal for any heading; the old axis
+        (x_hat x heading) tilted out of plane for tips moving along +/-x,
+        throwing daughters into the z-direction where the terminal-velocity
+        clamp (z weighted heavily by the thin ellipsoid) stalled them.
+        """
+        axis = np.array([0.0, 0.0, 1.0]) - float(vel_norm[2]) * vel_norm
+        norm = np.linalg.norm(axis)
+        if norm < 1e-9:  # heading is along z; any in-plane axis will do
+            axis = np.array([1.0, 0.0, 0.0]) - float(vel_norm[0]) * vel_norm
+            norm = np.linalg.norm(axis)
+        return axis / norm
 
     def split_radii_and_angles(self, pop, to_split):
         """Murray-law daughter radii and branch angles for each split point.
@@ -913,8 +960,7 @@ class PathSplitter(Component):
             angle_minor = angle_minor * signs
         return major_radii, minor_radii, angle_major, angle_minor
 
-    def split_unfrozen(self, pop, to_split):
-        available = pop[~pop.frozen & (pop.path_id < 0)]
+    def split_unfrozen(self, pop, to_split, available):
         if len(available) < 2 * len(to_split):
             self.add_particles()
             return
@@ -935,12 +981,9 @@ class PathSplitter(Component):
             if speed == 0:
                 continue
 
-            # Calculate normalized velocity and perpendicular vector
+            # Rotation axis keeps the split in the plexus plane
             vel_norm = vel / speed
-            perp = np.array([0, -vel_norm[2], vel_norm[1]])
-            if np.allclose(perp, 0):
-                perp = np.array([-vel_norm[1], vel_norm[0], 0])
-            perp = perp / np.linalg.norm(perp)
+            perp = self.split_axis(vel_norm)
 
             # Calculate new velocities for both branches
             rot_matrix_1 = self._rotation_matrix(perp, angle_rad_1[orig_idx])

@@ -2,31 +2,31 @@
   "seeds": [
     {
       "seed": 11,
-      "perfused_fraction": 0.8840927258193445,
-      "skeleton_density": 0.013980865478515625,
-      "n_frozen": 6583
+      "perfused_fraction": 0.9992006394884093,
+      "skeleton_density": 0.0240478515625,
+      "n_frozen": 31698
     },
     {
       "seed": 202,
-      "perfused_fraction": 1.0,
-      "skeleton_density": 0.009758949279785156,
-      "n_frozen": 18138
+      "perfused_fraction": 0.9984012789768185,
+      "skeleton_density": 0.02148723602294922,
+      "n_frozen": 30657
     },
     {
       "seed": 909,
-      "perfused_fraction": 0.988009592326139,
-      "skeleton_density": 0.014135360717773438,
-      "n_frozen": 11098
+      "perfused_fraction": 1.0,
+      "skeleton_density": 0.0255584716796875,
+      "n_frozen": 40995
     },
     {
       "seed": 4242,
-      "perfused_fraction": 0.873701039168665,
-      "skeleton_density": 0.005349159240722656,
-      "n_frozen": 5782
+      "perfused_fraction": 0.9992006394884093,
+      "skeleton_density": 0.015507698059082031,
+      "n_frozen": 33204
     }
   ],
   "perfusion_target": 0.95,
-  "seed_reliability": 0.5,
+  "seed_reliability": 1.0,
   "steps": 800,
   "masks": [
     "03_h.tif",

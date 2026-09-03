@@ -747,6 +747,87 @@ and re-baseline most of the distributional targets. That re-baselining
 is a deliberate, judgment-heavy change to the calibration foundation and
 is tracked as its own follow-up rather than folded into the bug fixes.
 
+*Fifteenth pass (the measurement re-baseline)*: every convention the
+audit flagged is now applied identically to both sources (the V&V
+section below lists them), and the HRF-derived targets were re-derived
+under the new conventions with `vnv_calibrate --derive-targets`. The
+score of the spec seed moves 57.0 → 193.2, and the decomposition says
+where the audit was right and where it was wrong. Right: the
+**area-density term was measurement** (19.1 → 0.5; the 0.1 binarization
+threshold had thickened HRF vessels so the target was 11.9% instead of
+10.8%, and the simulation's dilation-drawn calibers were rounded to odd
+widths), the **fractal term flipped sign** (sim above target by 3 sd →
+below by 1.5 sd once both sides count the same box range — a 256-px box
+that only the simulation's square frame admitted was inflating its
+dimension), and the tortuosity target of 1.000 was an artifact of
+counting pixels rather than arc length (real branches sit at 1.075, and
+the model at 1.071 turns out slightly *too straight*). Wrong: the field
+of view nets out (HRF masks fill 83% of their frame, the ellipse 80%), so
+the skeleton-density gap is real — the model lays 29% less centerline
+per imaged pixel than a healthy eye (2.66% vs 3.73 ± 0.31%). And the
+re-baseline revealed the term that now dominates everything: the
+**length-weighted caliber profile** (KS 0.41 against a real eye's 0.05 ±
+0.03, 156 of the 193 points). Half of a real eye's fundus-visible
+skeleton runs in vessels one pixel wide at this scale (~15–30 µm —
+precapillary arterioles and venules, which the HRF labelers drew and
+which the old threshold had inflated to 3 px, hiding the mismatch);
+the model's finest superficial vessels are its side branches at radius
+0.006 (3 px), and only 5% of its branches reach the 1-px class against
+38% in HRF. The composition and density gaps are the same fact seen
+three ways. This is the modeling target for the next pass, and it is a
+caliber-generation question — thinner side branches, a deeper terminal
+generation at the caliber floor, or a shear-adaptation floor below the
+current `min_radius` — not a growth-reliability one; every seed already
+perfuses. Two more things the re-baseline surfaced, unscored: the
+superficial plexus alone perfuses 76% of the tissue (the deep plexuses
+carry the rest, consistent with anatomy), and the deep plexus sits a
+median 0.034 from its plane against a 0.04 layer gap, i.e. it barely
+stratifies — a plexus-spring question for a later pass.
+
+*Sixteenth pass (thin vessels: the adaptation cap was the 3-px class)*:
+the autopsy of the caliber profile took one histogram. Binning the
+superficial frozen particles by radius, 52% sat *exactly* at
+`flow_remodeler.max_adapted_radius` = 0.006 (3 px) — not near it, at it.
+The mechanism: shear adaptation drifts every segment toward its tree's
+*median* shear, and the median is set by the ~20,000 deep-plexus
+capillaries, most of which the same adaptation has already thinned to
+the 0.001 floor (68% of deep vessels are sub-pixel). Against that
+median nearly every superficial segment reads as high-shear, so the
+deadband never spares it and it is ground up to the cap; the cap, not
+Murray's law, was setting the caliber of the fundus-visible fine
+vessels. The seventh pass had seen this pile-up and treated it as a
+feature to fill the 5–7 px band — which the old 0.1 binarization
+threshold had manufactured by thickening HRF's thin vessels. Lowering
+the cap to 0.003 (1.5 px, a precapillary arteriole) moves that mass into
+the 1–2 px class: 3-seed mean 165 → 27, caliber KS 0.34–0.41 → 0.03–0.05
+(a real eye scores 0.05 ± 0.03 against the others), junction spacing
+14 → 19 px (target 21), every seed fully perfused. The second knob
+follows from the same anatomy: `plexus_layers.dive_radius` 0.004 →
+0.003, so tips of 1.5–2 px — precapillary arterioles and venules, which
+fundus photographs show in the superficial plexus — stay superficial
+instead of diving; superficial skeleton density 2.7% → 3.1% (HRF 3.7%),
+superficial perfusion 76% → 95%, mean 27 → 22.5 (23/20/25, the tightest
+spread the project has had). Swept and rejected on the calibration
+seeds: cap 0.0035 (32), dive probability 0.02 (37 — it keeps deep-plexus
+mesh geometry superficial and the obtuse-angle share doubles), dive
+radius 0.0025 (36 — overshoots the 1-px class, KS back to 0.13),
+`max_depth` 5 (37), side-branch probability 0.8 (28). On the spec seed
+the score is 193 → 23 and the diameter composition by branch count is
+38/44/18% against HRF's 38/40/22%. The remainder is spread thin and
+partly noise: the A:V ratio (0.81 vs 0.67) is a depth-0 lottery of how
+far each tapering trunk runs; area density 8.8% vs 10.8% and skeleton
+density 3.16% vs 3.73% say the superficial network is still ~15% short
+of length. One measurement fix rode along: the branch-tortuosity
+*median* was quantized — most branches are a few pixels long, their
+arc/chord takes a handful of discrete values, and every simulation
+scored the identical 1.0706 (13 distinct values across the 15 masks) —
+so the target is now the clipped mean (HRF 1.0787 ± 0.0073), which is
+continuous and which knobs can move. The lesson is the same one the
+measurement pass taught from the other side: a caliber class that
+appears in *both* the model and the reference at the same pixel width
+is not evidence the model is right, when a cap on one side and a
+threshold on the other are what put it there.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -796,15 +877,43 @@ vnv_contact_sheet src/vivarium_eye_vessels/model_specifications/model_spec.yaml
 model change's before/after visible as a side-by-side image diff in the pull
 request, and prior versions remain retrievable from git history.
 
-*Comparability caveats*: topological metrics are computed on skeletons for
-both sim and real masks so they don't depend on calibers; real fundus masks
-are 2D projections of a curved surface while the sim is projected from a thin
-ellipsoid; and the sim's spatial scale is arbitrary, so scale-dependent
-metrics (density, segment lengths) are normalized to the field of view. The
-harness is designed to show the *direction and size of improvement*, not to
-claim the current model matches reality — the remaining density gap versus
-HRF is capillary-bed structure, which idea 4 (anastomosis) and finer-scale
-branching are what close.
+*Measurement conventions* (the module docstring of `vnv.metrics` is the
+reference; every convention is applied identically to the simulation and to
+the HRF masks, which is what makes the comparison apples to apples):
+
+- Binarization is a majority vote — a pixel is vessel when more than half of
+  it is covered. HRF masks are block-averaged to the common 1024-px raster
+  and thresholded at 0.5; simulated segments are drawn by the exact
+  pixel-center rule (a center within the segment's radius) that is the limit
+  of drawing at infinite resolution and majority-downsampling. Vessels
+  narrower than half a pixel vanish from both, as they do from a fundus
+  photograph, and vessels near one pixel wide fragment in both.
+- Densities are per *imaged* pixel — the convex hull of the vessel pixels —
+  not per frame pixel, since a fundus camera's circular field and the
+  model's elliptical territory both leave empty corners (both fill ~83% of
+  their frame, as it happens).
+- The skeleton is pruned of spurs shorter than a countable branch (5 px)
+  before anything is counted, so ragged edges do not manufacture branch
+  points; branch length is the arc length of the pixel chain (diagonal steps
+  count √2), so a straight 45° line has tortuosity 1. Branch tortuosity is
+  scored by its mean (clipped at 2), not its median: most branches are a
+  few pixels long, so the median lands on one of a handful of discrete
+  values.
+- Box counting uses a fixed range of box sizes (2–128 px) rather than one
+  derived from the frame size.
+- The HRF-derived targets are the across-mask mean and sd of each metric
+  under these conventions; the two KS targets are leave-one-out — what one
+  real eye scores against the other fourteen pooled. `vnv_calibrate
+  --derive-targets` reprints them, so a convention change re-derives the
+  targets in one step.
+
+*Comparability caveats that remain*: real fundus masks are 2D projections of
+a curved surface while the sim is projected from a thin ellipsoid; bifurcation
+angles are measured in 3D on the tree (the plexus is nearly planar, so they
+agree with the fundus projection the literature reports); and the sim's
+spatial scale is arbitrary, pinned to HRF only through the pixel scale of the
+calibers. The harness is designed to show the *direction and size of
+improvement*, not to claim the current model matches reality.
 
 ## References
 

@@ -19,12 +19,103 @@ def test_box_counting_dimension_of_filled_square_is_near_two():
     assert 1.9 < dimension < 2.1
 
 
+def test_box_counting_dimension_ignores_frame_padding():
+    """A skeleton scores the same in its own frame and centered on a bigger canvas."""
+    rng = np.random.default_rng(3)
+    small = np.zeros((512, 768), dtype=bool)
+    for _ in range(40):
+        r0, c0, r1, c1 = (
+            rng.integers(0, 512),
+            rng.integers(0, 768),
+            rng.integers(0, 512),
+            rng.integers(0, 768),
+        )
+        rr, cc = np.linspace(r0, r1, 400).round().astype(int), np.linspace(
+            c0, c1, 400
+        ).round().astype(int)
+        small[rr, cc] = True
+    padded = np.zeros((1024, 1024), dtype=bool)
+    padded[256:768, 128:896] = small
+    np.testing.assert_allclose(
+        metrics.box_counting_dimension(padded), metrics.box_counting_dimension(small)
+    )
+
+
 def test_skeleton_branches_straight_line():
     image = np.zeros((64, 64), dtype=bool)
     image[32, 8:56] = True
     branches = metrics.skeleton_branches(image)
     assert len(branches) == 1
     np.testing.assert_allclose(branches.tortuosity.iloc[0], 1.0, atol=0.05)
+
+
+def test_diagonal_line_has_unit_tortuosity():
+    """Arc length counts diagonal steps as sqrt 2, so a 45-degree line is straight."""
+    image = np.zeros((64, 64), dtype=bool)
+    image[np.arange(8, 56), np.arange(8, 56)] = True
+    branches = metrics.skeleton_branches(image)
+    assert len(branches) == 1
+    np.testing.assert_allclose(branches.tortuosity.iloc[0], 1.0, atol=0.02)
+    np.testing.assert_allclose(branches.length_px.iloc[0], 47 * np.sqrt(2))
+
+
+def test_spur_pruning_removes_edge_bumps_not_branches():
+    skeleton = np.zeros((32, 64), dtype=bool)
+    skeleton[16, 4:60] = True  # the vessel
+    skeleton[13:16, 30] = True  # a 3-px spur off its edge
+    skeleton[16:28, 45] = True  # a real 12-px side branch
+    pruned = metrics.prune_spurs(skeleton)
+    assert not pruned[13:16, 30].any(), "the spur survived"
+    assert pruned[20:28, 45].all(), "the branch was pruned"
+    assert len(metrics.skeleton_branches(pruned)) == 3  # trunk halves + branch
+
+
+def test_binarize_mask_is_a_majority_vote():
+    mask = np.zeros((8, 8), dtype=np.uint8)
+    mask[0:4, 0:2] = 255  # half of the top-left 4x4 block: not a majority
+    mask[4:8, 0:3] = 255  # three quarters of the bottom-left block
+    binary = metrics.binarize_mask(mask, size=2)
+    assert binary.shape == (2, 2)
+    assert not binary[0, 0] and binary[1, 0] and not binary[:, 1].any()
+
+
+def test_densities_are_per_imaged_pixel():
+    """Two parallel lines: the imaged region is the band between them."""
+    binary = np.zeros((100, 100), dtype=bool)
+    binary[30, 10:90] = True
+    binary[70, 10:90] = True
+    image = metrics.image_metrics(binary)
+    region = metrics.imaged_region(binary)
+    assert region.sum() == 41 * 80
+    np.testing.assert_allclose(image["fov_fraction"], 41 * 80 / 100**2)
+    np.testing.assert_allclose(image["area_density"], 2 / 41)
+
+
+def segment_frame(radius: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "x0": [-1.0],
+            "y0": [0.0],
+            "z0": [0.0],
+            "x1": [1.0],
+            "y1": [0.0],
+            "z1": [0.0],
+            "child": [1],
+            "parent": [0],
+            "radius": [radius],
+        }
+    )
+
+
+def test_rasterize_network_widths_follow_the_majority_rule():
+    """A centerline on a pixel-center row: r = 1.6 px covers 3 rows, 2.2 px 5, 0.2 px none."""
+    px_per_unit = 128 / 4  # size 129 puts y = 0 exactly on row 64
+    for radius_px, rows in ((1.6, 3), (2.2, 5), (0.6, 1), (0.2, 0)):
+        edges = segment_frame(radius_px / px_per_unit)
+        image = metrics.rasterize_network(
+            edges, bounds=(2.0, 2.0), size=129, radii=edges.radius
+        )
+        assert (image.sum(axis=0).max() if image.any() else 0) == rows, radius_px
 
 
 def test_skeleton_branch_diameter_recovers_bar_width():

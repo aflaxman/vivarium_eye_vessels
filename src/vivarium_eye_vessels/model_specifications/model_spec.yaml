@@ -134,9 +134,17 @@ configuration:
                                    # adaptation from hollowing out the mid calibers)
         min_radius: 0.001
         max_radius: 0.02
-        max_adapted_radius: 0.006  # Shear-driven thickening saturates at venule
-                                   # caliber; guards the anastomosis-shortcut runaway
-                                   # that promoted curly capillary paths to fat vessels
+        max_adapted_radius: 0.003  # Shear-driven thickening saturates at the caliber
+                                   # of a precapillary arteriole/venule (1.5 px at the
+                                   # V&V raster scale); guards the anastomosis-shortcut
+                                   # runaway that promoted curly capillary paths to fat
+                                   # vessels. The adaptation median is set by the
+                                   # deep-plexus capillaries, so nearly every
+                                   # superficial segment reads as high-shear and is
+                                   # ground up to this cap: at 0.006 half the
+                                   # superficial length sat at 3 px where a real eye's
+                                   # finest fundus-visible vessels are 1-2 px
+                                   # (roadmap sixteenth pass; 3-seed mean 165 -> 27)
         adaptation_deadband: 2.0   # Segments within 2x of their tree's median shear
                                    # keep their born caliber instead of being ground
                                    # toward the cap (multi-seed caliber-profile fit)
@@ -155,7 +163,13 @@ configuration:
         spring_constant: 6.0         # z-pull toward a vessel's own plexus plane
         damping: 5.0                 # Damps vertical oscillation around the plane
         max_force: 0.3               # Cap the pull below the extinction threshold
-        dive_radius: 0.004           # Only capillary-caliber tips dive deeper
+        dive_radius: 0.003           # Only capillary-caliber tips dive deeper. Tips of
+                                     # 0.003-0.004 (1.5-2 px) are precapillary
+                                     # arterioles and venules, which real fundi show in
+                                     # the superficial plexus; keeping them there lifts
+                                     # superficial skeleton density 2.7% -> 3.1% (HRF
+                                     # 3.7%) without hurting perfusion (multi-seed fit
+                                     # with the adaptation cap, mean 27 -> 22)
         dive_probability: 0.04       # Per-step chance an eligible tip dives
                                      # (multi-seed vnv_calibrate fit: best mean
                                      # score across seeds 123456/7/42)

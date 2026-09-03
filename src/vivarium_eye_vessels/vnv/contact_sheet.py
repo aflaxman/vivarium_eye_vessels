@@ -38,6 +38,7 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     sim = simulation.build_from_spec(simulation.with_seed(spec, seed), spec_path)
     bounds = simulation.get_ellipsoid_bounds(sim)
     semi_axes = simulation.get_ellipsoid_semi_axes(sim)
+    perfusion = simulation.get_perfusion_params(sim)
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
@@ -46,7 +47,7 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     return {
         "seed": seed,
         "raster": raster,
-        "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, 0.1, 0.15),
+        "perfused_fraction": metrics.perfused_fraction(pop, semi_axes, *perfusion),
         "skeleton_density": metrics.image_metrics(raster)["skeleton_density"],
         "n_frozen": int(pop.frozen.sum()),
     }

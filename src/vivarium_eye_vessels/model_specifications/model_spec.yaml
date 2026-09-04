@@ -37,7 +37,12 @@ configuration:
     particles:
         overall_max_velocity_change: 0.2
         initial_velocity_range: [-0.2, 0.2]
-        terminal_velocity: 0.15
+        terminal_velocity: 0.18        # Tip speed. The paired-perfusion deficit was the
+                                       # far periphery (59% of unsupplied sites beyond
+                                       # 2.5 from the disc): artery tips died mid-field
+                                       # before the front reached it. Faster tips reach
+                                       # it: 8-seed paired perfusion 0.81 -> 0.90 alone;
+                                       # 0.20 over-fills (FD, junction spacing)
         initial_circle:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
@@ -62,7 +67,10 @@ configuration:
 
     # Path splitting configuration
     path_splitter:
-        split_interval: 15     # Steps between checking for splits
+        split_interval: 18     # Steps between checking for splits. 18 (from 15)
+                               # pays back the density the faster tips add:
+                               # fewer, longer segments (FD 1.39 -> 1.37, caliber
+                               # KS 0.09 -> 0.04) at the same paired perfusion
         split_angle: 60         # Fallback angle when the parent has no caliber
         split_probability: 0.95  # Split probability at the min_radius caliber floor
         max_depth: 4
@@ -80,10 +88,13 @@ configuration:
                                    # the structure real mid-vessels show. Robustness
                                    # note: one of three calibration seeds stalls
                                    # mid-growth under this -- see the roadmap
-        side_branch_probability: 0.65  # Tooth emission per split round: sets the
-                                       # comb spacing along the arcades
-                                       # (vnv_calibrate: sim 26px vs HRF 22.7px;
-                                       # 0.8 packs tighter but collapses seed 7)
+        side_branch_probability: 0.5   # Tooth emission per split round: sets the
+                                       # comb spacing along the arcades. 0.65 packed
+                                       # the faster arcades to 15 px between
+                                       # junctions against HRF's 20.7; 0.5 opens them
+                                       # to 17 px and, with split_interval 18, holds
+                                       # paired perfusion at 0.93 on 8 seeds (0.4
+                                       # starves one seed's artery tree: supply 0.67)
         type_scaled_comb: true     # Judge the comb threshold on each tree's own
                                    # caliber scale (arteries: side_branch_radius x
                                    # artery_caliber_ratio). With one absolute

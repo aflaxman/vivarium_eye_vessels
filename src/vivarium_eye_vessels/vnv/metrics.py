@@ -211,16 +211,20 @@ def arcade_caliber_ratio(
     makes the ratio depend on how far each tapering trunk happens to run
     -- a seed lottery of 0.63-0.85 at a configured 0.67 -- so only depth-0
     particles between ``zone[0]`` and ``zone[1]`` from the disc center
-    count. NaN when either tree is absent from the zone.
+    count, and each trunk (depth-0 path) counts once, as each vessel does
+    in CRAE/CRVE: a trunk that coils inside the zone while tapering to a
+    thread would otherwise swamp the particle mean (1.40 on one sweep
+    seed, 210 points of a 242-point score). NaN when either tree is
+    absent from the zone.
     """
     trunks = pop[(pop.depth == 0) & (pop.radius > 0) & (pop.vessel_type > 0)]
     distance = np.hypot(trunks.x - disc_center[0], trunks.y - disc_center[1])
     in_zone = trunks[(distance >= zone[0]) & (distance < zone[1])]
-    arteries = in_zone[in_zone.vessel_type == VESSEL_TYPE_ARTERY]
-    veins = in_zone[in_zone.vessel_type == VESSEL_TYPE_VEIN]
-    if arteries.empty or veins.empty:
+    per_trunk = in_zone.groupby(["vessel_type", "path_id"]).radius.mean()
+    by_type = per_trunk.groupby(level="vessel_type").mean()
+    if VESSEL_TYPE_ARTERY not in by_type.index or VESSEL_TYPE_VEIN not in by_type.index:
         return float("nan")
-    return float(arteries.radius.mean() / veins.radius.mean())
+    return float(by_type[VESSEL_TYPE_ARTERY] / by_type[VESSEL_TYPE_VEIN])
 
 
 def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:

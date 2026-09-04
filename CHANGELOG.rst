@@ -1,3 +1,64 @@
+**v0.27.0 - 09/04/26**
+
+ - Paired perfusion: the periphery deficit, and the tip speed behind it
+
+   - **Finding.** Scored as supply *and* drainage, the model perfused
+     0.81 of the tissue on the calibration seeds (0.75-0.88) while
+     colonizing 0.99 of it. The unsupplied sites were the far
+     periphery: 59% of them lay more than 2.5 units from the disc (the
+     field ends at 3.2), in the sectors facing away from it, with the
+     nearest artery a median 0.27 away -- a tree that stopped short,
+     not a hole in the field. Per-type time courses located the cause:
+     artery tips died mid-field (median live-tip distance 1.0-1.6 from
+     the disc) while vein tips reached the periphery by step 300, and
+     both trees ended the run with ~7 live tips, most of them depth-4
+     twigs that cannot split again
+   - **Model.** Three spec knobs, no new code. ``particles.
+     terminal_velocity`` 0.15 -> 0.18: faster tips reach the periphery
+     before the mid-field extinction catches them (paired perfusion
+     0.81 -> 0.90 on its own), at the price of over-filling the field
+     (fractal dimension 1.36 -> 1.39, arcade junction spacing 17.6 ->
+     15.0 px against HRF's 20.7). ``path_splitter.split_interval`` 15
+     -> 18 and ``side_branch_probability`` 0.65 -> 0.5 pay that back
+     with fewer, longer segments and a more open comb (FD 1.366,
+     spacing 16.9 px, caliber-profile KS 0.09 -> 0.04) at paired
+     perfusion 0.93 (arterial 0.97, venous 0.96). Eight-seed mean score
+     103.7 -> 23.3, the paired term 79.8 -> 10.0; the five original
+     calibration seeds read 147/126/48/132/67 -> 21/9/13/16/30 and
+     three fresh ones 15/10/72 (seed 5150 drains only 0.84 -- the
+     deficit can sit on either tree)
+   - **Measurement.** ``metrics.arcade_caliber_ratio`` weights each
+     depth-0 trunk once inside the zone, as CRAE/CRVE weights each
+     vessel, rather than each particle: one sweep seed grew a vein
+     trunk that coiled inside the zone while tapering to 1 px, put 147
+     of its 526 vein-trunk particles there and read AVR 1.40 -- 210
+     points of a 242-point score from one coil
+   - Swept and rejected, mean score on 3-5 calibration seeds against a
+     base of 103.7: per-type front advance 146 (brakes the healthy
+     tree); ``max_depth`` 5 184 (arterial supply 0.66: more twigs
+     compete for the same flow); type-scaled steering stiffness 160
+     (reverted); ``min_active_tips`` 4 no change; ``cross_type_factor``
+     0.1 106; ``influence_radius`` 3.0 83 and ``magnitude`` 0.45 84
+     (arteries up, veins down; 80 vs 32 on the spec seed with the
+     faster tips); terminal velocity 0.20 41.5 (the FD and spacing
+     penalties double); ``side_branch_probability`` 0.4 collapses one
+     seed's artery tree (supply 0.67); and a per-type re-sprouting
+     watch for the developmental wave (re-sprout the lagging tree on
+     its own deficit without holding the front for the other) -- 75.6
+     alone, 41.8 with the faster tips against 48.9 without, but it
+     collapsed one fresh seed under the shipped comb (154, arterial
+     0.75) and seed 909 under all three knobs (104, venous 0.86), so it
+     was reverted: which tree lags is a lottery, and forcing sprouts on
+     the laggard starves the other
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 0.82/0.94/0.99/1.00 (0.92/0.99/0.96/
+     0.75 before). Spec seed: score 66.6 -> 30.0, paired perfusion
+     0.84 -> 0.91 (arterial 0.85 -> 0.94, venous 0.99 -> 0.96),
+     caliber-profile KS 0.10 -> 0.04, fractal dimension 1.386 -> 1.355
+     (on target), skeleton density 3.33% -> 3.02% (now the largest term
+     after perfusion, 5.2 points), branch tortuosity 1.085 -> 1.092
+     (3.3 points), pruned particles 12.8k -> 6.2k
+
 **v0.26.0 - 09/04/26**
 
  - The AVR term, and the starved artery tree behind it

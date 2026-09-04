@@ -232,6 +232,24 @@ def test_arcade_caliber_ratio_reads_the_disc_zone_only():
     np.testing.assert_allclose(metrics.arcade_caliber_ratio(pop, disc), 0.67)
     assert np.isnan(metrics.arcade_caliber_ratio(pop[pop.vessel_type == 2], disc))
 
+    # A second vein trunk coils inside the zone while tapering to a thread:
+    # it counts as one vessel, not as its 100 particles
+    coil = pd.DataFrame(
+        dict(
+            x=disc[0] + 0.3 + 0.05 * np.cos(np.linspace(0, 6 * np.pi, 100)),
+            y=0.05 * np.sin(np.linspace(0, 6 * np.pi, 100)),
+            z=0.0,
+            depth=0,
+            radius=0.004,
+            vessel_type=2,
+            frozen=True,
+            path_id=1,
+            parent_id=-1,
+        )
+    )
+    ratio = metrics.arcade_caliber_ratio(pd.concat([pop, coil], ignore_index=True), disc)
+    np.testing.assert_allclose(ratio, 0.0134 / np.mean([0.02, 0.004]))
+
 
 def chain_population(points) -> pd.DataFrame:
     points = np.asarray(points, dtype=float)

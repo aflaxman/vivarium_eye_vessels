@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-04T03:28:29",
+  "generated": "2026-09-04T18:35:47",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
@@ -13,109 +13,109 @@
     0.5
   ],
   "runtime": {
-    "setup_seconds": 0.14,
-    "simulation_seconds": 541.51,
-    "steps_per_second": 1.48
+    "setup_seconds": 0.18,
+    "simulation_seconds": 1121.11,
+    "steps_per_second": 0.71
   },
   "simulation": {
-    "n_particles": 32500,
-    "n_frozen": 31448,
-    "n_segments": 31654,
-    "fov_fraction": 0.7996177673339844,
-    "fractal_dimension": 1.3547169812770428,
-    "skeleton_density": 0.030214917825537296,
-    "area_density": 0.09100016697278343,
+    "n_particles": 49500,
+    "n_frozen": 48250,
+    "n_segments": 48583,
+    "fov_fraction": 0.8979873657226562,
+    "fractal_dimension": 1.3846259036192456,
+    "skeleton_density": 0.036936814470565245,
+    "area_density": 0.10485573614497752,
     "branch_length_px": {
-      "n": 779,
-      "median": 21.485281374238568,
-      "q25": 10.414213562373096,
-      "q75": 43.16295090390226
+      "n": 1070,
+      "median": 23.727922061357855,
+      "q25": 11.414213562373096,
+      "q75": 43.50914498161481
     },
     "branch_diameter_px": {
-      "n": 779,
-      "median": 2.410552117542466,
+      "n": 1070,
+      "median": 2.0974969922474282,
       "q25": 2.0,
-      "q75": 4.0
+      "q75": 3.2758685120145845
     },
     "branch_length_by_diameter": {
       "diameter_le_2px": {
-        "n": 254,
-        "median": 20.363961030678926,
-        "q25": 10.017766952966369,
-        "q75": 42.12005768508881,
-        "share": 0.32605905006418484,
-        "length_share": 0.31492056943126234
+        "n": 412,
+        "median": 19.399494936611664,
+        "q25": 9.828427124746192,
+        "q75": 33.73528137423857,
+        "share": 0.3850467289719626,
+        "length_share": 0.3046768029222521
       },
       "diameter_2_4px": {
-        "n": 331,
-        "median": 25.071067811865476,
-        "q25": 12.363961030678928,
-        "q75": 47.50609665440987,
-        "share": 0.4249037227214377,
-        "length_share": 0.48773863382883387
+        "n": 482,
+        "median": 28.67766952966369,
+        "q25": 14.485281374238571,
+        "q75": 48.55939751330898,
+        "share": 0.4504672897196262,
+        "length_share": 0.5070166580974064
       },
       "diameter_gt_4px": {
-        "n": 194,
-        "median": 15.571067811865476,
-        "q25": 8.528174593052023,
-        "q75": 36.37741699796952,
-        "share": 0.2490372272143774,
-        "length_share": 0.1973407967399037
+        "n": 176,
+        "median": 24.920310216782976,
+        "q25": 10.467514421272202,
+        "q75": 51.60533905932738,
+        "share": 0.16448598130841122,
+        "length_share": 0.18830653898034153
       }
     },
     "tree_segment_length": {
-      "n": 1248,
-      "median": 0.1939641228852708,
-      "q25": 0.10402867100312406,
-      "q75": 0.3354985950199129
+      "n": 2014,
+      "median": 0.16760991697460476,
+      "q25": 0.09306062741513232,
+      "q75": 0.2961610324416326
     },
     "branch_tortuosity": {
-      "n": 779,
+      "n": 1070,
       "median": 1.0706040453940167,
-      "q25": 1.0485281374238569,
-      "q75": 1.0815389650284586
+      "q25": 1.0451744553733615,
+      "q75": 1.0817692691420737
     },
     "path_tortuosity": {
-      "n": 629,
-      "median": 1.2349341915916536,
-      "q25": 1.0545855473196528,
-      "q75": 1.7697615432535223
+      "n": 989,
+      "median": 1.2648964853035898,
+      "q25": 1.0632961173642284,
+      "q75": 1.8846712871445075
     },
     "pixel_diameter_px": {
-      "n": 25334,
+      "n": 34780,
       "median": 2.0,
       "q25": 2.0,
       "q75": 4.0
     },
     "bifurcation_angle_deg": {
-      "n": 266,
-      "median": 75.64671886761771,
-      "q25": 68.4114264573816,
-      "q75": 83.71168569808839
+      "n": 345,
+      "median": 75.42250860199839,
+      "q25": 66.96856936148168,
+      "q75": 82.8067797456232
     },
     "bifurcation_angle_deg_all_layers": {
-      "n": 615,
-      "median": 88.81174937882713,
-      "q25": 75.04288556444087,
-      "q75": 112.19022810786794
+      "n": 968,
+      "median": 95.17908118694623,
+      "q25": 76.05629188851007,
+      "q75": 113.70406189244811
     },
     "junction_exponent": {
-      "n": 208,
+      "n": 247,
       "median": 3.000000000000001,
       "q25": 2.999999999999999,
-      "q75": 3.509131909953093
+      "q75": 3.8136745293504073
     },
-    "perfused_fraction": 0.9088729016786571,
-    "colonized_fraction": 0.9976019184652278,
-    "superficial_colonized_fraction": 0.7961630695443646,
-    "arterial_supply_fraction": 0.9416466826538769,
-    "venous_drainage_fraction": 0.964828137490008,
-    "n_artery_segments": 12805,
-    "n_vein_segments": 18403,
-    "artery_vein_caliber_ratio": 0.670302711459771,
-    "n_anastomoses": 205,
-    "graph_cycles": 200,
-    "n_pruned": 6181,
+    "perfused_fraction": 0.9936051159072742,
+    "colonized_fraction": 1.0,
+    "superficial_colonized_fraction": 0.982414068745004,
+    "arterial_supply_fraction": 0.9936051159072742,
+    "venous_drainage_fraction": 1.0,
+    "n_artery_segments": 19699,
+    "n_vein_segments": 28147,
+    "artery_vein_caliber_ratio": 0.614705854166946,
+    "n_anastomoses": 317,
+    "graph_cycles": 312,
+    "n_pruned": 9336,
     "plexus_layers": {
       "layer_z": [
         0.04,
@@ -127,76 +127,82 @@
           "layer": 0,
           "name": "superficial",
           "z_plane": 0.04,
-          "n_segments": 7185,
-          "max_radius": 0.02,
-          "median_abs_z_error": 0.015137097568323606
+          "n_segments": 8948,
+          "max_radius": 0.017,
+          "median_abs_z_error": 0.013970136691247578
         },
         {
           "layer": 1,
           "name": "intermediate",
           "z_plane": 0.0,
-          "n_segments": 2655,
+          "n_segments": 4437,
           "max_radius": 0.003,
-          "median_abs_z_error": 0.019120500572122258
+          "median_abs_z_error": 0.026121412524097633
         },
         {
           "layer": 2,
           "name": "deep",
           "z_plane": -0.04,
-          "n_segments": 21615,
+          "n_segments": 34887,
           "max_radius": 0.003,
-          "median_abs_z_error": 0.030741020352489455
+          "median_abs_z_error": 0.03381386033708473
         }
       ],
-      "n_diving_vessels": 414
+      "n_diving_vessels": 569
     },
     "calibration": {
       "stats": {
-        "skeleton_density": 0.030214917825537296,
-        "area_density": 0.09100016697278343,
-        "fractal_dimension": 1.3547169812770428,
-        "branch_tortuosity_mean": 1.09198866026118,
-        "capillary_share": 0.32605905006418484,
-        "wide_share": 0.2490372272143774,
-        "wide_tortuosity_q90": 1.0823117459700458,
-        "wide_junction_spacing_px": 16.541044776119403,
-        "ks_log_length": 0.05551887899439867,
-        "ks_caliber_profile": 0.04153952283156315,
-        "bifurcation_angle_median": 75.64671886761771,
-        "bifurcation_obtuse_share": 0.08646616541353383,
-        "artery_vein_caliber_ratio": 0.670302711459771,
-        "perfused_fraction": 0.9088729016786571,
-        "colonized_fraction": 0.9976019184652278,
-        "superficial_colonized_fraction": 0.7961630695443646,
-        "arterial_supply_fraction": 0.9416466826538769,
-        "venous_drainage_fraction": 0.964828137490008,
-        "fov_fraction": 0.7996177673339844,
-        "n_frozen": 31448,
-        "graph_cycles": 200
+        "skeleton_density": 0.036936814470565245,
+        "area_density": 0.10485573614497752,
+        "fractal_dimension": 1.3846259036192456,
+        "branch_tortuosity_mean": 1.0927521477369528,
+        "capillary_share": 0.3850467289719626,
+        "wide_share": 0.16448598130841122,
+        "wide_tortuosity_q90": 1.0822468389888842,
+        "wide_junction_spacing_px": 19.763157894736842,
+        "arcade_radial_alignment": 0.8454007841019924,
+        "arcade_reach_px": 263.48333548545435,
+        "thick_share": 0.054976550286607605,
+        "ks_log_length": 0.04242721480727863,
+        "ks_caliber_profile": 0.05939182686054678,
+        "bifurcation_angle_median": 75.42250860199839,
+        "bifurcation_obtuse_share": 0.0463768115942029,
+        "artery_vein_caliber_ratio": 0.614705854166946,
+        "perfused_fraction": 0.9936051159072742,
+        "colonized_fraction": 1.0,
+        "superficial_colonized_fraction": 0.982414068745004,
+        "arterial_supply_fraction": 0.9936051159072742,
+        "venous_drainage_fraction": 1.0,
+        "fov_fraction": 0.8979873657226562,
+        "n_frozen": 48250,
+        "graph_cycles": 312
       },
       "scores": {
-        "skeleton_density": 5.223557691871922,
-        "area_density": 3.0091037375389758,
-        "fractal_dimension": 0.06452445830069259,
-        "branch_tortuosity_mean": 3.3137266191980173,
-        "ks_log_length": 0.014355664454718156,
-        "capillary_share": 0.1113194463375667,
-        "wide_share": 0.47486403916014175,
+        "skeleton_density": 0.013725674171779736,
+        "area_density": 0.10294039139942537,
+        "fractal_dimension": 2.4338593646414637,
+        "branch_tortuosity_mean": 3.7054392197626016,
+        "ks_log_length": 0.0,
+        "capillary_share": 0.01352533333475788,
+        "wide_share": 2.2202550465454465,
         "wide_tortuosity_q90": 0.0,
-        "wide_junction_spacing_px": 4.52146302859557,
-        "ks_caliber_profile": 0.0,
-        "bifurcation_angle_median": 0.07325479293047601,
-        "bifurcation_obtuse_share": 0.5319124879868842,
-        "artery_vein_caliber_ratio": 3.6653691150678345e-05,
-        "perfused_fraction": 12.647660289034947,
-        "total": 29.985778909101064
+        "wide_junction_spacing_px": 0.2408677514261371,
+        "arcade_radial_alignment": 1.5179515591279453,
+        "arcade_reach_px": 1.4596275697039856,
+        "thick_share": 1.9363293444888252,
+        "ks_caliber_profile": 0.12949496323472084,
+        "bifurcation_angle_median": 0.09953916443076324,
+        "bifurcation_obtuse_share": 0.0,
+        "artery_vein_caliber_ratio": 1.2229770253628185,
+        "perfused_fraction": 0.0,
+        "total": 15.096532407630669
       }
     },
     "wall_shear": {
-      "n": 31647,
-      "median": 5.460124189265201e-05,
-      "q25": 1.2771950554760345e-09,
-      "q75": 0.000653324769395496
+      "n": 48561,
+      "median": 7.796703829100151e-05,
+      "q25": 1.3745583092395077e-08,
+      "q75": 0.00042467756902639755
     }
   },
   "real_hrf": {
@@ -275,6 +281,11 @@
         "area_density": 0.11701019273665539,
         "n_branches": 642,
         "wide_junction_spacing_px": 22.859649122807017,
+        "disc_row_px": 267.75880512681493,
+        "disc_col_px": 678.0085275324246,
+        "arcade_radial_alignment": 0.8540959167029714,
+        "arcade_reach_px": 259.43414696586797,
+        "thick_share": 0.03781465176656507,
         "file": "01_h.tif"
       },
       {
@@ -284,6 +295,11 @@
         "area_density": 0.1138013176015186,
         "n_branches": 541,
         "wide_junction_spacing_px": 24.602739726027398,
+        "disc_row_px": 273.09102346106397,
+        "disc_col_px": 232.3366119188385,
+        "arcade_radial_alignment": 0.8530665468312909,
+        "arcade_reach_px": 254.1948069096131,
+        "thick_share": 0.030260423034600806,
         "file": "02_h.tif"
       },
       {
@@ -293,6 +309,11 @@
         "area_density": 0.12313475712855196,
         "n_branches": 582,
         "wide_junction_spacing_px": 20.6046511627907,
+        "disc_row_px": 267.0356612537444,
+        "disc_col_px": 693.6367088361845,
+        "arcade_radial_alignment": 0.8437822545014976,
+        "arcade_reach_px": 238.66460887974503,
+        "thick_share": 0.036936936936936934,
         "file": "03_h.tif"
       },
       {
@@ -302,6 +323,11 @@
         "area_density": 0.10900431869089244,
         "n_branches": 542,
         "wide_junction_spacing_px": 21.90066225165563,
+        "disc_row_px": 271.9134010724278,
+        "disc_col_px": 239.32063431854905,
+        "arcade_radial_alignment": 0.7953930674204861,
+        "arcade_reach_px": 228.3079279560672,
+        "thick_share": 0.03445659733198457,
         "file": "04_h.tif"
       },
       {
@@ -311,6 +337,11 @@
         "area_density": 0.10500591268040728,
         "n_branches": 490,
         "wide_junction_spacing_px": 21.23076923076923,
+        "disc_row_px": 263.68507562931376,
+        "disc_col_px": 701.0365232604106,
+        "arcade_radial_alignment": 0.7794242455435235,
+        "arcade_reach_px": 231.643213873967,
+        "thick_share": 0.04771474878444084,
         "file": "05_h.tif"
       },
       {
@@ -320,6 +351,11 @@
         "area_density": 0.11699657141790192,
         "n_branches": 670,
         "wide_junction_spacing_px": 18.810344827586206,
+        "disc_row_px": 278.79348631835074,
+        "disc_col_px": 204.71087052284525,
+        "arcade_radial_alignment": 0.811268892561725,
+        "arcade_reach_px": 219.95801337639438,
+        "thick_share": 0.03716234359056979,
         "file": "06_h.tif"
       },
       {
@@ -329,6 +365,11 @@
         "area_density": 0.10356163867406437,
         "n_branches": 505,
         "wide_junction_spacing_px": 20.5,
+        "disc_row_px": 288.2747981225503,
+        "disc_col_px": 713.4335376579403,
+        "arcade_radial_alignment": 0.8227960960214549,
+        "arcade_reach_px": 251.97294963644728,
+        "thick_share": 0.03257707969749855,
         "file": "07_h.tif"
       },
       {
@@ -338,6 +379,11 @@
         "area_density": 0.11627830997748037,
         "n_branches": 608,
         "wide_junction_spacing_px": 23.279503105590063,
+        "disc_row_px": 261.77555254222233,
+        "disc_col_px": 205.4440564493717,
+        "arcade_radial_alignment": 0.7623094539172354,
+        "arcade_reach_px": 261.77118191754437,
+        "thick_share": 0.04474992687920445,
         "file": "08_h.tif"
       },
       {
@@ -347,6 +393,11 @@
         "area_density": 0.08991034900103506,
         "n_branches": 556,
         "wide_junction_spacing_px": 20.088495575221238,
+        "disc_row_px": 234.08858579913704,
+        "disc_col_px": 712.5074740848939,
+        "arcade_radial_alignment": 0.8000836575429112,
+        "arcade_reach_px": 250.6934369063767,
+        "thick_share": 0.026156548897130587,
         "file": "09_h.tif"
       },
       {
@@ -356,6 +407,11 @@
         "area_density": 0.09911949744197218,
         "n_branches": 694,
         "wide_junction_spacing_px": 18.231404958677686,
+        "disc_row_px": 264.6166244823534,
+        "disc_col_px": 197.3023950481424,
+        "arcade_radial_alignment": 0.8354533674449337,
+        "arcade_reach_px": 229.84782362113785,
+        "thick_share": 0.020692053555903322,
         "file": "10_h.tif"
       },
       {
@@ -365,6 +421,11 @@
         "area_density": 0.10881585982421747,
         "n_branches": 480,
         "wide_junction_spacing_px": 18.60122699386503,
+        "disc_row_px": 254.69122772922077,
+        "disc_col_px": 725.4913088914283,
+        "arcade_radial_alignment": 0.8068126923210078,
+        "arcade_reach_px": 256.2932364778389,
+        "thick_share": 0.041508680902015566,
         "file": "11_h.tif"
       },
       {
@@ -374,6 +435,11 @@
         "area_density": 0.12171290655387962,
         "n_branches": 530,
         "wide_junction_spacing_px": 22.962566844919785,
+        "disc_row_px": 256.3137226506363,
+        "disc_col_px": 244.14606815740814,
+        "arcade_radial_alignment": 0.7434772759669163,
+        "arcade_reach_px": 269.25786509959477,
+        "thick_share": 0.07395418326693227,
         "file": "12_h.tif"
       },
       {
@@ -383,6 +449,11 @@
         "area_density": 0.1011567882115538,
         "n_branches": 490,
         "wide_junction_spacing_px": 20.38095238095238,
+        "disc_row_px": 306.9876016805159,
+        "disc_col_px": 680.1153112014856,
+        "arcade_radial_alignment": 0.8115413040269222,
+        "arcade_reach_px": 253.48972285899987,
+        "thick_share": 0.04791333935143393,
         "file": "13_h.tif"
       },
       {
@@ -392,6 +463,11 @@
         "area_density": 0.10267643136156741,
         "n_branches": 484,
         "wide_junction_spacing_px": 18.35810810810811,
+        "disc_row_px": 244.23813579601412,
+        "disc_col_px": 226.71880010018396,
+        "arcade_radial_alignment": 0.80658010023173,
+        "arcade_reach_px": 252.79098045685112,
+        "thick_share": 0.02996845425867508,
         "file": "14_h.tif"
       },
       {
@@ -401,6 +477,11 @@
         "area_density": 0.09210352162609312,
         "n_branches": 380,
         "wide_junction_spacing_px": 18.533898305084747,
+        "disc_row_px": 250.1375078605506,
+        "disc_col_px": 663.1331849158337,
+        "arcade_radial_alignment": 0.7896346518371272,
+        "arcade_reach_px": 246.39446186105283,
+        "thick_share": 0.02806375352703424,
         "file": "15_h.tif"
       }
     ]

@@ -3,30 +3,30 @@
     {
       "seed": 11,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.8185451638689049,
-      "skeleton_density": 0.03242043030468362,
-      "n_frozen": 37867
+      "arterial_supply_fraction": 0.9616306954436451,
+      "skeleton_density": 0.03293425416160348,
+      "n_frozen": 42439
     },
     {
       "seed": 202,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9440447641886491,
-      "skeleton_density": 0.03366838881713262,
-      "n_frozen": 36385
+      "arterial_supply_fraction": 0.9752198241406874,
+      "skeleton_density": 0.03376081688252034,
+      "n_frozen": 44276
     },
     {
       "seed": 909,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.988009592326139,
-      "skeleton_density": 0.03043481724882455,
-      "n_frozen": 34619
+      "arterial_supply_fraction": 0.9640287769784173,
+      "skeleton_density": 0.03584359967583884,
+      "n_frozen": 39053
     },
     {
       "seed": 4242,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 1.0,
-      "skeleton_density": 0.03430886912159756,
-      "n_frozen": 46000
+      "arterial_supply_fraction": 0.9992006394884093,
+      "skeleton_density": 0.03177517651672224,
+      "n_frozen": 37245
     }
   ],
   "perfusion_target": 0.95,

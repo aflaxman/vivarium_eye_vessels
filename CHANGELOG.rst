@@ -1,3 +1,78 @@
+**v0.28.0 - 09/04/26**
+
+ - Arcade geometry: the front's demand gate curled the trunks
+
+   - **Measurement.** Three fundus-scale statistics of the wide (> 4 px)
+     skeleton, read identically on HRF masks and on a fundus-sized window
+     of the simulated raster (``metrics.arcade_geometry``), relative to
+     the optic disc estimated from the image itself as the point the wide
+     vessels' tangent lines converge on (``metrics.disc_center``; on the
+     disc in all 15 HRF masks, within ~40 px of the true disc on the
+     simulation): ``arcade_radial_alignment``, the mean |cos| between a
+     wide vessel's tangent and the direction from the disc (HRF 0.81 +/-
+     0.03); ``arcade_reach_px``, the mean distance of wide skeleton from
+     the disc (247 +/- 14 px); ``thick_share``, the share of skeleton
+     length wider than 6 px (0.038 +/- 0.012). Branch-level tortuosity
+     could not see the problem: the simulated arcades scored on target
+     (wide q90 1.082 vs 1.089) while curling back on themselves over 100
+     px -- at a 60-px step they turned 30 degrees per step against 15 in
+     real eyes. On the spec seed the three terms read 0.58 / 171 px /
+     0.119: 129 points of a 159-point score
+   - **Finding.** The developmental wave exposes demand only in a thin
+     annulus at the front, so a trunk that has caught up with the front
+     feels no forward pull, only the sideways pull of the exposed sites
+     beside it, and rides along the front: loops concentric with the disc,
+     which stay 8-10 px thick because a trunk that circles sheds few
+     teeth per unit of radial progress (908 skeleton pixels above 8 px in
+     the window against 84 in a real eye)
+   - **Model.** Three changes. ``developmental_wave.gate_caliber_max`` 0
+     -> 0.006: tips of arcade caliber see the whole hypoxic field and
+     head for the far tissue instead of the front's annulus (spec seed
+     159 -> 32: alignment 0.58 -> 0.75, reach 171 -> 268 px, thick share
+     0.119 -> 0.070, because a trunk that runs sheds teeth and tapers).
+     The tenth pass rejected this exemption for breaking the front's
+     discipline, under an objective that could not see what it fixes.
+     ``boundaries.ArcadeGuidance`` (new component): the astrocyte
+     template itself, a force of ``magnitude`` 0.2 pushing tips at or
+     above ``min_radius`` 0.006 away from the disc in the plexus plane
+     (alignment 0.75 -> 0.83). ``particles.root_radius`` 0.02 -> 0.017:
+     trunks start at 8.7 px instead of 10.2 px, against HRF's 7.5-px top
+     percentile (thick share 0.087 -> 0.055). Spec seed 159 -> 15
+   - Swept and rejected on the spec seed (total vs 159 base): thinner
+     roots alone (0.015: 1156, arterial supply 0.34 -- without the gate
+     the artery tree starves); a caliber-attenuated hypoxia pull on wide
+     tips (``perfusion_demand.caliber_exponent`` 1: 56); more flow per
+     comb tooth (``side_branch_flow`` 0.25: 101); guidance alone at 0.3
+     (96: straight but thick and short -- the push orients a trunk, the
+     demand horizon makes it run); the gate at 0.008 (67, too few tips
+     exempt). On top of gate and guidance: ``split_interval`` 21 (44),
+     ``radius_taper`` 0.996 (38), ``side_branch_flow`` 0.2 (31),
+     ``flow_remodeler.max_radius`` 0.014 (no effect: trunks are never
+     adapted). On top of the full candidate: root 0.015 (63, skeleton
+     density 2.9%), guidance 0.1 (27) and 0.3 (58, paired perfusion
+     0.93: trunks pushed past the tissue)
+   - Eight seeds (7/42/909/2024/123456 and 31/77/5150): mean score
+     117.3 -> 25.6 (per seed 102/81/108/100/159/95/90/203 ->
+     23/19/19/22/15/19/61/27); radial alignment 0.61 -> 0.82, reach 186
+     -> 267 px, thick share 0.105 -> 0.063, junction spacing 16.9 -> 20.1
+     px (target 20.7); paired perfusion 0.93 -> 0.96 with arterial supply
+     >= 0.95 on every seed. Without the guidance force (gate and root
+     alone) the mean is the same within noise (27.3) but arterial supply
+     falls to 0.88-0.90 on three seeds, which is why the component ships.
+     The seed-77 outlier (61) is a thick, far-reaching arcade set (thick
+     share 0.095, reach 301 px), not a perfusion failure
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 0.96/0.98/0.96/1.00 (0.82/0.94/0.99/
+     1.00 before). Spec seed: score 159 -> 15.1 under the new objective
+     (30.0 -> 15.1 under the old one, which could not see the loops);
+     radial alignment 0.58 -> 0.85, reach 171 -> 263 px, thick share
+     0.119 -> 0.055, paired perfusion 0.91 -> 0.99 (arterial 0.94 ->
+     0.99), skeleton density 3.02% -> 3.69% (target 3.73%), junction
+     spacing 16.5 -> 19.8 px (target 20.7), 31k -> 48k frozen particles.
+     The residuals are branch tortuosity (1.093 vs 1.079, 3.7 points),
+     fractal dimension (1.385 vs 1.349, 2.4) and a wide share below
+     target (0.16 vs 0.22, 2.2)
+
 **v0.27.0 - 09/04/26**
 
  - Paired perfusion: the periphery deficit, and the tip speed behind it

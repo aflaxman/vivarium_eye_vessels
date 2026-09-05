@@ -251,6 +251,50 @@ def test_arcade_caliber_ratio_reads_the_disc_zone_only():
     np.testing.assert_allclose(ratio, 0.0134 / np.mean([0.02, 0.004]))
 
 
+def spokes_image(center, n_spokes=6, length=250, width=6, shape=(500, 700)) -> np.ndarray:
+    """Straight vessels of one width radiating from ``center``."""
+    image = np.zeros(shape, dtype=bool)
+    rows, cols = np.indices(shape)
+    for k in range(n_spokes):
+        angle = 2 * np.pi * k / n_spokes + 0.3
+        direction = np.array([np.sin(angle), np.cos(angle)])
+        rel = np.stack([rows - center[0], cols - center[1]], axis=-1)
+        along = rel @ direction
+        across = np.abs(rel @ np.array([-direction[1], direction[0]]))
+        image |= (along > 12) & (along < length) & (across <= width / 2)
+    return image
+
+
+def test_disc_center_is_where_the_arcades_converge():
+    center = (230.0, 480.0)
+    geometry = metrics.arcade_geometry(spokes_image(center))
+    assert abs(geometry["disc_row_px"] - center[0]) < 5
+    assert abs(geometry["disc_col_px"] - center[1]) < 5
+    # Straight spokes point away from the disc, and their mean distance
+    # from it is the middle of their run
+    assert geometry["arcade_radial_alignment"] > 0.97
+    assert 110 < geometry["arcade_reach_px"] < 150
+
+
+def test_arcade_geometry_reads_rings_as_unaligned_and_thick_vessels_as_thick():
+    shape = (500, 700)
+    center = np.array([250.0, 350.0])
+    rows, cols = np.indices(shape)
+    radius = np.hypot(rows - center[0], cols - center[1])
+    ring = np.abs(radius - 150) <= 2  # a 5-px vessel circling the disc
+    geometry = metrics.arcade_geometry(ring, disc=center)
+    assert geometry["arcade_radial_alignment"] < 0.1
+    np.testing.assert_allclose(geometry["arcade_reach_px"], 150, atol=2)
+    assert geometry["thick_share"] < 0.05  # wide, but not thick
+
+    thick = np.zeros(shape, dtype=bool)
+    thick[100:110, 100:600] = True  # a 10-px vessel
+    thin = np.zeros(shape, dtype=bool)
+    thin[300:304, 100:600] = True  # a 4-px vessel of the same length
+    geometry = metrics.arcade_geometry(thick | thin, disc=center)
+    assert 0.4 < geometry["thick_share"] < 0.6
+
+
 def chain_population(points) -> pd.DataFrame:
     points = np.asarray(points, dtype=float)
     return pd.DataFrame(

@@ -292,6 +292,52 @@ class PointRepulsion(BaseForceComponent):
         return -direction_vectors * force_magnitudes[:, np.newaxis]
 
 
+class ArcadeGuidance(BaseForceComponent):
+    """Astrocyte-template guidance: wide growth tips are steered away from the disc.
+
+    The superficial arcades grow along a radial template of astrocytes laid
+    down from the optic disc; only capillary sprouts follow local VEGF. A
+    trunk that reaches the growth front otherwise feels nothing but the
+    sideways pull of the demand the front exposes and curls along it. Tips
+    at or above ``min_radius`` (the arcade class) get a constant force of
+    ``magnitude`` pointing away from the disc in the plexus plane; thinner
+    tips are untouched. ``magnitude`` 0 disables the component.
+    """
+
+    CONFIGURATION_DEFAULTS = {
+        "arcade_guidance": {
+            "magnitude": 0.0,
+            "min_radius": 0.006,
+        }
+    }
+
+    @property
+    def required_attributes(self) -> List[str]:
+        return ["x", "y", "z", "frozen", "path_id", "radius"]
+
+    @property
+    def filter_str(self) -> str:
+        return "not frozen and path_id >= 0"
+
+    def setup(self, builder: Builder) -> None:
+        super().setup(builder)
+        config = builder.configuration.arcade_guidance
+        self.magnitude = float(config.magnitude)
+        self.min_radius = float(config.min_radius)
+        center = builder.configuration.particles.initial_circle.center
+        self.disc = np.array([float(center[0]), float(center[1])])
+
+    def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
+        forces = np.zeros((len(particles), 3))
+        if self.magnitude <= 0:
+            return forces
+        wide = particles.radius.to_numpy() >= self.min_radius
+        radial = particles[["x", "y"]].to_numpy()[wide] - self.disc
+        distance = np.linalg.norm(radial, axis=1, keepdims=True)
+        forces[wide, :2] = self.magnitude * radial / np.maximum(distance, 1e-12)
+        return forces
+
+
 class FrozenRepulsion(BaseForceComponent):
     """Component that repels active particles from frozen particles using spatial indexing.
 

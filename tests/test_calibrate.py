@@ -5,6 +5,8 @@ import numpy as np
 from vivarium_eye_vessels.vnv.calibrate import (
     SEARCH_SPACE,
     TARGETS,
+    apply_dotted_overrides,
+    apply_overrides,
     calibration_score,
     combine_seed_scores,
     coordinate_descent,
@@ -13,6 +15,26 @@ from vivarium_eye_vessels.vnv.calibrate import (
 
 def on_target_stats() -> dict:
     return {name: spec["target"] for name, spec in TARGETS.items()}
+
+
+def test_overrides_set_dotted_paths_without_touching_the_original():
+    spec = {
+        "configuration": {
+            "particles": {"terminal_velocity": 0.15, "initial_circle": {"n_vessels": 6}},
+            "path_splitter": {"split_interval": 15},
+        }
+    }
+    candidate = apply_dotted_overrides(
+        spec, {"particles.terminal_velocity": 0.18, "particles.initial_circle.n_vessels": 8}
+    )
+    assert candidate["configuration"]["particles"]["terminal_velocity"] == 0.18
+    assert candidate["configuration"]["particles"]["initial_circle"]["n_vessels"] == 8
+    assert spec["configuration"]["particles"]["terminal_velocity"] == 0.15
+    assert spec["configuration"]["particles"]["initial_circle"]["n_vessels"] == 6
+    # The (section, key) form used by SEARCH_SPACE is the same operation
+    tupled = apply_overrides(spec, {("path_splitter", "split_interval"): 18})
+    assert tupled["configuration"]["path_splitter"]["split_interval"] == 18
+    assert spec["configuration"]["path_splitter"]["split_interval"] == 15
 
 
 def test_on_target_stats_score_zero():

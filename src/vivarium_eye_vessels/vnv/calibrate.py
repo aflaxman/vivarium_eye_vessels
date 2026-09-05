@@ -338,11 +338,28 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     return stats
 
 
-def apply_overrides(spec: dict, overrides: dict) -> dict:
+def apply_dotted_overrides(spec: dict, overrides: dict) -> dict:
+    """A deep copy of ``spec`` with ``"section.key[.subkey]"`` entries set.
+
+    The keys are dotted paths under ``configuration``, the form the sweep
+    tooling (``scripts/sweep``) takes on the command line; intermediate
+    mappings must already exist in the spec.
+    """
     candidate = copy.deepcopy(spec)
-    for (section, key), value in overrides.items():
-        candidate["configuration"][section][key] = value
+    for dotted, value in overrides.items():
+        *path, key = dotted.split(".")
+        node = candidate["configuration"]
+        for part in path:
+            node = node[part]
+        node[key] = value
     return candidate
+
+
+def apply_overrides(spec: dict, overrides: dict) -> dict:
+    """A deep copy of ``spec`` with ``(section, key)`` entries set (SEARCH_SPACE form)."""
+    return apply_dotted_overrides(
+        spec, {".".join(key): value for key, value in overrides.items()}
+    )
 
 
 def evaluate_spec(spec: dict, steps: int, references: dict, workdir: Path, tag: str) -> dict:

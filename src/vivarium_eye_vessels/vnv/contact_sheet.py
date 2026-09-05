@@ -115,10 +115,10 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
         reliable = run["colonized_fraction"] >= PERFUSION_TARGET
         ax.set_title(
             f"sim seed {run['seed']} — colonized {run['colonized_fraction']:.0%} "
-            f"(arterial {run['arterial_supply_fraction']:.0%}), "
-            f"skeleton {run['skeleton_density']*100:.1f}%, "
-            f"macula r={run['macular_clear_radius_mm']:.2f} mm"
-            + ("" if reliable else "  [STALLED]"),
+            f"(arterial {run['arterial_supply_fraction']:.0%})"
+            + ("" if reliable else "  [STALLED]")
+            + f"\nskeleton {run['skeleton_density']*100:.1f}%, "
+            f"macular clear radius {run['macular_clear_radius_mm']:.2f} mm",
             fontsize=11,
             color="black" if reliable else "firebrick",
         )

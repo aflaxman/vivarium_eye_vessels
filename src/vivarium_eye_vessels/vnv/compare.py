@@ -29,7 +29,8 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Circle, Rectangle
+from scipy import ndimage
 from skimage.morphology import dilation, disk
 
 from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
@@ -160,6 +161,106 @@ def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None
     plt.close(fig)
 
 
+def render_macula_figure(
+    fundus_edges, geometry, sim_raster: np.ndarray, hrf_binary: np.ndarray, output_path: Path
+) -> dict:
+    """The macula at both imaging scales: fundus clear disk and OCTA FAZ, sim beside real.
+
+    Top row, fundus scale: the simulation's fundus window and an HRF mask,
+    each with the largest vessel-free disk near the center drawn. Bottom
+    row, OCTA scale: the simulation's superficial plexus on a 3 x 3 mm
+    window at the fovea and a ROSE-1 SVC angiogram (when the dataset is
+    installed), each with the FAZ clear disk and the avascular region.
+    Returns the plotted statistics.
+    """
+    window, _ = metrics.fundus_window(sim_raster, hrf_binary.shape)
+    search_px = metrics.MACULA_SEARCH_MM / metrics.FUNDUS_MM_PER_PX
+    octa = metrics.octa_window(
+        fundus_edges, geometry.fovea_center, fundus_edges.radius.values
+    )
+    sim_faz = metrics.faz_metrics(octa.astype(float), metrics.OCTA_MM_PER_PX)
+    panels = [
+        ("Simulation, fundus window", window, metrics.vessel_skeleton(window), None),
+        ("HRF healthy eye", hrf_binary, metrics.vessel_skeleton(hrf_binary), None),
+        ("Simulation, superficial plexus, 3 x 3 mm on the fovea", octa, None, sim_faz),
+    ]
+    try:
+        rose_path = reference_data.fetch_rose_images("SVC")[0]
+        rose = reference_data.load_mask(rose_path)
+        panels.append(
+            (
+                f"ROSE-1 SVC angiogram ({rose_path.name})",
+                rose,
+                None,
+                metrics.faz_metrics(rose, metrics.OCTA_MM_PER_PX),
+            )
+        )
+    except FileNotFoundError:
+        panels.append(("ROSE-1 angiogram (dataset not installed)", None, None, None))
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 11))
+    fig.patch.set_facecolor("white")
+    stats = {
+        "faz_radius_mm": sim_faz["faz_radius_mm"],
+        "faz_area_mm2": sim_faz["faz_area_mm2"],
+    }
+    for ax, (title, image, skeleton, faz) in zip(axes.ravel(), panels):
+        ax.axis("off")
+        if image is None:
+            ax.set_title(title, color=INK, fontsize=10)
+            continue
+        center = (image.shape[1] / 2, image.shape[0] / 2)
+        if skeleton is not None:  # fundus scale
+            radius_px = metrics.clear_radius_px(skeleton, search_px)
+            ax.imshow(~image, cmap="gray", interpolation="nearest")
+            clearance = ndimage.distance_transform_edt(~skeleton)
+            rows, cols = np.indices(skeleton.shape)
+            near = np.hypot(rows - center[1], cols - center[0]) <= search_px
+            at = np.unravel_index(np.argmax(np.where(near, clearance, -1)), skeleton.shape)
+            ax.add_patch(
+                Circle((at[1], at[0]), radius_px, fill=False, color="crimson", lw=1.5)
+            )
+            ax.set_title(
+                f"{title}: macular clear radius {radius_px * metrics.FUNDUS_MM_PER_PX:.2f} mm",
+                color=INK,
+                fontsize=10,
+            )
+            if title.startswith("Simulation"):
+                stats["macular_clear_radius_mm"] = radius_px * metrics.FUNDUS_MM_PER_PX
+        else:  # OCTA scale: bright vessels on black, like an angiogram
+            shown = image if image.dtype != bool else image.astype(float)
+            ax.imshow(shown, cmap="gray", interpolation="nearest")
+            ax.contour(
+                metrics.avascular_zone(image.astype(float), metrics.OCTA_MM_PER_PX),
+                colors="crimson",
+                linewidths=0.8,
+            )
+            ax.add_patch(
+                Circle(
+                    center,
+                    faz["faz_radius_mm"] / metrics.OCTA_MM_PER_PX,
+                    fill=False,
+                    color="cyan",
+                    lw=1.2,
+                    ls="--",
+                )
+            )
+            ax.set_title(
+                f"{title}\nFAZ clear radius {faz['faz_radius_mm']:.2f} mm (target 0.29), zone {faz['faz_area_mm2']:.2f} mm2",
+                color=INK,
+                fontsize=10,
+            )
+    fig.suptitle(
+        "The macula at fundus scale (top, clear disk within 1.5 mm of center) and OCTA scale (bottom)",
+        color=INK,
+        fontsize=12,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(output_path, dpi=100, facecolor="white")
+    plt.close(fig)
+    return stats
+
+
 def plexus_metrics(pop, edges, layer_z) -> dict:
     """Per-plexus composition and stratification quality."""
     vessels = pop[(pop.layer_id >= 0) & (pop.radius > 0)]
@@ -266,6 +367,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # target, from the same statistics the calibration harness scores
     calibration_stats = calibrate.scoring_stats(pop, edges, geometry, references)
     calibration_scores = calibrate.calibration_score(calibration_stats)
+    if has_calibers:
+        render_macula_figure(
+            fundus_edges, geometry, sim_raster, example_binary, output_dir / "macula.png"
+        )
     sim_perfused_fraction = calibration_stats["perfused_fraction"]
     sim_arterial_supply = calibration_stats["arterial_supply_fraction"]
     sim_venous_drainage = calibration_stats["venous_drainage_fraction"]

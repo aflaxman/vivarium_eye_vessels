@@ -53,6 +53,32 @@ def fetch_hrf_masks() -> list[Path]:
     return masks
 
 
+ROSE_URL = "https://imed.nimte.ac.cn/dataofrose.html"
+
+
+def fetch_rose_images(projection: str = "SVC") -> list[Path]:
+    """Paths of the ROSE-1 en-face angiograms (train and test) for one projection.
+
+    ROSE (Retinal OCT-Angiography vessel SEgmentation) is released on
+    request, so nothing is downloaded: extract ROSE.zip under the cache
+    directory so that ``<cache>/rose/ROSE/ROSE-1/<projection>/...`` exists.
+    ``projection`` is SVC (superficial vascular complex), DVC or SVC_DVC.
+    """
+    root = get_cache_dir() / "rose" / "ROSE" / "ROSE-1" / projection
+    paths = sorted(
+        path
+        for split in ("train", "test")
+        for path in (root / split / "img").glob("*")
+        if path.suffix.lower() in (".tif", ".tiff", ".png")
+    )
+    if not paths:
+        raise FileNotFoundError(
+            f"No ROSE-1 {projection} angiograms under {root}. Request the dataset at "
+            f"{ROSE_URL} and extract ROSE.zip into {get_cache_dir() / 'rose'}."
+        )
+    return paths
+
+
 def load_mask(path: Path) -> np.ndarray:
     """Load a vessel mask as a binary-ish uint8 array."""
     with Image.open(path) as image:

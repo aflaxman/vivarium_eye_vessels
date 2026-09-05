@@ -38,6 +38,12 @@ comparison is apples to apples:
   (:func:`disc_center`). A simulated raster is windowed to the reference
   image's extent first (:func:`fundus_window`), since how far the arcades
   reach depends on how far the field extends from the disc.
+- **The macula is the largest vessel-free disk near the fovea**
+  (:func:`clear_radius_px`), at fundus scale on the skeleton and at OCTA
+  scale on the thresholded en-face signal (:func:`faz_metrics`), because an
+  inscribed disk cannot leak through a gap the way a region can. One
+  simulation unit is ``MM_PER_UNIT`` (4.5 mm), the pin that lets OCTA scans
+  and the model be drawn at the same micrometers per pixel.
 """
 
 from typing import Any
@@ -50,6 +56,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
+from skimage.measure import perimeter
 from skimage.morphology import convex_hull_image, skeletonize
 
 from vivarium_eye_vessels.components.particles import (
@@ -164,6 +171,151 @@ def fundus_window(
     row0 = (raster.shape[0] - rows) // 2
     col0 = (raster.shape[1] - cols) // 2
     return raster[row0 : row0 + rows, col0 : col0 + cols], (row0, col0, rows, cols)
+
+
+def rasterize_window(
+    edges: pd.DataFrame,
+    center: tuple[float, float],
+    width_units: float,
+    size_px: int,
+    radii: np.ndarray | None = None,
+) -> np.ndarray:
+    """Rasterize a square window of the network, ``width_units`` wide around ``center``.
+
+    Same drawing rule as :func:`rasterize_network`; segments that cannot
+    touch the window are dropped first so the border is not drawn on.
+    """
+    half = width_units / 2
+    shifted = edges.assign(
+        x0=edges.x0 - center[0],
+        x1=edges.x1 - center[0],
+        y0=edges.y0 - center[1],
+        y1=edges.y1 - center[1],
+    )
+    margin = 0.0 if radii is None else float(np.max(radii, initial=0.0))
+    inside = (
+        (np.minimum(shifted.x0, shifted.x1) <= half + margin)
+        & (np.maximum(shifted.x0, shifted.x1) >= -half - margin)
+        & (np.minimum(shifted.y0, shifted.y1) <= half + margin)
+        & (np.maximum(shifted.y0, shifted.y1) >= -half - margin)
+    ).to_numpy()
+    kept_radii = None if radii is None else np.asarray(radii)[inside]
+    return rasterize_network(shifted[inside], (half, half), size=size_px, radii=kept_radii)
+
+
+####################
+# Physical scale   #
+####################
+
+# The simulation's length unit is pinned to the retina through the fundus
+# raster: HRF calibers were matched in pixels at RASTER_SIZE over the 4-unit
+# field, and the model's disc-to-fovea distance (1.05 units) is the anatomical
+# 4.76 mm, so one unit is 4.5 mm. The root vein caliber (0.034 units) then
+# reads 153 um, a central retinal vein equivalent, and the HRF working image
+# (876 px) spans 15 mm, a 45-degree fundus: the pin is consistent to ~5%
+MM_PER_UNIT = 4.5
+FUNDUS_PX_PER_UNIT = RASTER_SIZE / 4.0  # shared by the HRF working raster and the sim raster
+FUNDUS_MM_PER_PX = MM_PER_UNIT / FUNDUS_PX_PER_UNIT
+FUNDUS_WINDOW_SHAPE = (584, 876)  # the HRF working image: 2336 x 3504 block-averaged by 4
+# OCTA: the ROSE-1 en-face scans are 3 x 3 mm at 304 px, centered on the fovea
+OCTA_SCAN_MM = 3.0
+OCTA_SIZE_PX = 304
+OCTA_MM_PER_PX = OCTA_SCAN_MM / OCTA_SIZE_PX
+MACULA_SEARCH_MM = 1.5  # a macula-centered image has its fovea within this of the center
+FAZ_SMOOTH_MM = 0.04  # en-face signal is smoothed at about one capillary spacing
+FAZ_THRESHOLD_FRACTION = 0.5  # vascular at or above this fraction of the scan's mean signal
+FAZ_SEARCH_MM = 0.3  # the FAZ's clear disk is centered within this of the image center
+FAZ_SEED_MM = 0.1  # the zone must overlap a disk this size at the image center
+
+
+def vascular_signal(signal: np.ndarray, mm_per_px: float) -> np.ndarray:
+    """Where an en-face signal carries vessels: at or above half its smoothed mean.
+
+    Reads a real OCTA angiogram (flow signal, capillaries bright) and a
+    simulated network drawn as 0/1 pixels the same way: the signal is
+    smoothed at ``FAZ_SMOOTH_MM`` (about one capillary spacing) and pixels
+    at or above ``FAZ_THRESHOLD_FRACTION`` of the smoothed signal's mean
+    over the image count as vascular. The mean, not the median, so a sparse
+    network drawn on an empty background (most of the model's macular
+    window is background at capillary resolution) still has a threshold
+    above zero; the whole scan, not its center, so a zone that swallows the
+    center still measures.
+    """
+    smooth = ndimage.gaussian_filter(
+        np.asarray(signal, dtype=float), FAZ_SMOOTH_MM / mm_per_px
+    )
+    return smooth >= FAZ_THRESHOLD_FRACTION * smooth.mean()
+
+
+def clear_radius_px(vascular: np.ndarray, search_radius_px: float) -> float:
+    """Radius (px) of the largest vessel-free disk centered near the image center.
+
+    The distance from the nearest vascular pixel, maximized over centers
+    within ``search_radius_px`` of the image center, which is where a
+    macula-centered image and the simulation's windows both put the fovea.
+    An inscribed disk cannot leak through a gap the way a region can, so
+    the same statistic serves the fundus (the vessel skeleton as the
+    vascular mask: the macula a photograph shows clear) and OCTA (the
+    thresholded flow signal: the FAZ). NaN when nothing is vascular.
+    """
+    vascular = np.asarray(vascular, dtype=bool)
+    if not vascular.any():
+        return float("nan")
+    clearance = ndimage.distance_transform_edt(~vascular)
+    rows, cols = np.indices(vascular.shape)
+    near = (
+        np.hypot(rows - vascular.shape[0] / 2, cols - vascular.shape[1] / 2)
+        <= search_radius_px
+    )
+    return float(clearance[near].max())
+
+
+def avascular_zone(signal: np.ndarray, mm_per_px: float) -> np.ndarray:
+    """The foveal avascular zone of an en-face signal as a region (boolean mask).
+
+    The non-vascular component (:func:`vascular_signal`) overlapping a
+    ``FAZ_SEED_MM`` disk at the image center, the largest if several, holes
+    filled. Its area is the OCTA literature's FAZ area and is kept as a
+    diagnostic; the scored statistic is the leak-proof clear radius
+    (:func:`faz_metrics`). Both read the angiogram, not a label mask:
+    expert OCTA labels omit perifoveal capillaries, so a zone read from
+    them leaks into the intercapillary spaces (0.9 mm2 on ROSE-1 against
+    0.37 from the angiograms, and no closing radius repairs it).
+    """
+    labels, _ = ndimage.label(~vascular_signal(signal, mm_per_px))
+    rows, cols = np.indices(signal.shape)
+    from_center = np.hypot(rows - signal.shape[0] / 2, cols - signal.shape[1] / 2)
+    seed = (from_center <= FAZ_SEED_MM / mm_per_px) & (labels > 0)
+    if not seed.any():
+        return np.zeros(signal.shape, dtype=bool)
+    candidates = np.unique(labels[seed])
+    sizes = ndimage.sum(np.ones_like(labels), labels, index=candidates)
+    return ndimage.binary_fill_holes(labels == candidates[np.argmax(sizes)])
+
+
+def faz_metrics(signal: np.ndarray, mm_per_px: float) -> dict[str, float]:
+    """FAZ clear radius (mm, scored), with the zone's area (mm2) and acircularity as diagnostics."""
+    radius_px = clear_radius_px(vascular_signal(signal, mm_per_px), FAZ_SEARCH_MM / mm_per_px)
+    zone = avascular_zone(signal, mm_per_px)
+    area_px = int(zone.sum())
+    return {
+        "faz_radius_mm": radius_px * mm_per_px,
+        "faz_area_mm2": area_px * mm_per_px**2,
+        "faz_acircularity": (
+            float(perimeter(zone, neighborhood=8) ** 2 / (4 * np.pi * area_px))
+            if area_px
+            else float("nan")
+        ),
+    }
+
+
+def octa_window(
+    edges: pd.DataFrame, fovea_center: tuple[float, float], radii: np.ndarray | None = None
+) -> np.ndarray:
+    """The network as an OCTA en-face scan: a 3 x 3 mm window on the fovea at ROSE scale."""
+    return rasterize_window(
+        edges, fovea_center, OCTA_SCAN_MM / MM_PER_UNIT, OCTA_SIZE_PX, radii
+    )
 
 
 def site_reach(
@@ -581,6 +733,9 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
         "branch_diameter_px": branches.diameter_px.tolist(),
         "pixel_diameter_px": skeleton_pixel_diameters(binary, skeleton).tolist(),
         "wide_junction_spacing_px": wide_junction_spacing(skeleton, binary),
+        "macular_clear_radius_px": clear_radius_px(
+            skeleton, MACULA_SEARCH_MM / FUNDUS_MM_PER_PX
+        ),
         **arcade_geometry(binary),
     }
 

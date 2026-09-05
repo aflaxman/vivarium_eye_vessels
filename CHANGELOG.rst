@@ -1,3 +1,87 @@
+**v0.29.0 - 09/05/26**
+
+ - The fovea: OCTA targets, and an exclusion that did not exclude
+
+   - **Data.** The ROSE OCTA dataset (Retinal OCT-Angiography vessel
+     SEgmentation; registration-gated, so ``reference_data.
+     fetch_rose_images`` reads it from the cache directory rather than
+     downloading it). ROSE-1 has 39 fovea-centered 3 x 3 mm scans of the
+     superficial vascular complex (304 px, 9.9 um/px) with expert labels
+     for large vessels and capillary centerlines, from a mix of healthy
+     and Alzheimer's eyes. The labels omit many perifoveal capillaries,
+     so the FAZ is read from the angiograms themselves
+   - **Scale.** One simulation unit is 4.5 mm (``metrics.MM_PER_UNIT``):
+     the model's disc-to-fovea distance (1.05 units) is the anatomical
+     4.76 mm, the root vein caliber then reads 153 um and the HRF field
+     15 mm, consistent to ~5%. The fundus raster is 17.6 um/px
+   - **Measurement.** Two macular targets, both the radius of the largest
+     vessel-free disk near the fovea (``metrics.clear_radius_px``),
+     because an inscribed disk cannot leak through a gap the way a region
+     can. At fundus scale, ``macular_clear_radius_mm`` on the skeleton
+     within 1.5 mm of the image center: HRF 0.53 +/- 0.09 mm, the macula
+     a photograph shows clear because its capillaries are too fine to
+     see. At OCTA scale, ``faz_radius_mm`` on the vascular signal (the
+     en-face image smoothed at 40 um, thresholded at half its mean --
+     the mean, so a sparse network drawn on black still has a threshold)
+     within 0.3 mm of the fovea: ROSE-1 0.29 +/- 0.07 mm. The simulation
+     is read the same way, its superficial plexus rasterized on a 3 x 3
+     mm window at the fovea (``metrics.octa_window``). The avascular
+     region's area, the OCTA literature's FAZ area, is kept as a
+     diagnostic: read from label masks it leaks into the intercapillary
+     spaces (0.9 mm2 against 0.37 from the images, no closing radius
+     repairs it), and read from the model's sparse window it is
+     meaningless (4.2 mm2 with a trunk through the fovea)
+   - **Finding.** The model had no fovea. The exclusion cylinder (radius
+     0.4 units = 1.8 mm, spring 3, and a ``height`` key the component
+     never read, so it spanned every plexus) was porous: 950 frozen
+     particles sat inside it, the network's density there was only 13%
+     below the surround, and an arcade trunk ran straight through the
+     foveal center. The macula's largest visible void was 0.93 mm in
+     radius (HRF 0.53) and lay away from the fovea; the FAZ radius read
+     0.33 mm only because a gap happened to sit beside the trunk. Spec
+     seed under the new terms: 68.6, of which the two macular terms 53.5
+   - **Model.** The exclusion made real and caliber-aware. ``cylinder_
+     exclusion`` gains ``wide_radius`` / ``wide_min_radius``: tips at or
+     above 0.0025 (arterioles and venules) are held out to 0.10 units
+     (0.45 mm), capillary tips to ``radius`` 0.05 (0.23 mm), with a
+     spring of 30 so a trunk under the arcade guidance and hypoxia pulls
+     stops within 0.02 units of the boundary (at 10 it leaks: FAZ radius
+     0.13 mm). The dead ``height`` key is gone from the spec. The demand
+     lattice no longer has sites inside the capillary radius: the fovea
+     is fed by the choroid, so no tip is recruited into it. Spec seed
+     68.6 -> 24.9 (FAZ clear radius 0.33 mm, macular clear radius 0.67
+     mm); ``vnv_compare`` now writes ``docs/vnv/macula.png``
+   - Eight seeds (7/42/909/2024/123456/31/77/5150): mean 29.9 (per seed
+     44/18/42/19/25/26/29/36); the non-macular terms sum to 25.0 against
+     25.6 in the previous round, so the fovea costs the rest of the fit
+     nothing. FAZ clear radius 0.39 mm on average (0.30-0.54: on two
+     seeds the capillary annulus stays empty and the zone reads the wide
+     radius), macular clear radius 0.59 mm (0.44-0.67), paired perfusion
+     0.96 (seed 7 falls to 0.91 with a trunk that used to feed the macula
+     now routed around it)
+   - Swept and rejected on the spec seed unless noted: radii 0.065/0.118
+     (8-seed mean 45; the annulus between the two radii stays empty and
+     the FAZ reads the wide radius, 0.45 mm on average); 0.05/0.118
+     (47.5: seed 77 collapses to 140 with a 1.2 mm macular void); a
+     single radius for every caliber (74 at 0.05, 132 at 0.065: with
+     nothing to stop them short of the zone the arcades route around
+     the whole macula and leave a 0.9-1.4 mm void); spring 10 (41.5,
+     FAZ 0.13 mm: leaks); radii 0.04/0.09 (81); a denser demand lattice
+     to fill the perifovea (``perfusion_radius`` 0.12: 43, 0.10: 127 and
+     with ``site_spacing`` 0.05: 226 -- more demand than the front can
+     serve, paired perfusion 0.85). The macular clear radius is a
+     maximum statistic and swings 0.5-1.2 mm between near-identical
+     variants on one seed; it needs the full seed set to rank anything
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 0.99/1.00/1.00/0.99 (0.96/0.98/0.96/
+     1.00 before); their macular clear radii read 1.07/0.56/0.62/0.98
+     mm -- the network's own voids, on two of four seeds larger than
+     the fovea
+   - ``vnv_compare`` writes ``docs/vnv/macula.png`` (the macula at both
+     scales, simulation beside HRF and ROSE); the contact sheet stamps
+     each seed's macular clear radius. ``scripts/sweep/sweep_slurm.sh``
+     runs a job file as a Slurm array
+
 **v0.28.0 - 09/04/26**
 
  - Arcade geometry: the front's demand gate curled the trunks

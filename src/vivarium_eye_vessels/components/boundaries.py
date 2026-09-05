@@ -185,6 +185,13 @@ class CylinderExclusion(BaseForceComponent):
     CONFIGURATION_DEFAULTS = {
         "cylinder_exclusion": {
             "radius": 1.0,
+            # Caliber-aware exclusion (the foveal avascular zone): tips at
+            # least wide_min_radius wide are held out to wide_radius instead
+            # of radius, so capillaries close in on the fovea while
+            # arterioles and venules stop farther out, as in the retina.
+            # wide_radius 0 means one radius for every tip
+            "wide_radius": 0.0,
+            "wide_min_radius": 0.0,
             "center": [0.0, 0.0, 0.0],
             "direction": [0.0, 0.0, 1.0],
             "force_type": "hookean",  # or "magnetic"
@@ -194,6 +201,10 @@ class CylinderExclusion(BaseForceComponent):
         }
     }
 
+    @property
+    def required_attributes(self) -> List[str]:
+        return ["x", "y", "z", "frozen", "radius"]
+
     def setup(self, builder: Builder) -> None:
         super().setup(builder)
 
@@ -202,6 +213,8 @@ class CylinderExclusion(BaseForceComponent):
 
         # Set up geometry parameters
         self.radius = float(config.radius)
+        self.wide_radius = float(config.wide_radius) or self.radius
+        self.wide_min_radius = float(config.wide_min_radius)
         self.center = np.array(config.center, dtype=float)
         self.direction = np.array(config.direction, dtype=float)
         self.direction /= np.linalg.norm(self.direction)
@@ -223,8 +236,11 @@ class CylinderExclusion(BaseForceComponent):
         radial_vectors = rel_positions - axial_components
         radial_distances = np.linalg.norm(radial_vectors, axis=1)
 
-        # Calculate penetration depths
-        penetrations = self.radius - radial_distances
+        # Calculate penetration depths: wide tips meet the larger radius
+        exclusion = np.where(
+            particles.radius.to_numpy() >= self.wide_min_radius, self.wide_radius, self.radius
+        )
+        penetrations = exclusion - radial_distances
 
         # Handle points on axis
         mask_on_axis = radial_distances < 1e-10
@@ -558,6 +574,15 @@ class PerfusionDemand(BaseForceComponent):
         else:
             semi_axes = np.ones(3)
         self.sites = generate_demand_sites(semi_axes, float(config.site_spacing))
+        # The fovea is fed by the choroid: tissue inside the foveal exclusion
+        # makes no vascular demand, so no tip is recruited into it
+        if "cylinder_exclusion" in builder.components.list_components():
+            fovea = builder.configuration.cylinder_exclusion
+            from_fovea = np.hypot(
+                self.sites[:, 0] - float(fovea.center[0]),
+                self.sites[:, 1] - float(fovea.center[1]),
+            )
+            self.sites = self.sites[from_fovea > float(fovea.radius)]
 
     def vessel_distances(
         self, points: np.ndarray, vessel_type: int | None = None

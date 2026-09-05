@@ -4,6 +4,9 @@
 # Calibration sweep outputs (scripts/sweep)
 sweep_out/
 
+# Registration-gated OCTA data (extract under the cache directory instead)
+ROSE.zip
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

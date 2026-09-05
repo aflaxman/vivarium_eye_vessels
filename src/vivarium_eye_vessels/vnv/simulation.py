@@ -110,6 +110,15 @@ def get_disc_center(sim: InteractiveContext) -> tuple[float, float]:
         return 0.0, 0.0
 
 
+def get_fovea_center(sim: InteractiveContext) -> tuple[float, float]:
+    """The (x, y) of the fovea: the axis of the foveal exclusion cylinder."""
+    try:
+        center = sim.configuration.cylinder_exclusion.center
+        return float(center[0]), float(center[1])
+    except (AttributeError, IndexError, TypeError):
+        return 0.0, 0.0
+
+
 @dataclass(frozen=True)
 class Geometry:
     """The spatial facts of a model the V&V metrics have to agree with.
@@ -121,6 +130,7 @@ class Geometry:
     semi_axes: tuple[float, float, float]  # containment ellipsoid (a, b, c)
     perfusion: tuple[float, float]  # PerfusionDemand (site_spacing, perfusion_radius)
     disc_center: tuple[float, float]  # optic disc (x, y): the root circle's center
+    fovea_center: tuple[float, float] = (0.0, 0.0)  # the foveal exclusion's axis (x, y)
 
     @property
     def bounds(self) -> tuple[float, float]:
@@ -133,6 +143,7 @@ def get_geometry(sim: InteractiveContext) -> Geometry:
         semi_axes=get_ellipsoid_semi_axes(sim),
         perfusion=get_perfusion_params(sim),
         disc_center=get_disc_center(sim),
+        fovea_center=get_fovea_center(sim),
     )
 
 

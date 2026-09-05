@@ -281,13 +281,30 @@ configuration:
         force_type: hookean
         spring_constant: 3
     
+    # The foveal avascular zone: an exclusion cylinder on the fovea, through
+    # every plexus (the component has no height; the old height key was dead).
+    # Radii are in units of 4.5 mm (vnv.metrics.MM_PER_UNIT). At 0.4 with a
+    # spring of 3 the zone was 1.8 mm wide and porous: 950 frozen particles
+    # inside, a trunk through the fovea (roadmap twentieth pass)
     cylinder_exclusion:
-        radius: 0.4  # Radius of the cylinder
-        height: 0.4  # Height of the cylinder
-        center: [-.05, 0.0, -0.2]  # Center of the cylinder
-        direction: [0.0, 0.0, 1.0]  # Direction vector of the cylinder (default along z-axis)
+        radius: 0.05            # Capillary-free radius, 0.23 mm; tips stop about
+                                # 0.1 mm short of it, so the FAZ clear radius
+                                # reads 0.33 mm against ROSE-1's 0.29 +/- 0.07.
+                                # 0.065 left the annulus to the wide radius
+                                # empty and read 0.52 (8-seed mean 45 vs 30)
+        wide_radius: 0.10       # Arterioles and venules stop at 0.45 mm; the
+                                # macula a fundus photograph shows clear is
+                                # 0.53 +/- 0.09 mm (HRF), and the network's own
+                                # voids set the rest. 0.118 scored 47 on 8 seeds
+                                # (one seed collapsed to 140)
+        wide_min_radius: 0.0025 # Tips at or above this caliber are "wide" here:
+                                # above the capillary class (min_radius 0.002)
+        center: [-.05, 0.0, 0.0]  # The fovea (x, y); the axis runs through all layers
+        direction: [0.0, 0.0, 1.0]
         force_type: hookean
-        spring_constant: 3  # Spring constant for Hooke's law (force/distance)
+        spring_constant: 30     # Strong enough to stop a trunk under the arcade
+                                # guidance and hypoxia pulls (0.2 + 0.35) within
+                                # 0.02 units of the boundary
         
     point_repulsion:
         position:

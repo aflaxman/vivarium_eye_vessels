@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from vivarium_eye_vessels.vnv import metrics
 
@@ -336,3 +337,63 @@ def test_skeleton_pixel_diameters_recover_bar_widths():
     assert len(thin) > len(wide) > 30
     assert 7.0 < np.median(wide) < 11.0
     assert 1.5 < np.median(thin) < 3.5
+
+
+def capillary_mesh(shape=(304, 304), spacing=8, clear_radius=30) -> np.ndarray:
+    """A bright capillary grid with a dark disk at the image center, as an en-face signal."""
+    rows, cols = np.indices(shape)
+    mesh = (rows % spacing == 0) | (cols % spacing == 0)
+    faz = np.hypot(rows - shape[0] / 2, cols - shape[1] / 2) <= clear_radius
+    return (mesh & ~faz).astype(float) * 255
+
+
+def test_avascular_zone_is_the_dark_disk_at_the_center():
+    signal = capillary_mesh()
+    zone = metrics.avascular_zone(signal, metrics.OCTA_MM_PER_PX)
+    expected_px = np.pi * 30**2
+    assert 0.8 * expected_px < zone.sum() < 1.2 * expected_px
+    stats = metrics.faz_metrics(signal, metrics.OCTA_MM_PER_PX)
+    np.testing.assert_allclose(stats["faz_area_mm2"], zone.sum() * metrics.OCTA_MM_PER_PX**2)
+    assert stats["faz_acircularity"] < 1.6  # a disk, not a leak into the mesh
+    # The scored statistic is the clear disk's radius: 30 px less the smoothing halo
+    assert 24 * metrics.OCTA_MM_PER_PX < stats["faz_radius_mm"] < 31 * metrics.OCTA_MM_PER_PX
+    # Without a clear center there is no zone
+    assert (
+        metrics.avascular_zone(capillary_mesh(clear_radius=0), metrics.OCTA_MM_PER_PX).sum()
+        == 0
+    )
+
+
+def test_macular_clear_radius_is_the_largest_vessel_free_disk_near_the_center():
+    skeleton = capillary_mesh(shape=(400, 400), spacing=20, clear_radius=45) > 0
+    radius = metrics.clear_radius_px(skeleton, search_radius_px=60)
+    assert 42 < radius < 50
+    # A search radius too small to reach the clearing sees only the grid spacing
+    assert metrics.clear_radius_px(skeleton, search_radius_px=0) > 40
+    assert np.isnan(metrics.clear_radius_px(np.zeros((10, 10), bool), 5))
+
+
+def test_rasterize_window_draws_only_what_lies_in_the_window():
+    edges = pd.DataFrame(
+        {
+            "x0": [-0.2, 5.0],
+            "x1": [0.2, 5.4],  # one segment through the center, one far away
+            "y0": [0.0, 5.0],
+            "y1": [0.0, 5.0],
+        }
+    )
+    radii = np.array([0.01, 0.01])
+    window = metrics.rasterize_window(edges, (0.0, 0.0), 0.5, 100, radii)
+    assert window.shape == (100, 100)
+    assert window[50, 10:90].all() and not window[10].any() and not window[:, 95].any()
+    # Windowing on the far segment's own center finds it
+    assert metrics.rasterize_window(edges, (5.2, 5.0), 0.5, 100, radii).any()
+    assert not metrics.rasterize_window(edges, (2.5, 2.5), 0.5, 100, radii).any()
+
+
+def test_rose_loader_explains_where_the_dataset_goes(monkeypatch, tmp_path):
+    from vivarium_eye_vessels.vnv import reference_data
+
+    monkeypatch.setenv("VEV_DATA_DIR", str(tmp_path))
+    with pytest.raises(FileNotFoundError, match="ROSE-1 SVC"):
+        reference_data.fetch_rose_images("SVC")

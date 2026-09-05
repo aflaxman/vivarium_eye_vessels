@@ -24,6 +24,10 @@ git-ignored by convention; set the variable to keep sweeps elsewhere).
    depends on the old values.
 
 2. **Sweep.** `scripts/sweep/sweep_jobs.sh JOBS.tsv [SEEDS] [PARALLEL]`
+   on a multi-core machine, or `scripts/sweep/sweep_slurm.sh JOBS.tsv [SEEDS]
+   [ACCOUNT] [PARTITION]` on the cluster (one array task per name x seed;
+   keep `SWEEP_DIR` on the shared filesystem, since the default `sweep_out/`
+   under the repository is what the compute nodes can see). `sweep_jobs.sh`
    runs every name x seed as its own process, `PARALLEL` at a time (one run
    is one core and 10-20 minutes; oversubscribing cores only slows every
    run). Default seeds are the five calibration seeds `7,42,909,2024,123456`;

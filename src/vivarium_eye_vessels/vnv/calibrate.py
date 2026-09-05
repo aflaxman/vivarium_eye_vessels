@@ -90,6 +90,16 @@ TARGETS = {
     "arcade_radial_alignment": {"target": 0.8077, "scale": 0.0306},
     "arcade_reach_px": {"target": 246.98, "scale": 13.66},
     "thick_share": {"target": 0.0380, "scale": 0.0122},
+    # The macula as a fundus sees it: the radius of the largest vessel-free
+    # disk near the image center (metrics.clear_radius_px on the skeleton, in mm at
+    # the shared fundus scale). Real photographs show a clear zone about
+    # 1 mm across where only capillaries run, too fine to be visible
+    "macular_clear_radius_mm": {"target": 0.532, "scale": 0.0947},
+    # The foveal avascular zone as OCTA sees it: the largest capillary-free
+    # disk at the fovea (metrics.faz_metrics on a 3 x 3 mm window of the
+    # superficial plexus at ROSE scale). Target from the ROSE-1 SVC
+    # angiograms, which mix healthy and Alzheimer's eyes
+    "faz_radius_mm": {"target": 0.2875, "scale": 0.0653},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
@@ -166,6 +176,7 @@ HRF_IMAGE_TARGETS = (
     "arcade_radial_alignment",
     "arcade_reach_px",
     "thick_share",
+    "macular_clear_radius_mm",
 )
 
 
@@ -202,6 +213,8 @@ def image_stats(image: dict, references: dict | None = None) -> dict:
         "arcade_radial_alignment": image["arcade_radial_alignment"],
         "arcade_reach_px": image["arcade_reach_px"],
         "thick_share": image["thick_share"],
+        "macular_clear_radius_mm": image["macular_clear_radius_px"]
+        * metrics.FUNDUS_MM_PER_PX,
     }
     if references is not None:
         stats["ks_log_length"] = (
@@ -277,6 +290,22 @@ def derive_hrf_targets(references: dict) -> dict:
     }
 
 
+def rose_references() -> dict:
+    """Per-angiogram OCTA statistics of the ROSE-1 SVC scans (:func:`metrics.faz_metrics`)."""
+    per_image = []
+    for path in reference_data.fetch_rose_images("SVC"):
+        image = metrics.faz_metrics(reference_data.load_mask(path), metrics.OCTA_MM_PER_PX)
+        image["file"] = path.name
+        per_image.append(image)
+    return {"per_image": per_image}
+
+
+def derive_rose_targets(references: dict) -> dict:
+    """Across-scan mean and sd of the OCTA targets."""
+    values = np.array([image["faz_radius_mm"] for image in references["per_image"]])
+    return {"faz_radius_mm": {"target": float(values.mean()), "scale": float(values.std())}}
+
+
 def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -> dict:
     """The scored summary statistics for one finished simulation.
 
@@ -298,7 +327,17 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     # as the compare figure shows the simulation
     window, _ = metrics.fundus_window(raster, references["image_shape"])
     image.update(metrics.arcade_geometry(window))
+    image["macular_clear_radius_px"] = metrics.clear_radius_px(
+        metrics.vessel_skeleton(window), metrics.MACULA_SEARCH_MM / metrics.FUNDUS_MM_PER_PX
+    )
     stats = image_stats(image, references)
+    # OCTA sees the superficial plexus around the fovea at capillary
+    # resolution: the FAZ is read on a 3 x 3 mm window at ROSE scale
+    octa = metrics.octa_window(fundus, geometry.fovea_center, fundus.radius.values)
+    stats.update(metrics.faz_metrics(octa.astype(float), metrics.OCTA_MM_PER_PX))
+    stats["octa_skeleton_mm_per_mm2"] = float(
+        metrics.vessel_skeleton(octa).sum() * metrics.OCTA_MM_PER_PX / metrics.OCTA_SCAN_MM**2
+    )
     # Bifurcation geometry is judged on the superficial tree, like the raster.
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so
     # they agree with the fundus (x-y) projection the literature reports
@@ -462,6 +501,17 @@ def main(
     references = hrf_references()
     if derive_targets:
         for name, spec in derive_hrf_targets(references).items():
+            current = TARGETS[name]
+            click.echo(
+                f"  {name:28s} target {spec['target']:.4f}  scale {spec['scale']:.4f}"
+                f"   (TARGETS: {current['target']:.4f} / {current['scale']:.4f})"
+            )
+        try:
+            rose_targets = derive_rose_targets(rose_references())
+        except FileNotFoundError as error:
+            click.echo(f"  (OCTA targets skipped: {error})")
+            return
+        for name, spec in rose_targets.items():
             current = TARGETS[name]
             click.echo(
                 f"  {name:28s} target {spec['target']:.4f}  scale {spec['scale']:.4f}"

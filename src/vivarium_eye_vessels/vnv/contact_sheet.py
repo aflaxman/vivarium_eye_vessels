@@ -57,6 +57,15 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
             vessel_type=metrics.VESSEL_TYPE_ARTERY,
         ),
         "skeleton_density": metrics.image_metrics(raster)["skeleton_density"],
+        # The macula a photograph shows: the largest vessel-free disk near
+        # the center of a fundus-sized window (HRF 0.53 +/- 0.09 mm)
+        "macular_clear_radius_mm": metrics.clear_radius_px(
+            metrics.vessel_skeleton(
+                metrics.fundus_window(raster, metrics.FUNDUS_WINDOW_SHAPE)[0]
+            ),
+            metrics.MACULA_SEARCH_MM / metrics.FUNDUS_MM_PER_PX,
+        )
+        * metrics.FUNDUS_MM_PER_PX,
         "n_frozen": int(pop.frozen.sum()),
     }
 
@@ -90,6 +99,7 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
             f"seed {seed}: colonized {run['colonized_fraction']:.2f}, "
             f"arterial {run['arterial_supply_fraction']:.2f}, "
             f"skeleton {run['skeleton_density']*100:.2f}%, "
+            f"macula r={run['macular_clear_radius_mm']:.2f} mm, "
             f"n_frozen {run['n_frozen']} "
             f"({(time.time() - start) / 60:.1f} min)"
         )
@@ -106,7 +116,8 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
         ax.set_title(
             f"sim seed {run['seed']} — colonized {run['colonized_fraction']:.0%} "
             f"(arterial {run['arterial_supply_fraction']:.0%}), "
-            f"skeleton {run['skeleton_density']*100:.1f}%"
+            f"skeleton {run['skeleton_density']*100:.1f}%, "
+            f"macula r={run['macular_clear_radius_mm']:.2f} mm"
             + ("" if reliable else "  [STALLED]"),
             fontsize=11,
             color="black" if reliable else "firebrick",

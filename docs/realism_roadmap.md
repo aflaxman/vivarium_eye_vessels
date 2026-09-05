@@ -872,6 +872,120 @@ terms summing to 18.8 where the whole score was 23.0 before: the network
 colonizes its territory but does not yet perfuse a sixth of it, and
 that, not density, is the next target.
 
+*Eighteenth pass (paired perfusion — the periphery deficit, and the tip
+speed behind it)*: with perfusion scored as supply *and* drainage, the
+model perfused 0.81 of its territory on the calibration seeds (0.75–0.88)
+while colonizing 0.99 of it, and the paired term was 80 of a 104-point
+score. The unsupplied sites were not scattered: 59% lay more than 2.5
+units from the disc (the field ends at 3.2), in the sectors facing away
+from it, and the nearest artery to an unsupplied site was a median 0.27
+away — a tree that stopped short of the edge, not a hole in the field.
+Per-type time courses said which tree and when: artery tips died
+mid-field (median live-tip distance 1.0–1.6 from the disc) while vein
+tips reached the periphery by step 300, and both trees ended the run
+with about seven live tips, most of them depth-4 twigs that can no
+longer split. Every lever aimed at the artery tree's *persistence*
+failed the multi-seed test: a per-type advance rule for the front (146
+against 104 — it brakes the healthy tree), one more branching generation
+(184; arterial supply 0.66, because more twigs compete for the same flow
+and the pruning median rises), a type-scaled steering stiffness (160), a
+stronger or longer-ranged hypoxia pull (84, 83 — arteries up, veins
+down), and a per-type re-sprouting watch for the wave (re-sprout the
+lagging tree on its own deficit without holding the front for the
+other), which improved the five-seed mean with faster tips (48.9 → 41.8)
+and then collapsed a fresh seed (154, arterial 0.75) and seed 909 under
+the full candidate (104, venous 0.86) — which tree lags is a lottery,
+and forcing sprouts on the laggard starves the other. What worked was
+*speed*: `terminal_velocity` 0.15 → 0.18 lets tips reach the periphery
+before the mid-field extinction catches them (paired 0.81 → 0.90 alone),
+and it over-fills the field on the way (FD 1.36 → 1.39, arcade junction
+spacing 17.6 → 15.0 px against HRF's 20.7), which two branching knobs
+pay back: `split_interval` 15 → 18 and `side_branch_probability` 0.65 →
+0.5 give fewer, longer segments and a more open comb (FD 1.366, spacing
+16.9 px, caliber KS 0.09 → 0.04) at paired perfusion 0.93 (arterial
+0.97, venous 0.96). Eight-seed mean 103.7 → 23.3 with no new code; the
+five original seeds 147/126/48/132/67 → 21/9/13/16/30, three fresh ones
+15/10/72 — the 72 is seed 5150 draining only 0.84, the deficit on the
+venous side this time, and that is the residual: the paired term is 10
+of the 23 points left. The pass also caught a measurement fragility:
+one sweep seed's vein trunk coiled inside the AVR zone while tapering
+to a thread, put 147 of the zone's 526 vein-trunk particles there and
+read AVR 1.40 — 210 points of a 242-point score — so
+`arcade_caliber_ratio` now weights each trunk once inside the zone, as
+CRAE/CRVE weights each vessel. Held-out seeds 11/202/909/4242 all
+colonize 100% of the tissue with arterial supply 0.82/0.94/0.99/1.00
+(0.92/0.99/0.96/0.75 before); on the spec seed the score is 66.6 → 30.0
+with paired perfusion 0.84 → 0.91, the caliber profile on target (KS
+0.04) and the fractal dimension on target (1.355), which leaves skeleton
+density (3.02% against 3.73%) and branch tortuosity (1.092 against
+1.079) as the next terms after perfusion — a thinner network than a
+real eye's at the same area density, and slightly more wandering.
+
+*Nineteenth pass (arcade geometry — the front's demand gate curled the
+trunks)*: side by side with a fundus, the simulated arcades looked wrong
+in a way no scored term reported — thick vessels looping around the disc
+where a real eye's arcades leave it and run, straight at the scale of the
+image, to the periphery. Every straightness term was branch-level (the
+wide-vessel tortuosity q90 read 1.082 against a target of 1.089), and a
+branch is 15–25 px between junctions, blind to a trunk that turns back on
+itself over 100 px (at a 60-px step the simulated wide chains turned 30°
+per step against 15° in real eyes). Three fundus-scale statistics of the
+wide (> 4 px) skeleton now read it, all relative to the disc and all
+identically on HRF masks and on a fundus-sized window of the simulated
+raster. The disc itself is estimated from the image as the point the wide
+vessels' tangent lines converge on — a robust least squares that lands on
+the disc in all 15 masks and within ~40 px of the true disc in the
+simulation, whose loops pull it slightly — and relative to it: the radial
+alignment of wide vessels (mean |cos| between tangent and the direction
+from the disc, HRF 0.81 ± 0.03, sim 0.58), their mean reach from the disc
+(247 ± 14 px, sim 171) and the share of skeleton wider than 6 px (0.038 ±
+0.012, sim 0.119: 908 skeleton pixels above 8 px in the window against 84
+in a real eye). Together they were 129 points of a 159-point spec-seed
+score, which is what the eye had been saying. The cause is the
+developmental wave's own discipline: demand is exposed only in a thin
+annulus at the front, so a trunk that has caught up with the front feels
+no forward pull at all, only the sideways pull of the exposed sites beside
+it, and rides along the front — loops concentric with the disc, which stay
+thick because a circling trunk sheds few teeth per unit of radial
+progress. The fix follows from the diagnosis. Tips of arcade caliber now
+see the whole hypoxic field (`gate_caliber_max` 0.006 — the exemption the
+tenth pass rejected for breaking the front's discipline, under an
+objective that could not see what it fixes) and head for the far tissue:
+spec seed 159 → 32, alignment 0.58 → 0.75, reach 171 → 268 px, and the
+thick share falls with them (0.119 → 0.070) because a trunk that runs
+sheds teeth and tapers. A new `ArcadeGuidance` component adds the
+astrocyte template itself, a radial push of 0.2 on arcade-caliber tips
+(alignment → 0.83), and a thinner root caliber (0.02 → 0.017, 8.7 px
+against HRF's 7.5-px top percentile) finishes the thick share (→ 0.055):
+spec seed 159 → 15. On eight seeds the mean is 117 → 26 with paired
+perfusion 0.93 → 0.96 and arterial supply ≥ 0.95 everywhere; the same
+without the guidance force scores 27 but lets arterial supply fall to
+0.88–0.90 on three seeds, which is why the component ships rather than
+the simpler pair. Thinner roots alone were catastrophic (1156; the artery
+tree starves without the gate), guidance alone straightened trunks that
+stayed thick and short (96: the push orients a trunk, the demand horizon
+makes it run), and every density payback tried on top of the gate — a
+longer split interval, a faster taper, more flow per tooth, a caliber
+cap on adaptation — was neutral or worse. Held-out seeds 11/202/909/4242
+all colonize 100% of the tissue with arterial supply 0.96/0.98/0.96/1.00
+(0.82/0.94/0.99/1.00 before). On the spec seed the score is 159 → 15
+(30 → 15 under the previous objective, which could not see the loops):
+alignment 0.58 → 0.85, reach 171 → 263 px, thick share 0.119 → 0.055,
+paired perfusion 0.91 → 0.99, skeleton density 3.02% → 3.69% against
+3.73%, junction spacing 16.5 → 19.8 px against 20.7 — the side effects
+all ran the right way, because trunks that reach the periphery carry
+their combs with them. What remains is small: branch tortuosity (1.093
+against 1.079), fractal dimension (1.385 against 1.349) and a wide share
+a little under target.
+
+*Coming data — OCTA.* Optical coherence tomography angiography of healthy
+retinas is now available to the project. It resolves what fundus
+photographs cannot: the intermediate and deep capillary plexuses, the
+foveal avascular zone, and capillary density and intercapillary spacing
+per plexus — the layers the model has so far only been able to reason
+about (idea 6) become measurable, and the next rounds can carry
+OCTA-derived targets beside the HRF ones.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -950,9 +1064,20 @@ the HRF masks, which is what makes the comparison apples to apples):
   real eye scores against the other fourteen pooled. `vnv_calibrate
   --derive-targets` reprints them, so a convention change re-derives the
   targets in one step.
+- Arcade geometry is read at the scale of the fundus, on the wide (> 4 px)
+  skeleton and relative to the optic disc, which is estimated from the
+  image itself for both sources as the point the wide vessels' tangent
+  lines converge on (`metrics.disc_center`): the radial alignment of wide
+  vessels (mean |cos| to the direction from the disc, beyond 100 px of it),
+  their mean reach from the disc, and the share of skeleton length wider
+  than 6 px. The simulated raster is windowed to the HRF working image's
+  extent first (`metrics.fundus_window`), since reach depends on how far
+  the field extends from the disc.
 - The A:V caliber ratio is read on the depth-0 arcades within a fixed zone
   of the disc (`metrics.AVR_ZONE`), as the clinical CRAE/CRVE is, not over
-  each trunk's whole tapering run. Perfusion requires both supply and
+  each trunk's whole tapering run, and each trunk counts once (a trunk that
+  coils inside the zone is one vessel, not its particle count). Perfusion
+  requires both supply and
   drainage: a demand site is perfused when an artery *and* a vein lie
   within `perfusion_radius`; the any-vessel fraction is reported as the
   colonized fraction and gates the contact sheet's seed reliability.

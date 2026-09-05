@@ -160,23 +160,6 @@ def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None
     plt.close(fig)
 
 
-def fundus_window(
-    raster: np.ndarray, reference_shape: tuple[int, int]
-) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-    """Central crop of ``raster`` with the pixel extent of a reference image.
-
-    Returns the crop and its (row0, col0, rows, cols) placement. Because the
-    simulation is rasterized at the same pixels-per-caliber scale as the HRF
-    masks, a window the size of the HRF working image shows the two at the
-    same magnification and aspect.
-    """
-    rows = min(reference_shape[0], raster.shape[0])
-    cols = min(reference_shape[1], raster.shape[1])
-    row0 = (raster.shape[0] - rows) // 2
-    col0 = (raster.shape[1] - cols) // 2
-    return raster[row0 : row0 + rows, col0 : col0 + cols], (row0, col0, rows, cols)
-
-
 def plexus_metrics(pop, edges, layer_z) -> dict:
     """Per-plexus composition and stratification quality."""
     vessels = pop[(pop.layer_id >= 0) & (pop.radius > 0)]
@@ -307,7 +290,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # raster with the HRF working image's pixel extent is the like-for-like
     # view: same magnification and aspect, the ellipse's empty corners
     # trimmed, and the disc landing where fundus photographs place it
-    window, (row0, col0, rows, cols) = fundus_window(sim_display, example_binary.shape)
+    window, (row0, col0, rows, cols) = metrics.fundus_window(
+        sim_display, example_binary.shape
+    )
     ax.imshow(~window, cmap="gray", interpolation="nearest")
     ax.set_title(
         "Simulation: superficial network, fundus-sized window at HRF pixel scale",

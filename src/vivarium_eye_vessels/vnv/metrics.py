@@ -33,6 +33,11 @@ comparison is apples to apples:
 - **Box counting uses a fixed range of box sizes** (2..128 px) rather than
   one derived from the frame, so padding a skeleton into a larger canvas
   does not change its fractal dimension.
+- **Arcade geometry is read relative to an estimated disc**, for both
+  sources: the point the wide vessels' tangent lines converge on
+  (:func:`disc_center`). A simulated raster is windowed to the reference
+  image's extent first (:func:`fundus_window`), since how far the arcades
+  reach depends on how far the field extends from the disc.
 """
 
 from typing import Any
@@ -143,6 +148,24 @@ def rasterize_network(
     return image
 
 
+def fundus_window(
+    raster: np.ndarray, reference_shape: tuple[int, int]
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Central crop of ``raster`` with the pixel extent of a reference image.
+
+    Returns the crop and its (row0, col0, rows, cols) placement. Because the
+    simulation is rasterized at the same pixels-per-caliber scale as the HRF
+    masks, a window the size of the HRF working image shows the two at the
+    same magnification and aspect, and statistics that depend on how far the
+    field extends from the disc (arcade reach) are read over the same extent.
+    """
+    rows = min(reference_shape[0], raster.shape[0])
+    cols = min(reference_shape[1], raster.shape[1])
+    row0 = (raster.shape[0] - rows) // 2
+    col0 = (raster.shape[1] - cols) // 2
+    return raster[row0 : row0 + rows, col0 : col0 + cols], (row0, col0, rows, cols)
+
+
 def site_reach(
     pop: pd.DataFrame, sites: np.ndarray, perfusion_radius: float, vessel_type: int | None
 ) -> np.ndarray:
@@ -211,16 +234,20 @@ def arcade_caliber_ratio(
     makes the ratio depend on how far each tapering trunk happens to run
     -- a seed lottery of 0.63-0.85 at a configured 0.67 -- so only depth-0
     particles between ``zone[0]`` and ``zone[1]`` from the disc center
-    count. NaN when either tree is absent from the zone.
+    count, and each trunk (depth-0 path) counts once, as each vessel does
+    in CRAE/CRVE: a trunk that coils inside the zone while tapering to a
+    thread would otherwise swamp the particle mean (1.40 on one sweep
+    seed, 210 points of a 242-point score). NaN when either tree is
+    absent from the zone.
     """
     trunks = pop[(pop.depth == 0) & (pop.radius > 0) & (pop.vessel_type > 0)]
     distance = np.hypot(trunks.x - disc_center[0], trunks.y - disc_center[1])
     in_zone = trunks[(distance >= zone[0]) & (distance < zone[1])]
-    arteries = in_zone[in_zone.vessel_type == VESSEL_TYPE_ARTERY]
-    veins = in_zone[in_zone.vessel_type == VESSEL_TYPE_VEIN]
-    if arteries.empty or veins.empty:
+    per_trunk = in_zone.groupby(["vessel_type", "path_id"]).radius.mean()
+    by_type = per_trunk.groupby(level="vessel_type").mean()
+    if VESSEL_TYPE_ARTERY not in by_type.index or VESSEL_TYPE_VEIN not in by_type.index:
         return float("nan")
-    return float(arteries.radius.mean() / veins.radius.mean())
+    return float(by_type[VESSEL_TYPE_ARTERY] / by_type[VESSEL_TYPE_VEIN])
 
 
 def binarize_mask(mask: np.ndarray, size: int = RASTER_SIZE) -> np.ndarray:
@@ -423,11 +450,122 @@ def wide_junction_spacing(
     return float(n_wide / max(n_junctions, 1))
 
 
+####################
+# Arcade geometry  #
+####################
+
+WIDE_DIAMETER_PX = 4.0  # the arcade class: wide_share, junction spacing, reach
+THICK_DIAMETER_PX = 6.0  # the caliber a real arcade rarely exceeds at this raster
+ARCADE_MIN_DISC_DISTANCE_PX = 100.0  # alignment is read clear of the disc's convergence
+
+
+def local_orientation(skeleton: np.ndarray, size: int = 7) -> np.ndarray:
+    """Unit tangent (d_row, d_col) of the skeleton at every pixel.
+
+    The principal axis of the skeleton pixels in a ``size`` x ``size`` window,
+    so a vessel's direction is read over a few pixels of centerline rather
+    than one pixel step. Sign is arbitrary (a tangent line, not a heading).
+    """
+    mask = skeleton.astype(float)
+    rows, cols = np.indices(skeleton.shape, dtype=float)
+    count = np.maximum(ndimage.uniform_filter(mask, size, mode="constant"), 1e-12)
+
+    def local_mean(field: np.ndarray) -> np.ndarray:
+        return ndimage.uniform_filter(mask * field, size, mode="constant") / count
+
+    mean_r, mean_c = local_mean(rows), local_mean(cols)
+    var_r = local_mean(rows * rows) - mean_r**2
+    var_c = local_mean(cols * cols) - mean_c**2
+    cov = local_mean(rows * cols) - mean_r * mean_c
+    theta = 0.5 * np.arctan2(2 * cov, var_r - var_c)
+    return np.stack([np.cos(theta), np.sin(theta)], axis=-1)
+
+
+def disc_center(
+    coords: np.ndarray, tangents: np.ndarray, weights: np.ndarray, iterations: int = 5
+) -> np.ndarray:
+    """Where the arcades converge: the point nearest the wide vessels' tangent lines.
+
+    Every major vessel radiates from the optic disc, so the disc is the
+    point that minimizes the (weighted) squared distance to the tangent
+    lines through the wide skeleton pixels — the same estimate for a real
+    mask, whose disc is unknown, and a simulated raster, whose disc is
+    known (it lands within ~40 px of it). Side branches leave the arcades
+    at right angles and their lines miss the disc, so the least squares is
+    re-weighted a few times to discount lines that pass far from the
+    current estimate (Cauchy weights, 60 px scale).
+    """
+    normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
+    offsets = (normals * coords).sum(axis=1)
+    current = weights.astype(float)
+    center = coords.mean(axis=0)
+    for _ in range(iterations):
+        system = np.einsum("i,ij,ik->jk", current, normals, normals)
+        rhs = np.einsum("i,ij,i->j", current, normals, offsets)
+        center = np.linalg.solve(system, rhs)
+        miss = np.abs(normals @ center - offsets)
+        current = weights / (1.0 + (miss / 60.0) ** 2)
+    return center
+
+
+def arcade_geometry(binary: np.ndarray, disc: np.ndarray | None = None) -> dict[str, float]:
+    """Long-scale geometry of the arcades in a fundus-sized binary image.
+
+    Real arcades leave the disc and run to the periphery, straight at the
+    scale of the image and tapering as they go; branch-level tortuosity
+    (a few pixels between junctions) cannot see a trunk that curls back
+    on itself over 100 px. Three statistics read that scale, all on the
+    wide (> ``WIDE_DIAMETER_PX``) skeleton and relative to the disc, which
+    is estimated from the image itself (:func:`disc_center`) unless given:
+
+    - ``arcade_radial_alignment``: mean |cos| between the local tangent and
+      the direction from the disc, over wide pixels farther than
+      ``ARCADE_MIN_DISC_DISTANCE_PX`` from it (1 = every arcade points
+      away from the disc, 0 = rings around it)
+    - ``arcade_reach_px``: mean distance of wide skeleton pixels from the
+      disc — how far the arcade class extends into the field
+    - ``thick_share``: share of skeleton length wider than
+      ``THICK_DIAMETER_PX`` — the top of the caliber profile, where the KS
+      statistic has too little mass to notice a trunk twice too wide
+
+    NaN entries when the image has no wide skeleton.
+    """
+    skeleton = vessel_skeleton(binary)
+    diameters = 2.0 * ndimage.distance_transform_edt(binary)
+    wide = skeleton & (diameters > WIDE_DIAMETER_PX)
+    if wide.sum() < 3:
+        return {
+            "disc_row_px": float("nan"),
+            "disc_col_px": float("nan"),
+            "arcade_radial_alignment": float("nan"),
+            "arcade_reach_px": float("nan"),
+            "thick_share": float((diameters[skeleton] > THICK_DIAMETER_PX).mean()),
+        }
+    coords = np.argwhere(wide).astype(float)
+    tangents = local_orientation(skeleton)[wide]
+    if disc is None:
+        disc = disc_center(coords, tangents, diameters[wide])
+    radial = coords - disc
+    distance = np.linalg.norm(radial, axis=1)
+    far = distance > ARCADE_MIN_DISC_DISTANCE_PX
+    alignment = np.abs((tangents[far] * radial[far]).sum(axis=1) / distance[far])
+    return {
+        "disc_row_px": float(disc[0]),
+        "disc_col_px": float(disc[1]),
+        "arcade_radial_alignment": float(alignment.mean()) if far.any() else float("nan"),
+        "arcade_reach_px": float(distance.mean()),
+        "thick_share": float((diameters[skeleton] > THICK_DIAMETER_PX).mean()),
+    }
+
+
 def image_metrics(binary: np.ndarray) -> dict[str, Any]:
     """All image-based metrics for one binary vessel image.
 
     Densities are fractions of the imaged region (the vessel pixels' convex
-    hull), whose share of the frame is reported as ``fov_fraction``.
+    hull), whose share of the frame is reported as ``fov_fraction``. The
+    arcade geometry (:func:`arcade_geometry`) is read over the whole image,
+    which for a real mask is the fundus field; a simulated raster larger
+    than that is windowed first (:func:`fundus_window`).
     """
     skeleton = vessel_skeleton(binary)
     region = imaged_region(binary)
@@ -443,6 +581,7 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
         "branch_diameter_px": branches.diameter_px.tolist(),
         "pixel_diameter_px": skeleton_pixel_diameters(binary, skeleton).tolist(),
         "wide_junction_spacing_px": wide_junction_spacing(skeleton, binary),
+        **arcade_geometry(binary),
     }
 
 

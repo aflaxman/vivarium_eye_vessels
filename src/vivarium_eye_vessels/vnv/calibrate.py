@@ -80,6 +80,16 @@ TARGETS = {
     # ~21 px of wide (>4 px) skeleton (connected junction clusters counted
     # once, spurs pruned)
     "wide_junction_spacing_px": {"target": 20.73, "scale": 1.97},
+    # Arcade geometry at the scale of the fundus (metrics.arcade_geometry):
+    # real arcades leave the disc and run to the periphery, so the wide
+    # (>4 px) skeleton points away from the disc (mean |cos| to the radial
+    # direction), reaches deep into the field (mean distance from the disc,
+    # read in a fundus-sized window), and rarely exceeds 6 px (share of
+    # skeleton length). Branch-level tortuosity cannot see a trunk that
+    # curls back on itself over 100 px; these can
+    "arcade_radial_alignment": {"target": 0.8077, "scale": 0.0306},
+    "arcade_reach_px": {"target": 246.98, "scale": 13.66},
+    "thick_share": {"target": 0.0380, "scale": 0.0122},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
@@ -153,6 +163,9 @@ HRF_IMAGE_TARGETS = (
     "wide_share",
     "wide_tortuosity_q90",
     "wide_junction_spacing_px",
+    "arcade_radial_alignment",
+    "arcade_reach_px",
+    "thick_share",
 )
 
 
@@ -186,6 +199,9 @@ def image_stats(image: dict, references: dict | None = None) -> dict:
             float(np.quantile(wide_tortuosity, 0.9)) if len(wide_tortuosity) else float("nan")
         ),
         "wide_junction_spacing_px": image["wide_junction_spacing_px"],
+        "arcade_radial_alignment": image["arcade_radial_alignment"],
+        "arcade_reach_px": image["arcade_reach_px"],
+        "thick_share": image["thick_share"],
     }
     if references is not None:
         stats["ks_log_length"] = (
@@ -207,7 +223,9 @@ def hrf_references() -> dict:
     ``lengths`` and ``pixel_diameters`` pool the 15 masks for the KS
     targets; ``per_mask`` keeps each mask's full
     :func:`~vivarium_eye_vessels.vnv.metrics.image_metrics` result (with
-    its ``file`` name) for the per-mask statistics and figures.
+    its ``file`` name) for the per-mask statistics and figures;
+    ``image_shape`` is the working-image extent a simulated raster is
+    windowed to for the arcade geometry.
     """
     per_mask = []
     for path in reference_data.fetch_hrf_masks():
@@ -216,6 +234,7 @@ def hrf_references() -> dict:
         image["file"] = path.name
         per_mask.append(image)
     return {
+        "image_shape": tuple(binary.shape),
         "lengths": np.concatenate(
             [np.asarray(m["branch_length_px"], dtype=float) for m in per_mask]
         ),
@@ -274,6 +293,11 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     fundus = edges[edges.layer_id == 0]
     raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
     image = metrics.image_metrics(raster)
+    # The arcade geometry depends on how far the field extends from the
+    # disc, so it is read in a window with the HRF working image's extent,
+    # as the compare figure shows the simulation
+    window, _ = metrics.fundus_window(raster, references["image_shape"])
+    image.update(metrics.arcade_geometry(window))
     stats = image_stats(image, references)
     # Bifurcation geometry is judged on the superficial tree, like the raster.
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so

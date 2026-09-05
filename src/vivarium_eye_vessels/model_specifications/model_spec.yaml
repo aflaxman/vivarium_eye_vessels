@@ -11,6 +11,7 @@ components:
         - boundaries.EllipsoidContainment()
         - boundaries.CylinderExclusion()
         - boundaries.PointRepulsion()
+        - boundaries.ArcadeGuidance()
         - boundaries.FrozenRepulsion()
         - boundaries.PerfusionDemand()
         - boundaries.DevelopmentalWave()
@@ -37,14 +38,26 @@ configuration:
     particles:
         overall_max_velocity_change: 0.2
         initial_velocity_range: [-0.2, 0.2]
-        terminal_velocity: 0.15
+        terminal_velocity: 0.18        # Tip speed. The paired-perfusion deficit was the
+                                       # far periphery (59% of unsupplied sites beyond
+                                       # 2.5 from the disc): artery tips died mid-field
+                                       # before the front reached it. Faster tips reach
+                                       # it: 8-seed paired perfusion 0.81 -> 0.90 alone;
+                                       # 0.20 over-fills (FD, junction spacing)
         initial_circle:
             center: [1.0, 0.0, 0.0]    # Center of the frozen circle
             radius: 0.05                # Radius of the circle
             n_vessels: 6               # Root trunks at the disc (3 artery/vein pairs);
                                        # more superficial arcades close most of the gap
                                        # to the HRF density metrics (vnv_calibrate fit)
-        root_radius: 0.02              # Caliber of the root (vein) vessels
+        root_radius: 0.017             # Caliber of the root (vein) vessels: 8.7 px
+                                       # diameter at the V&V raster, where HRF's
+                                       # widest 1% of skeleton is 7.5 px. At 0.02
+                                       # a tenth of the superficial skeleton ran
+                                       # wider than 6 px against 4% in real eyes
+                                       # (thick_share). 0.015 starves the network
+                                       # (skeleton 2.9%); alone, without the arcade
+                                       # gate, it collapses the artery tree
         artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
         noise_persistence_time: 0.0    # OU steering memory (days); 0 = white noise.
                                        # Healthy tortuosity is already on target; raising
@@ -62,7 +75,10 @@ configuration:
 
     # Path splitting configuration
     path_splitter:
-        split_interval: 15     # Steps between checking for splits
+        split_interval: 18     # Steps between checking for splits. 18 (from 15)
+                               # pays back the density the faster tips add:
+                               # fewer, longer segments (FD 1.39 -> 1.37, caliber
+                               # KS 0.09 -> 0.04) at the same paired perfusion
         split_angle: 60         # Fallback angle when the parent has no caliber
         split_probability: 0.95  # Split probability at the min_radius caliber floor
         max_depth: 4
@@ -80,10 +96,13 @@ configuration:
                                    # the structure real mid-vessels show. Robustness
                                    # note: one of three calibration seeds stalls
                                    # mid-growth under this -- see the roadmap
-        side_branch_probability: 0.65  # Tooth emission per split round: sets the
-                                       # comb spacing along the arcades
-                                       # (vnv_calibrate: sim 26px vs HRF 22.7px;
-                                       # 0.8 packs tighter but collapses seed 7)
+        side_branch_probability: 0.5   # Tooth emission per split round: sets the
+                                       # comb spacing along the arcades. 0.65 packed
+                                       # the faster arcades to 15 px between
+                                       # junctions against HRF's 20.7; 0.5 opens them
+                                       # to 17 px and, with split_interval 18, holds
+                                       # paired perfusion at 0.93 on 8 seeds (0.4
+                                       # starves one seed's artery tree: supply 0.67)
         type_scaled_comb: true     # Judge the comb threshold on each tree's own
                                    # caliber scale (arteries: side_branch_radius x
                                    # artery_caliber_ratio). With one absolute
@@ -226,8 +245,17 @@ configuration:
                                  # service ceiling
         hold_resprout_steps: 15  # Held steps before targeted re-sprouting
         resprout_count: 2        # Sprouts per stalled tree per trigger
-        gate_caliber_max: 0.0    # 0 gates every tip (the wide-tip exemption
-                                 # tested worse: it breaks the front discipline)
+        gate_caliber_max: 0.006  # Tips wider than this (the arcade class, 3 px)
+                                 # see the whole hypoxic field; narrower tips only
+                                 # what the front exposes. A gated trunk that has
+                                 # caught up with the front feels no forward pull,
+                                 # only the sideways pull of the exposed sites
+                                 # beside it, and rides along the front: loops
+                                 # concentric with the disc (roadmap nineteenth
+                                 # pass; radial alignment 0.58 -> 0.75, reach 171
+                                 # -> 268 px). 0 gates every tip -- it scored
+                                 # better under the objective that could not see
+                                 # arcade geometry; 0.008 exempts too few tips
 
     frozen_repulsion:
         force_type: hookean
@@ -269,6 +297,19 @@ configuration:
         force_type: hookean
         spring_constant: .5  # Spring constant for Hooke's law (force/distance)
         radius: 0.2  # Interaction radius
+
+    # Astrocyte-template guidance: arcade-caliber tips are pushed away from the
+    # disc so trunks run to the periphery instead of curling along the growth
+    # front (roadmap nineteenth pass)
+    arcade_guidance:
+        magnitude: 0.2      # Radial push on arcade tips, below the hypoxia pull
+                            # (0.35). With the demand gate and root caliber set,
+                            # 8-seed mean 27.3 -> 25.6 -- the same within noise --
+                            # but arterial supply >= 0.95 on every seed where
+                            # three seeds fall to 0.88-0.90 without it; 0.1 loses
+                            # half the gain, 0.3 pushes trunks past the tissue
+                            # (paired perfusion 0.93 on the spec seed)
+        min_radius: 0.006   # The arcade class, same threshold as the demand gate
 
     visualization:
         background_color: [0, 0, 0]

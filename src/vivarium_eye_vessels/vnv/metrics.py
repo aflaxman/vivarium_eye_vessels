@@ -56,6 +56,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
+from skimage.filters import threshold_local
 from skimage.measure import perimeter
 from skimage.morphology import convex_hull_image, skeletonize
 
@@ -230,6 +231,16 @@ FAZ_SEED_MM = 0.1  # the zone must overlap a disk this size at the image center
 # below the 0.001 adaptation floor of the arteriole tree. Junction and path
 # statistics compared against fundus references skip them, as a fundus does
 CAPILLARY_RADIUS_UNITS = 0.001
+# Angiogram binarization (for layers without expert labels): smooth at one
+# pixel, then a local threshold over ANGIOGRAM_BLOCK_MM lowered by
+# ANGIOGRAM_OFFSET grey levels. Tuned on ROSE-1 SVC so the skeleton density
+# of the binarized angiograms matches the expert labels (9.25 vs 9.30 mm/mm2,
+# per-image correlation 0.65); the intervessel distance reads 50 um against
+# the labels' 78 because the threshold keeps capillaries the labels omit, so
+# deep-plexus targets read through it are corrected by the SVC label/image ratio
+ANGIOGRAM_SMOOTH_PX = 1.0
+ANGIOGRAM_BLOCK_MM = 0.25
+ANGIOGRAM_OFFSET = -8.0
 
 
 def vascular_signal(signal: np.ndarray, mm_per_px: float) -> np.ndarray:
@@ -328,6 +339,21 @@ def octa_window(
     return rasterize_window(
         edges, fovea_center, OCTA_SCAN_MM / MM_PER_UNIT, OCTA_SIZE_PX, radii
     )
+
+
+def angiogram_vessels(image: np.ndarray, mm_per_px: float) -> np.ndarray:
+    """Vessel mask of an OCTA angiogram by a speckle-robust local threshold.
+
+    The image is smoothed at ``ANGIOGRAM_SMOOTH_PX`` and a pixel is vascular
+    when it exceeds the local mean over ``ANGIOGRAM_BLOCK_MM`` by more than
+    ``ANGIOGRAM_OFFSET`` grey levels (negative: the threshold sits above the
+    local mean). For the model's binary windows :func:`vessel_skeleton` is
+    used directly; this is for real angiograms of layers without expert
+    labels (the ROSE-1 DVC), tuned against the labels the SVC has.
+    """
+    smooth = ndimage.gaussian_filter(np.asarray(image, dtype=float), ANGIOGRAM_SMOOTH_PX)
+    block = int(ANGIOGRAM_BLOCK_MM / mm_per_px) | 1
+    return smooth > threshold_local(smooth, block, offset=ANGIOGRAM_OFFSET)
 
 
 def capillary_statistics(

@@ -96,17 +96,29 @@ def layer_name(layer: int) -> str:
     return LAYER_NAMES[layer] if layer < len(LAYER_NAMES) else f"layer {layer}"
 
 
-def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None:
-    """En-face slab per plexus plus an x-z cross-section — an OCTA-style view."""
+def render_plexus_figure(
+    pop, edges, bounds, layer_z, output_path: Path, fovea_center=(0.0, 0.0)
+) -> None:
+    """En-face slab per plexus, an x-z cross-section, and the OCTA windows.
+
+    Top row, fundus scale over the whole field: each plexus layer's raster
+    (capillaries are below the drawing threshold there, as in a photograph)
+    and the x-z cross-section. Bottom row, OCTA scale on the fovea: the
+    superficial plexus beside a ROSE-1 SVC angiogram and the intermediate
+    and deep plexuses together (the deep vascular complex, as OCTA slabs
+    them) beside a ROSE-1 DVC angiogram, each titled with its intervessel
+    distance and skeleton density outside the FAZ.
+    """
     from matplotlib.collections import LineCollection
 
     layers = sorted(int(layer) for layer in edges.layer_id.unique() if layer >= 0)
     n_panels = len(layers) + 1
-    fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 5.4))
+    fig, axes = plt.subplots(2, n_panels, figsize=(5 * n_panels, 10.8))
     fig.patch.set_facecolor("white")
+    top, bottom = axes[0], axes[1]
 
     for column, layer in enumerate(layers):
-        ax = axes[column]
+        ax = top[column]
         in_layer = edges[edges.layer_id == layer]
         raster = metrics.rasterize_network(in_layer, bounds, radii=in_layer.radius.values)
         ax.imshow(~raster, cmap="gray", interpolation="nearest")
@@ -123,7 +135,7 @@ def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None
         ax.set_yticks([])
 
     # Cross-section: the stratification is invisible in the fundus view
-    ax = axes[-1]
+    ax = top[-1]
     segments = np.stack(
         [edges[["x0", "z0"]].to_numpy(float), edges[["x1", "z1"]].to_numpy(float)],
         axis=1,
@@ -150,13 +162,87 @@ def render_plexus_figure(pop, edges, bounds, layer_z, output_path: Path) -> None
     ax.set_title("Cross-section (x–z): the layers themselves", color=INK, fontsize=10)
     style_axis(ax)
 
+    # OCTA windows on the fovea: the superficial plexus against the SVC, the
+    # intermediate and deep plexuses together against the DVC
+    def octa_panel(ax, image: np.ndarray, title: str, from_labels: np.ndarray | None = None):
+        mm = metrics.OCTA_MM_PER_PX
+        signal = image.astype(float)
+        zone = metrics.avascular_zone(signal, mm)
+        if from_labels is not None:
+            skeleton = metrics.vessel_skeleton(from_labels)
+        elif image.dtype == bool:
+            skeleton = metrics.vessel_skeleton(image)
+        else:
+            skeleton = metrics.vessel_skeleton(metrics.angiogram_vessels(signal, mm))
+        stats = metrics.capillary_statistics(skeleton, zone, mm)
+        ax.imshow(signal, cmap="gray", interpolation="nearest")
+        ax.contour(zone, colors="crimson", linewidths=0.7)
+        ax.set_title(
+            f"{title}\nintervessel {stats['octa_intervessel_um']:.0f} um, "
+            f"skeleton {stats['octa_skeleton_mm_per_mm2']:.1f} mm/mm2",
+            color=INK,
+            fontsize=9,
+        )
+        ax.axis("off")
+
+    for ax in bottom:
+        ax.axis("off")
+    radii = edges.radius.values if "radius" in edges.columns else None
+    superficial = edges[edges.layer_id == 0]
+    deep = edges[edges.layer_id > 0]
+    if len(superficial):
+        octa_panel(
+            bottom[0],
+            metrics.octa_window(superficial, fovea_center, superficial.radius.values),
+            "Simulation, superficial plexus, 3 x 3 mm on the fovea",
+        )
+    if len(deep) and n_panels > 2:
+        octa_panel(
+            bottom[2],
+            metrics.octa_window(deep, fovea_center, deep.radius.values),
+            "Simulation, intermediate + deep plexuses (the DVC slab)",
+        )
+    try:
+        # The eye shown is the one whose labeled skeleton density is the
+        # median of the 39: a representative plexus, not the first file
+        svc_paths = reference_data.fetch_rose_images("SVC")
+        label_paths = reference_data.fetch_rose_labels("SVC", "gt")
+        densities = [
+            metrics.vessel_skeleton(metrics.binarize_mask(reference_data.load_mask(p))).mean()
+            for p in label_paths
+        ]
+        pick = int(np.argsort(densities)[len(densities) // 2])
+        svc_path, svc_label_path = svc_paths[pick], label_paths[pick]
+        eye = f"{svc_path.parent.parent.name}/{svc_path.name}"
+        octa_panel(
+            bottom[1],
+            reference_data.load_mask(svc_path),
+            f"ROSE-1 SVC angiogram ({eye}), expert-label skeleton",
+            from_labels=metrics.binarize_mask(reference_data.load_mask(svc_label_path)),
+        )
+        dvc_path = [
+            p
+            for p in reference_data.fetch_rose_images("DVC")
+            if f"{p.parent.parent.name}/{p.name}" == eye
+        ][0]
+        octa_panel(
+            bottom[-1],
+            reference_data.load_mask(dvc_path),
+            f"ROSE-1 DVC angiogram ({eye}), thresholded skeleton",
+        )
+    except (FileNotFoundError, IndexError):
+        bottom[1].set_title(
+            "ROSE-1 angiograms (dataset not installed)", color=INK, fontsize=9
+        )
+
     fig.suptitle(
-        "Stratified plexuses: en-face slabs and cross-section",
+        "Stratified plexuses: fundus-scale slabs and cross-section (top); the OCTA "
+        "windows against ROSE-1 (bottom)",
         color=INK,
         fontsize=13,
-        y=0.99,
+        y=0.995,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(output_path, dpi=110, facecolor="white")
     plt.close(fig)
 
@@ -338,7 +424,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     sim_plexus = None
     if plexus is not None and "layer_id" in pop.columns:
         sim_plexus = plexus_metrics(pop, edges, plexus.layer_z)
-        render_plexus_figure(pop, edges, bounds, plexus.layer_z, output_dir / "plexus.png")
+        render_plexus_figure(
+            pop,
+            edges,
+            bounds,
+            plexus.layer_z,
+            output_dir / "plexus.png",
+            fovea_center=geometry.fovea_center,
+        )
     sim_shear = (
         remodeler.solve_network(sim.get_population(remodeler.required_attributes))
         if remodeler is not None

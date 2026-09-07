@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-06T20:26:03",
+  "generated": "2026-09-07T08:17:42",
   "model_spec": "src/vivarium_eye_vessels/model_specifications/model_spec.yaml",
   "steps": 800,
   "raster_size": 1024,
@@ -13,9 +13,9 @@
     0.5
   ],
   "runtime": {
-    "setup_seconds": 0.22,
-    "simulation_seconds": 1759.29,
-    "steps_per_second": 0.45
+    "setup_seconds": 0.34,
+    "simulation_seconds": 2130.03,
+    "steps_per_second": 0.38
   },
   "simulation": {
     "n_particles": 47000,
@@ -171,6 +171,8 @@
         "faz_acircularity": 5.034898968931313,
         "octa_intervessel_um": 65.6393683085248,
         "octa_skeleton_mm_per_mm2": 10.565115143654708,
+        "octa_dvc_intervessel_um": 39.83834533315888,
+        "octa_dvc_skeleton_mm_per_mm2": 21.097717340668606,
         "bifurcation_angle_median": 77.1238336756868,
         "bifurcation_obtuse_share": 0.08561643835616438,
         "artery_vein_caliber_ratio": 0.7338676384098118,
@@ -198,14 +200,14 @@
         "thick_share": 6.880388638178377,
         "macular_clear_radius_mm": 67.94574814874476,
         "faz_radius_mm": 5.2304394148416495,
-        "octa_intervessel_um": 0.43776808473987394,
-        "octa_skeleton_mm_per_mm2": 0.2980725705004499,
+        "octa_intervessel_um": 0.3151430139702718,
+        "octa_skeleton_mm_per_mm2": 0.2600526291395898,
         "ks_caliber_profile": 0.0,
         "bifurcation_angle_median": 0.0006133911693641088,
         "bifurcation_obtuse_share": 0.5074122724713828,
         "artery_vein_caliber_ratio": 1.631630094418587,
         "perfused_fraction": 1.078210812644843,
-        "total": 96.0090189278848
+        "total": 95.84837391575434
       }
     },
     "wall_shear": {

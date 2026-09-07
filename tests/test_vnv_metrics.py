@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import ndimage
 
 from vivarium_eye_vessels.vnv import metrics
 
@@ -428,3 +429,18 @@ def test_octa_window_draws_capillaries_at_least_one_pixel_wide():
     edges = pd.DataFrame({"x0": [-0.2], "x1": [0.2], "y0": [0.0], "y1": [0.0]})
     hairline = metrics.octa_window(edges, (0.0, 0.0), np.array([1e-6]))
     assert hairline.any()  # a fundus raster would drop this vessel; OCTA shows its flow
+
+
+def test_angiogram_vessels_finds_bright_vessels_in_speckle():
+    rng = np.random.default_rng(0)
+    image = rng.uniform(0, 30, size=(304, 304))  # speckle background
+    image[::25, :] = 200  # bright horizontal vessels every 25 px (0.25 mm)
+    image[:, ::25] = 200
+    mask = metrics.angiogram_vessels(image, metrics.OCTA_MM_PER_PX)
+    truth = np.zeros_like(mask)
+    truth[::25, :] = True
+    truth[:, ::25] = True
+    assert (mask & truth).sum() / truth.sum() > 0.95  # the vessels are found
+    # ... with their one-pixel smoothing halo, and little speckle besides
+    halo = ndimage.binary_dilation(truth, iterations=2)
+    assert (mask & ~halo).mean() < 0.02

@@ -107,6 +107,31 @@
      (4/4) with arterial supply 1.00/0.99/0.93/1.00 (0.99/1.00/1.00/0.99
      in v0.29); their macular clear radii read 0.93/0.77/0.63/0.80 mm
      (1.07/0.56/0.62/0.98 before)
+   - **Seeing the plexuses as OCTA does.** ``docs/vnv/plexus.png`` gains
+     a second row: the superficial plexus on the 3 x 3 mm foveal window
+     beside a ROSE-1 SVC angiogram, and the intermediate and deep
+     plexuses together (the deep vascular complex, as OCTA slabs them)
+     beside a ROSE-1 DVC angiogram, each titled with its intervessel
+     distance and skeleton density. The growth animation draws by caliber
+     and layer: capillary sprouts and the deeper plexuses as faint
+     hairlines, so the superficial tree and the FAZ ring are what you see
+     rather than a scribble of everything at one weight
+   - **Deep-plexus targets, pending.** The DVC has no capillary labels, so
+     its angiograms are read through ``metrics.angiogram_vessels``, a
+     local threshold tuned on the SVC to reproduce the expert labels'
+     skeleton density (9.25 vs 9.30 mm/mm2, per-image correlation 0.65)
+     and corrected for the spacing it reads short by the SVC label/image
+     ratio. The deep vascular complex then measures 74 +/- 22 um and
+     9.4 +/- 2.5 mm/mm2 -- the same capillary scale as the superficial
+     plexus, a little denser. Recorded in ``calibrate.PENDING_TARGETS``
+     and reported by ``--derive-targets`` and ``scoring_stats``, not yet
+     scored: the model's deep slab reads 40 um and 21 mm/mm2 on the spec
+     seed (two coarse layers plus the bed's sprouts in each, stacked),
+     and a term that far off would swamp every sweep until the deep
+     layers become capillary beds. A pairing bug in the ROSE reference
+     (both splits number their eyes from 01, so the nine test eyes were
+     read with training labels) is fixed; the SVC targets move from 78.7
+     to 77.8 um and 9.26 to 9.30 mm/mm2
    - **Eccentricity, checked and deferred.** Whether the eye's growth
      earns a round was tested on HRF: skeleton density falls from 5.0%
      within 1.5 mm of the disc to 2.8% at 4 mm and the temporal side is

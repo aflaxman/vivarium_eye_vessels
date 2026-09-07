@@ -22,7 +22,7 @@ import numpy as np
 from matplotlib.collections import LineCollection
 from PIL import Image
 
-from vivarium_eye_vessels.vnv import simulation
+from vivarium_eye_vessels.vnv import metrics, simulation
 
 VESSEL_COLOR = "#2a78d6"  # categorical slot 1: the simulation's identity color
 ARTERY_COLOR = "#e34948"  # categorical slot 8
@@ -66,11 +66,41 @@ def render_frame(
                 ]
         else:
             colors = VESSEL_COLOR
-        ax.add_collection(
-            LineCollection(segments, colors=colors, linewidths=linewidths, alpha=0.9)
+        # Capillary sprouts (CapillaryBed) are drawn as faint hairlines: at
+        # this scale they are what OCTA sees and a fundus does not, and at
+        # full weight the bed reads as a scribble that hides the FAZ ring
+        capillary = (
+            (edges.radius.values > 0) & (edges.radius.values < metrics.CAPILLARY_RADIUS_UNITS)
+            if "radius" in edges.columns
+            else np.zeros(len(edges), dtype=bool)
         )
+        # The deeper plexuses are drawn faint as well: a fundus shows the
+        # superficial tree, and at full weight the deep layers' thousands of
+        # short segments bury it
+        if "layer_id" in edges.columns:
+            capillary = capillary | (edges.layer_id.values > 0)
+        colors = np.asarray(colors if not isinstance(colors, str) else [colors] * len(edges))
+        widths = np.broadcast_to(np.asarray(linewidths, dtype=float), (len(edges),))
+        if capillary.any():
+            ax.add_collection(
+                LineCollection(
+                    segments[capillary], colors=colors[capillary], linewidths=0.25, alpha=0.35
+                )
+            )
+        if (~capillary).any():
+            ax.add_collection(
+                LineCollection(
+                    segments[~capillary],
+                    colors=colors[~capillary],
+                    linewidths=widths[~capillary],
+                    alpha=0.9,
+                )
+            )
 
     tips = pop[~pop.frozen & (pop.path_id >= 0)]
+    if "radius" in tips.columns:
+        # Capillary tips are too many and too small to mark
+        tips = tips[~((tips.radius > 0) & (tips.radius < metrics.CAPILLARY_RADIUS_UNITS))]
     if not tips.empty:
         ax.scatter(tips.x, tips.y, s=6, color=TIP_COLOR, zorder=3)
 

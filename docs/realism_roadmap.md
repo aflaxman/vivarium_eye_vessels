@@ -1085,7 +1085,16 @@ effort. A whole-field bed, three hours a seed today, is the version in
 which the flow solve can carry the capillaries too. Held-out seeds 11/202/909/4242 all colonize 100%
 with arterial supply 1.00/0.99/0.93/1.00; the model is as reliable with
 the bed as without it, and for the first time its macula has capillaries
-in it.
+in it. A coda on seeing: the plexus figure now shows each plexus as OCTA
+would, beside the ROSE-1 SVC and DVC angiograms of one eye, and the
+growth animation draws capillaries and the deeper plexuses as hairlines,
+so the superficial tree and the FAZ ring are what the eye lands on. The
+DVC angiograms, read through a threshold tuned to reproduce the SVC
+labels, give the deep plexus's first targets — 74 µm and 9.4 mm/mm², the
+same capillary scale as the superficial plexus and a little denser —
+recorded as pending: the model's deep slab reads 40 µm and 21 mm/mm²,
+because its two deep layers are the coarse class with the bed's sprouts
+stacked in each, and that is the next round's mechanism, not a knob.
 
 ## Validation & verification (V&V)
 

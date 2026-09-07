@@ -52,12 +52,28 @@ class PlexusLayers(Component):
             # to their own layer's bed (CapillaryBed). 0 lets every tip dive
             "min_dive_radius": 0.0,
             "dive_probability": 0.02,  # per-step chance an eligible tip dives
+            # A diving vessel becomes a capillary when it reaches its plane:
+            # tips of the arteriole class in a deeper layer, within
+            # plane_tolerance of the plane, take this caliber and from then
+            # on obey the CapillaryBed's rules (no splits, fine hypoxia,
+            # anastomosis, regression). The intermediate and deep plexuses
+            # are capillary-only in the retina; the vertical connector is the
+            # trail the tip left on the way down. 0 = legacy (the diver keeps
+            # growing as an arteriole-class vessel in the deep layer)
+            "arrival_caliber": 0.0,
+            "plane_tolerance": 0.01,
+            # Judge the dive caliber on each tree's own scale (artery tips are
+            # artery_caliber_ratio narrower than vein tips of the same rank):
+            # with one absolute dive_radius, more artery than vein tips
+            # qualified to dive, and once divers become capillaries the artery
+            # tree bled tips into the deep beds and lost 40% of its coverage
+            "type_scaled_dive": False,
         }
     }
 
     @property
     def required_attributes(self) -> List[str]:
-        return ["z", "vz", "frozen", "path_id", "radius", "layer_id"]
+        return ["z", "vz", "frozen", "path_id", "radius", "layer_id", "vessel_type"]
 
     def setup(self, builder: Builder) -> None:
         config = builder.configuration.plexus_layers
@@ -68,6 +84,12 @@ class PlexusLayers(Component):
         self.dive_radius = float(config.dive_radius)
         self.min_dive_radius = float(config.min_dive_radius)
         self.dive_probability = float(config.dive_probability)
+        self.arrival_caliber = float(config.arrival_caliber)
+        self.plane_tolerance = float(config.plane_tolerance)
+        self.type_scaled_dive = bool(config.type_scaled_dive)
+        self.artery_caliber_ratio = float(
+            builder.configuration.particles.artery_caliber_ratio
+        )
         self.randomness = builder.randomness.get_stream("plexus_layers")
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
@@ -97,9 +119,14 @@ class PlexusLayers(Component):
         """Send an occasional capillary-caliber tip one plexus deeper."""
         pop = self.population_view.get(event.index, self.required_attributes)
         tips = self.active_tips(pop)
+        if self.arrival_caliber > 0:
+            self.convert_arrivals(tips)
+        dive_radius = np.full(len(tips), self.dive_radius)
+        if self.type_scaled_dive and "vessel_type" in tips.columns:
+            dive_radius[tips.vessel_type.to_numpy() == 1] *= self.artery_caliber_ratio
         eligible = tips[
             (tips.radius > 0)
-            & (tips.radius <= self.dive_radius)
+            & (tips.radius <= dive_radius)
             & (tips.radius >= self.min_dive_radius)
             & (tips.layer_id < len(self.layer_z) - 1)
         ]
@@ -111,3 +138,19 @@ class PlexusLayers(Component):
         self.particles.update_particles(
             pd.DataFrame({"layer_id": pop.loc[divers, "layer_id"] + 1}, index=divers)
         )
+
+    def convert_arrivals(self, tips: pd.DataFrame) -> None:
+        """Arteriole-class tips that have reached a deeper plane become capillaries."""
+        layers = np.clip(tips.layer_id.to_numpy(int), 0, len(self.layer_z) - 1)
+        arrived = (
+            (tips.layer_id.to_numpy() > 0)
+            & (
+                tips.radius.to_numpy(float)
+                >= max(self.min_dive_radius, self.arrival_caliber * 1.001)
+            )
+            & (np.abs(tips.z.to_numpy(float) - self.layer_z[layers]) <= self.plane_tolerance)
+        )
+        if arrived.any():
+            self.particles.update_particles(
+                pd.DataFrame({"radius": self.arrival_caliber}, index=tips.index[arrived])
+            )

@@ -1,3 +1,83 @@
+**v0.31.0 - 09/07/26**
+
+ - The deep plexuses as capillary beds, over the whole field
+
+   - **Speed first.** A whole-field bed ran three hours a seed. Profiling
+     put 78% of a step in FrozenRepulsion's per-tip pandas loop and most
+     of the rest in the anastomosis matcher's; both are now vectorized
+     over (tip, neighbor) pairs, the force cache is keyed by (time,
+     population size) instead of a tuple of every particle id, and the
+     PerfusionDemand and CapillaryBed KD-trees are built once per step.
+     Mid-growth steps went from 11.8 s to 0.64 s (18x); a bed-off run
+     reproduces v0.29 to the particle. PathExtinction still judges tips on
+     their post-move forces, as before, so the calibrated dynamics are
+     untouched
+   - **Mechanism.** A diving vessel becomes a capillary when it reaches
+     its plane (``plexus_layers.arrival_caliber``): from then on it obeys
+     the bed's rules, so the intermediate and deep plexuses are capillary
+     beds hung from vertical connectors rather than arteriole trees that
+     happened to dive. The FlowRemodeler no longer prunes a terminal that
+     feeds a bed (the connector is what the bed hangs from). The bed's
+     lattice spacing and perfusion radius take one value per plexus layer
+     -- the intermediate and deep beds are read together as OCTA's deep
+     vascular complex, so each is spaced for half the projected density --
+     and the bed covers the whole field (``region_radius`` 0, 400 sprouts
+     a round). Artery tips dive at 0.67x the vein dive caliber
+     (``type_scaled_dive``, the clinical AVR): with one absolute threshold
+     more artery than vein tips qualified, and since a diver is now lost
+     to its tree for good the artery tree bled tips into the deep beds
+     (arterial supply 0.58 on the spec seed). The dive probability is
+     halved (0.04 -> 0.02) for the same reason, and the bed keeps the free
+     particle pool at twice the active tips ahead of the freezer and the
+     splitter. The deep-plexus targets graduate from pending to scored
+   - **What the deep bed taught.** Its density is set by loop closure,
+     not the lattice: a bed fills far denser than its sites (a 0.04 unit,
+     180 um lattice reads 84 um / 9.3 mm/mm2 superficially and 62 / 13.7
+     in the DVC slab) because sprouts overshoot and anastomose, and it has
+     a cliff -- at a deep spacing of 0.045 the sprouts cannot find the
+     other tree before they regress and the bed collapses to 4 mm/mm2,
+     whatever the regression grace (5 and 10 days were tried). The
+     intermediate plexus, spaced sparse as the anatomy has it, sits below
+     that cliff and stays nearly empty. And the arterial-supply figures of
+     v0.29 and v0.30 leaned on something unphysical: 12,600 arteriole-
+     class artery particles in the deep layers, the diving arterioles
+     that built the old coarse deep network, were doing much of the
+     coverage. With divers becoming capillaries the superficial artery
+     tree covers alone; it grew (2,000 -> 2,900 superficial particles on
+     the spec seed) and with a viable deep bed to hang from it covers
+     0.99 of columns, but where the deep bed collapses it reads 0.90
+   - **Measurement.** Junction statistics compared against fundus
+     literature (branch angles, obtuse share, Murray exponents) are read
+     over fundus-visible vessels only: at least half a pixel wide at
+     fundus scale (``metrics.FUNDUS_VISIBLE_RADIUS_UNITS``, 9 um radius),
+     the same rule the fundus raster draws by. The deep-plexus mechanism
+     leaves more thin arteriole-class tips in the superficial layer (they
+     used to dive and keep growing below), and their splits at the caliber
+     floor make wide angles: the obtuse share read 0.215 over every
+     superficial junction and 0.077 over the visible ones, against 0.086
+     and 0.061 the round before. The visible-only reading is the one the
+     literature targets describe
+   - **Results.** Eight seeds (7/42/909/2024/123456/31/77/5150): mean
+     39.9 (28/32/48/43/44/29/51/45) against 53.9 for v0.30, with two
+     terms added that v0.30 could not score (the DVC, 4.2 of the 39.9).
+     The superficial window reads 76-93 um and 8.8-10.6 mm/mm2 (ROSE 78 /
+     9.3); the deep vascular complex 55-72 um and 11.5-15.4 mm/mm2 (74 /
+     9.4), a little dense; the FAZ clear radius 0.11-0.27 mm (0.29), the
+     ring of deep-fed capillaries sitting closer than the arterioles did;
+     paired perfusion 0.91-0.99; the macular clear radius 0.51-0.93 mm
+     (0.53 +/- 0.09), its maximum-statistic swings damped now that the
+     macula's visible vessels sit in a full bed. Every term the previous
+     round scored improved or held except the arcade radial alignment
+     (0.80-0.90 against 0.81, more radial than HRF) and the fractal
+     dimension (1.35-1.40 against 1.35). Runs take 10-14 minutes a seed
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 0.99/0.98/0.91/0.97 (0.99/0.98/0.93/1.00
+     in v0.30); macular clear radii 0.86/0.58/0.54/0.51 mm. Spec seed
+     95.8 -> 43.8: superficial window 78 um / 10.6 mm/mm2, DVC 72 / 11.5
+     (40 / 21 before), arterial supply 0.997, and 26,000 frozen particles
+     where v0.30 had 45,000 -- the coarse deep network is gone and what
+     replaced it is drawn at capillary weight
+
 **v0.30.0 - 09/06/26**
 
  - The capillary bed: capillary-scale hypoxia, sprouting from vessel walls

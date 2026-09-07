@@ -16,7 +16,7 @@ SEEDS=${2:-7,42,909,2024,123456}
 ACCOUNT=${3:-proj_simscience}
 PARTITION=${4:-all.q}
 ENV=${CONDA_ENV:-vivarium_eye_vessels}
-cells=$SWEEP_DIR/cells_$(date +%s).tsv
+cells=$(mktemp "$SWEEP_DIR/cells_XXXXXX.tsv")  # unique even for submissions in the same second
 : > "$cells"
 while IFS=$'\t' read -r name json; do
   [ -z "$name" ] && continue

@@ -231,6 +231,12 @@ FAZ_SEED_MM = 0.1  # the zone must overlap a disk this size at the image center
 # below the 0.001 adaptation floor of the arteriole tree. Junction and path
 # statistics compared against fundus references skip them, as a fundus does
 CAPILLARY_RADIUS_UNITS = 0.001
+# A vessel narrower than half a pixel at fundus scale is not drawn in the
+# fundus raster (rasterize_network's rule), so a junction between such vessels
+# is not a junction a photograph shows. Junction statistics compared against
+# fundus literature (branch angles, obtuse share, Murray exponents) are read
+# over vessels at least this wide
+FUNDUS_VISIBLE_RADIUS_UNITS = 0.5 / FUNDUS_PX_PER_UNIT
 # Angiogram binarization (for layers without expert labels): smooth at one
 # pixel, then a local threshold over ANGIOGRAM_BLOCK_MM lowered by
 # ANGIOGRAM_OFFSET grey levels. Tuned on ROSE-1 SVC so the skeleton density

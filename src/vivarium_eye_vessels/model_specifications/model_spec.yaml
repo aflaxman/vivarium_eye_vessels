@@ -211,9 +211,21 @@ configuration:
                                      # 3.7%) without hurting perfusion (multi-seed fit
                                      # with the adaptation cap, mean 27 -> 22)
         min_dive_radius: 0.00095     # Capillary sprouts stay in their own layer's bed
-        dive_probability: 0.04       # Per-step chance an eligible tip dives
-                                     # (multi-seed vnv_calibrate fit: best mean
-                                     # score across seeds 123456/7/42)
+        arrival_caliber: 0.0009      # A diver becomes a capillary on reaching its plane:
+                                     # the intermediate and deep plexuses are capillary
+                                     # beds hung from vertical connectors, not arteriole
+                                     # trees (twenty-second pass)
+        plane_tolerance: 0.01
+        type_scaled_dive: true       # Artery tips dive at 0.67x the vein dive caliber
+                                     # (clinical AVR), else the artery tree bleeds
+                                     # tips into the deep beds (arterial supply 0.58)
+        dive_probability: 0.04       # Per-step chance an eligible tip dives. Kept at
+                                     # 0.04 when divers became capillaries: halving it
+                                     # (each dive now costs the arteriole tree a tip
+                                     # for good) left thin tips splitting superficially
+                                     # and the deep bed thinner; with the type-scaled
+                                     # dive caliber, 0.04 reads DVC 72 um / 11.5 mm/mm2
+                                     # against 62 / 13.7 at 0.02 (twenty-second pass)
 
     # Anastomosis: capillary tips fuse onto the other tree, closing the loops
     path_anastomosis:
@@ -224,6 +236,13 @@ configuration:
         probability: 0.5          # Per-step fusion probability once in range
         capillary_radius: 0.00095 # Precapillary tips do not end in the capillary bed;
                                   # only capillary sprouts fuse onto capillaries
+        capillary_any_tree: false # Fusion onto either tree's capillaries was tried
+                                  # (twenty-second pass): sprouts closed onto their
+                                  # neighbours at once and the beds thinned to half
+                                  # (140 um / 4.7 mm/mm2), even with a three-particle
+                                  # trail required first. Opposite-tree fusion keeps
+                                  # sprouts travelling until they meet the other tree
+        min_path_particles: 0
 
     # Hypoxia-driven growth: space-colonization attraction toward unperfused tissue
     perfusion_demand:
@@ -250,9 +269,17 @@ configuration:
     # fundus cannot see them; the OCTA window (ROSE-1) measures them
     capillary_bed:
         enabled: true
-        region_radius: 0.6        # 2.7 mm around the fovea: the OCTA window plus margin
-        site_spacing: 0.02        # 90 um lattice in each plexus plane
-        perfusion_radius: 0.02    # tissue farther than 90 um from its layer's vessels is hypoxic
+        region_radius: 0.0        # the whole field (twenty-second pass; 0.6 was the
+                                  # macular window while the bed was superficial-only)
+        site_spacing: [0.04, 0.10, 0.04]        # 180 um lattices in the superficial and deep
+        perfusion_radius: [0.04, 0.10, 0.04]    # beds, a sparse intermediate one. The bed
+                                                # fills far denser than its lattice (sprouts
+                                                # overshoot and close loops): 0.04 reads
+                                                # 84 um / 9.3 mm/mm2 superficially (ROSE
+                                                # 78 / 9.3) and 62 / 13.7 in the DVC slab
+                                                # (74 / 9.4); 0.02 read 46 / 17. The deep
+                                                # bed has a cliff: at 0.045 it cannot close
+                                                # loops and regresses to nothing (4 mm/mm2)
         influence_radius: 0.08
         magnitude: 0.5
         capillary_radius: 0.0009  # 8 um caliber, strictly below the remodeler's
@@ -260,7 +287,7 @@ configuration:
                                   # capillary sprout from a thinned arteriole
         sprout_interval: 5
         sprout_range: 0.05        # a site recruits a sprout from a wall within 225 um
-        max_sprouts: 40
+        max_sprouts: 400          # per round over the whole field (40 served the macula)
         survival_factor: 3.0
         starve_radius: 0.04
         regression_days: 2.5      # a stopped sprout that closed no loop unwinds after this

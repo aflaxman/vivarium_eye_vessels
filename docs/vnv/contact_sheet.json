@@ -3,34 +3,34 @@
     {
       "seed": 11,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9992006394884093,
-      "skeleton_density": 0.0355368803854646,
-      "macular_clear_radius_mm": 0.9341247835959203,
-      "n_frozen": 45220
+      "arterial_supply_fraction": 0.9936051159072742,
+      "skeleton_density": 0.033947459296302454,
+      "macular_clear_radius_mm": 0.8620453009152583,
+      "n_frozen": 27318
     },
     {
       "seed": 202,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9920063948840927,
-      "skeleton_density": 0.03809492730815427,
-      "macular_clear_radius_mm": 0.7658093288950301,
-      "n_frozen": 46174
+      "arterial_supply_fraction": 0.9776179056754596,
+      "skeleton_density": 0.034369552885359186,
+      "macular_clear_radius_mm": 0.5843239501849685,
+      "n_frozen": 25954
     },
     {
       "seed": 909,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9344524380495604,
-      "skeleton_density": 0.036606147590990595,
-      "macular_clear_radius_mm": 0.6301212303141183,
-      "n_frozen": 48764
+      "arterial_supply_fraction": 0.9096722621902478,
+      "skeleton_density": 0.034064508727257664,
+      "macular_clear_radius_mm": 0.5426489897027272,
+      "n_frozen": 26447
     },
     {
       "seed": 4242,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9960031974420464,
-      "skeleton_density": 0.03248710311768112,
-      "macular_clear_radius_mm": 0.800528733051729,
-      "n_frozen": 41849
+      "arterial_supply_fraction": 0.9728217426059153,
+      "skeleton_density": 0.03482544143754599,
+      "macular_clear_radius_mm": 0.5073352625271731,
+      "n_frozen": 26944
     }
   ],
   "perfusion_target": 0.95,

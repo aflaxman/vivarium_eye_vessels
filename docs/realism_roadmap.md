@@ -1096,6 +1096,45 @@ recorded as pending: the model's deep slab reads 40 µm and 21 mm/mm²,
 because its two deep layers are the coarse class with the bed's sprouts
 stacked in each, and that is the next round's mechanism, not a knob.
 
+*Twenty-second pass (the deep plexuses as capillary beds)*: the whole-field
+bed cost three hours a seed, so this pass began with a profile. Three
+quarters of a step was one force component's per-tip pandas loop and most
+of the rest the anastomosis matcher's; both are vectorized over
+(tip, neighbor) pairs now, the per-step KD-trees are built once, and a
+mid-growth step went from 11.8 s to 0.64 s — with a bed-off run
+reproducing v0.29 to the particle, so nothing but speed changed. Then the
+mechanism: a diving vessel becomes a capillary when it reaches its plane,
+and from there obeys the bed's rules, so the intermediate and deep
+plexuses are capillary beds hung from vertical connectors rather than
+arteriole trees that happened to dive; the remodeler no longer prunes a
+connector a bed hangs from; the bed's lattice is set per layer and covers
+the field. Two things the deep bed taught. Its density is decided by loop
+closure, not by the lattice — a 180 µm lattice fills to 84 µm spacing
+superficially because sprouts overshoot and anastomose, and below a
+spacing threshold the sprouts cannot find the other tree before they
+regress and the bed collapses to nothing, whatever the regression grace;
+the intermediate plexus, spaced as sparse as the anatomy has it, sits
+below that cliff. And the arterial supply the previous rounds reported
+leaned on an unphysical structure: twelve thousand arteriole-class artery
+particles in the deep layers, the diving arterioles of the old coarse
+deep network, were covering columns the superficial artery tree did not
+reach. With divers becoming capillaries the superficial artery tree covers
+alone — it grew by half, and with a viable deep bed to hang from it covers
+0.99 of columns — but the fragility of the artery tree, the oldest theme
+in this file, is now visible undisguised wherever the deep bed thins.
+On eight seeds the round scores 39.9 against 53.9 the round before, with
+two terms added that the previous round could not score: the superficial
+window reads 76–93 µm and 8.8–10.6 mm/mm² against ROSE's 78 and 9.3, the
+deep vascular complex 55–72 µm and 11.5–15.4 mm/mm² against 74 and 9.4, a
+little dense, and paired perfusion 0.91–0.99. Two things are noted rather
+than fixed: the deep bed's segments run straighter and longer than the
+polygonal honeycomb of a real deep plexus — density is right, morphology
+is not yet — and the FAZ ring of deep-fed capillaries sits closer to the
+fovea (0.11–0.27 mm) than the arterioles did. Held-out seeds 11/202/909/4242
+all colonize 100% with arterial supply 0.99/0.98/0.91/0.97; the model now
+has three plexuses OCTA would recognize as plexuses, and a full seed runs in
+twelve minutes.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1200,6 +1239,12 @@ the HRF masks, which is what makes the comparison apples to apples):
   least a pixel wide, since OCTA images flow rather than caliber.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
+- Junction statistics compared against fundus literature (branch angles,
+  obtuse share, Murray exponents) are read over fundus-visible vessels only:
+  at least half a pixel wide at fundus scale
+  (`metrics.FUNDUS_VISIBLE_RADIUS_UNITS`), the rule the fundus raster draws
+  by. Capillary sprouts and sub-pixel twigs are not junctions a photograph
+  shows.
 - The A:V caliber ratio is read on the depth-0 arcades within a fixed zone
   of the disc (`metrics.AVR_ZONE`), as the clinical CRAE/CRVE is, not over
   each trunk's whole tapering run, and each trunk counts once (a trunk that

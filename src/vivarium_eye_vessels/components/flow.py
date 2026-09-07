@@ -347,6 +347,15 @@ class FlowRemodeler(Component):
         if grace > 0:
             ages = self.clock() - candidates.freeze_time
             candidates = candidates[ages >= pd.Timedelta(days=grace)]
+        # A terminal that feeds a capillary bed is not a dead end, whatever
+        # its shear in a solve the bed is outside of: the connector down to
+        # the deep plexus is what the bed hangs from
+        capillary_radius = float(self.config.capillary_radius)
+        if capillary_radius > 0 and not candidates.empty:
+            bed = pop[
+                (pop.radius > 0) & (pop.radius < capillary_radius) & (pop.parent_id >= 0)
+            ]
+            candidates = candidates[~candidates.index.isin(bed.parent_id.unique())]
         pruned = candidates.index
         if not pruned.empty:
             self.total_pruned += len(pruned)

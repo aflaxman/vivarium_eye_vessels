@@ -1,3 +1,4 @@
+import itertools
 from typing import Dict, List, Protocol
 
 import numpy as np
@@ -82,7 +83,14 @@ class BaseForceComponent(Component):
     def get_cached_forces(self, index: pd.Index) -> np.ndarray:
         """Get cached forces or calculate them if needed"""
         current_time = self.clock()
-        cache_key = (current_time, tuple(index))
+        # Size and end points name the index (the full population against
+        # the active subset the extinction check asks for); hashing a tuple
+        # of every particle id cost more than some force components
+        cache_key = (
+            (current_time, len(index), int(index[0]), int(index[-1]))
+            if len(index)
+            else (current_time, 0)
+        )
 
         if cache_key not in self.force_cache:
             pop = self.population_view.get(index, self.required_attributes)
@@ -416,68 +424,71 @@ class FrozenRepulsion(BaseForceComponent):
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
-        """Calculate repulsion forces from frozen particles"""
-        positions = particles[["x", "y", "z"]].to_numpy()
+        """Repulsion of every active tip from the frozen vessels within its reach.
 
+        Vectorized over (tip, frozen neighbor) pairs: the freezer's KDTree
+        gives each tip's neighbors within ``interaction_radius``, the pairs
+        are flattened, and the same-path delay, the capillary rules and the
+        per-tip reach are applied as masks. A frozen segment of the tip's own
+        path repels it only once it has been frozen ``delay`` days (its own
+        fresh trail would otherwise pin it in place).
+        """
+        positions = particles[["x", "y", "z"]].to_numpy(dtype=float)
         forces = np.zeros_like(positions)
         neighbor_lists = self.freezer.query_radius(positions, self.interaction_radius)
-
         if neighbor_lists is None:
             return forces
+        counts = np.fromiter(
+            (len(n) for n in neighbor_lists), dtype=int, count=len(neighbor_lists)
+        )
+        total = int(counts.sum())
+        if total == 0:
+            return forces
+        tip_idx = np.repeat(np.arange(len(particles)), counts)
+        frozen_idx = np.fromiter(
+            itertools.chain.from_iterable(neighbor_lists), dtype=int, count=total
+        )
+        frozen = self.freezer.frozen_particles()
+        frozen_positions = frozen[["x", "y", "z"]].to_numpy(dtype=float)[frozen_idx]
+        frozen_path = frozen.path_id.to_numpy()[frozen_idx]
+        frozen_type = frozen.vessel_type.to_numpy()[frozen_idx]
+        frozen_radius = frozen.radius.to_numpy(dtype=float)[frozen_idx]
+        frozen_age = (
+            ((self.clock() - frozen.freeze_time) / pd.Timedelta(days=1)).to_numpy(dtype=float)
+        )[frozen_idx]
 
-        reach = np.full(len(particles), self.interaction_radius)
+        tip_radii = particles["radius"].to_numpy(dtype=float)
+        reach_by_tip = np.full(len(particles), self.interaction_radius)
         if self.capillary_interaction_radius > 0:
-            tip_radii = particles["radius"].to_numpy(dtype=float)
-            capillary = (tip_radii > 0) & (tip_radii <= self.capillary_radius)
-            reach[capillary] = self.capillary_interaction_radius
+            capillary_tip = (tip_radii > 0) & (tip_radii <= self.capillary_radius)
+            reach_by_tip[capillary_tip] = self.capillary_interaction_radius
+        reach = reach_by_tip[tip_idx]
+        tip_path = particles.path_id.to_numpy()[tip_idx]
+        tip_type = particles.vessel_type.to_numpy()[tip_idx]
 
-        for i, frozen_neighbors in enumerate(neighbor_lists):
-            # Calculate displacement vectors from frozen particles
-            frozen = self.freezer.get_population(frozen_neighbors)
-            frozen = frozen[
-                (
-                    (frozen.path_id == particles.iloc[i].path_id)
-                    & (
-                        (self.clock() - frozen.freeze_time) / pd.Timedelta(days=1)
-                        > self.delay
-                    )
-                )
-                | (frozen.path_id != particles.iloc[i].path_id)
-            ]
-
-            if self.capillary_radius > 0 and reach[i] == self.interaction_radius:
-                # A wide tip is not fenced out by the capillary bed
-                frozen = frozen[
-                    ~((frozen.radius > 0) & (frozen.radius <= self.capillary_radius))
-                ]
-            frozen_neighbor_positions = frozen[["x", "y", "z"]].to_numpy()
-            displacements = positions[i] - frozen_neighbor_positions
-
-            # Calculate distances
-            distances = np.sqrt(np.sum(displacements**2, axis=1))
-            within = distances < reach[i]
-            frozen, displacements, distances = (
-                frozen[within],
-                displacements[within],
-                distances[within],
-            )
-
-            # Calculate normalized direction vectors
-            with np.errstate(invalid="ignore", divide="ignore"):
-                directions = displacements / distances[:, np.newaxis]
-            directions = np.nan_to_num(directions)
-
-            # Calculate and sum forces from all frozen neighbors, with weaker
-            # repulsion from the other tree (artery vs. vein)
-            force_magnitudes = self.force_calculator.calculate_force_magnitude(
-                reach[i] - distances
-            )
-            same_type = frozen.vessel_type.to_numpy() == particles.iloc[i].vessel_type
-            type_factors = np.where(same_type, 1.0, self.cross_type_factor)
-            forces[i] = np.sum(
-                directions * (force_magnitudes * type_factors)[:, np.newaxis], axis=0
-            )
-
+        keep = (frozen_path != tip_path) | (frozen_age > self.delay)
+        if self.capillary_radius > 0:
+            # A wide tip is not fenced out by the capillary bed
+            wide_tip = reach == self.interaction_radius
+            frozen_capillary = (frozen_radius > 0) & (frozen_radius <= self.capillary_radius)
+            keep &= ~(wide_tip & frozen_capillary)
+        displacements = positions[tip_idx] - frozen_positions
+        distances = np.linalg.norm(displacements, axis=1)
+        keep &= (distances < reach) & (distances > 0)
+        if not keep.any():
+            return forces
+        tip_idx, displacements, distances, reach = (
+            tip_idx[keep],
+            displacements[keep],
+            distances[keep],
+            reach[keep],
+        )
+        directions = displacements / distances[:, np.newaxis]
+        magnitudes = self.force_calculator.calculate_force_magnitude(reach - distances)
+        type_factors = np.where(
+            frozen_type[keep] == tip_type[keep], 1.0, self.cross_type_factor
+        )
+        np.add.at(forces, tip_idx, directions * (magnitudes * type_factors)[:, np.newaxis])
         return forces
 
 
@@ -629,14 +640,29 @@ class PerfusionDemand(BaseForceComponent):
         With ``vessel_type`` given, only frozen vessels of that type count;
         with None, any frozen vessel does. None before any such vessel exists.
         """
-        frozen = self.freezer.frozen_particles()
-        if frozen is not None and vessel_type is not None:
-            frozen = frozen[frozen.vessel_type == vessel_type]
-        if frozen is not None and self.min_radius > 0:
-            frozen = frozen[~((frozen.radius > 0) & (frozen.radius < self.min_radius))]
-        if frozen is None or frozen.empty:
+        # One KDTree per (step, frozen table, caliber floor, vessel type): the
+        # frozen table is replaced whenever the freezer updates, so its
+        # identity says when the trees must be rebuilt within a step
+        frozen_all = self.freezer.frozen_particles()
+        key = (self.clock(), getattr(self.freezer, "tree_version", 0), self.min_radius)
+        cache = getattr(self, "_tree_cache", None)
+        if cache is None or cache["key"] != key:
+            cache = {"key": key}
+            self._tree_cache = cache
+        if vessel_type not in cache:
+            frozen = frozen_all
+            if frozen is not None and vessel_type is not None:
+                frozen = frozen[frozen.vessel_type == vessel_type]
+            if frozen is not None and self.min_radius > 0:
+                frozen = frozen[~((frozen.radius > 0) & (frozen.radius < self.min_radius))]
+            cache[vessel_type] = (
+                None
+                if frozen is None or frozen.empty
+                else cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
+            )
+        tree = cache[vessel_type]
+        if tree is None:
             return None
-        tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
         distances, _ = tree.query(points, k=1)
         return distances
 
@@ -760,6 +786,10 @@ class CapillaryBed(BaseForceComponent):
         "capillary_bed": {
             "enabled": False,
             "region_radius": 0.6,  # around the fovea; 0 = the whole field
+            # One value for every plexus layer, or a list with one per layer
+            # (superficial first): the intermediate and deep plexuses are
+            # read together as OCTA's deep vascular complex, so each is
+            # spaced wider than the projection they add up to
             "site_spacing": 0.02,  # 90 um at 4.5 mm per unit
             "perfusion_radius": 0.02,  # a site this far from its layer's vessels is hypoxic
             "influence_radius": 0.08,  # hypoxic sites recruit capillary tips within this
@@ -806,7 +836,6 @@ class CapillaryBed(BaseForceComponent):
         config = builder.configuration.capillary_bed
         self.config = config
         self.enabled = bool(config.enabled)
-        self.perfusion_radius = float(config.perfusion_radius)
         self.capillary_radius = float(config.capillary_radius)
         self.step_count = 0
         self.step_size = float(builder.configuration.time.step_size)
@@ -846,14 +875,23 @@ class CapillaryBed(BaseForceComponent):
         # within one perfusion radius of it either -- that margin is served
         # by the capillary ring that forms on the zone's edge, and a site
         # there would pull sprouts across the boundary
-        self.sites, self.site_layers = capillary_sites(
-            semi_axes,
-            float(config.site_spacing),
-            center,
-            float(config.region_radius),
-            faz_radius + self.perfusion_radius if faz_radius > 0 else 0.0,
-            layer_z,
-        )
+        spacings = per_layer(config.site_spacing, len(layer_z))
+        self.perfusion_radii = per_layer(config.perfusion_radius, len(layer_z))
+        self.perfusion_radius = float(max(self.perfusion_radii))
+        positions, layers = [], []
+        for layer, (z, spacing) in enumerate(zip(layer_z, spacings)):
+            plane, _ = capillary_sites(
+                semi_axes,
+                spacing,
+                center,
+                float(config.region_radius),
+                faz_radius + self.perfusion_radii[layer] if faz_radius > 0 else 0.0,
+                [z],
+            )
+            positions.append(plane)
+            layers.append(np.full(len(plane), layer))
+        self.sites = np.concatenate(positions)
+        self.site_layers = np.concatenate(layers)
 
     def is_capillary(self, radii: np.ndarray) -> np.ndarray:
         radii = np.asarray(radii, dtype=float)
@@ -862,8 +900,18 @@ class CapillaryBed(BaseForceComponent):
     def hypoxic_sites(self) -> tuple[np.ndarray, np.ndarray]:
         """Fine sites behind the front with no frozen vessel of their layer within reach.
 
-        Returns the site positions and their layer indices.
+        Returns the site positions and their layer indices; computed once per
+        time step (the forces and the sprouting both ask).
         """
+        key = (self.clock(), getattr(self.freezer, "tree_version", 0))
+        cached = getattr(self, "_hypoxic_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        result = self._hypoxic_sites()
+        self._hypoxic_cache = (key, result)
+        return result
+
+    def _hypoxic_sites(self) -> tuple[np.ndarray, np.ndarray]:
         sites, layers = self.sites, self.site_layers
         if self.wave is not None and self.wave.enabled:
             behind = self.wave.disc_distance(sites) <= self.wave.radius
@@ -879,7 +927,7 @@ class CapillaryBed(BaseForceComponent):
                 continue
             tree = cKDTree(vessels[["x", "y", "z"]].to_numpy(dtype=float))
             distances, _ = tree.query(sites[in_layer], k=1)
-            hypoxic[in_layer] = distances > self.perfusion_radius
+            hypoxic[in_layer] = distances > self.perfusion_radii[int(layer)]
         return sites[hypoxic], layers[hypoxic]
 
     def survival_relief(self, index: pd.Index, thresholds: pd.Series) -> pd.Series:
@@ -1065,10 +1113,17 @@ class CapillaryBed(BaseForceComponent):
             )
             parents, targets = parents[order[:limit]], targets[order[:limit]]
         available = pop[~pop.frozen & (pop.path_id < 0)]
-        # Keep the free pool ahead of both consumers: the splitter skips a
-        # split round when the pool runs short, and the bed must never be the
-        # reason it does. Top up early, sprout with what is there now
-        if len(available) < len(parents) + self.splitter.particles_to_add:
+        # Keep the free pool ahead of every consumer: the freezer skips a
+        # freeze round and the splitter a split round when the pool runs
+        # short, and with hundreds of capillary tips each freeze round draws
+        # hundreds of particles. Hold a reserve of twice the active tips plus
+        # one top-up, adding as many top-ups as that takes
+        n_active = int((~pop.frozen & (pop.path_id >= 0)).sum())
+        reserve = len(parents) + 2 * n_active + self.splitter.particles_to_add
+        shortfall = reserve - len(available)
+        for _ in range(
+            int(np.ceil(shortfall / self.splitter.particles_to_add)) if shortfall > 0 else 0
+        ):
             self.splitter.add_particles()
         if len(available) < len(parents):
             parents, targets = parents[: len(available)], targets[: len(available)]
@@ -1099,6 +1154,17 @@ class CapillaryBed(BaseForceComponent):
             index=available.index[: len(parents)],
         )
         self.particles.update_particles(sprouts)
+
+
+def per_layer(value, n_layers: int) -> list[float]:
+    """A scalar or a per-layer list of settings, as a list with one float per layer."""
+    try:
+        values = [float(v) for v in value]
+    except TypeError:
+        values = [float(value)] * n_layers
+    if len(values) != n_layers:
+        raise ValueError(f"expected {n_layers} per-layer values, got {values}")
+    return values
 
 
 def capillary_sites(

@@ -105,6 +105,13 @@ TARGETS = {
     # labels against the model's superficial plexus drawn as OCTA sees it
     "octa_intervessel_um": {"target": 77.81, "scale": 21.68},
     "octa_skeleton_mm_per_mm2": {"target": 9.304, "scale": 2.473},
+    # The deep vascular complex (intermediate and deep plexuses together, as
+    # OCTA slabs them) on the same window, from the ROSE-1 DVC angiograms
+    # read through metrics.angiogram_vessels and corrected by the SVC
+    # label/image ratio (scale: the SVC labels' spread). Scored since the
+    # deep layers became capillary beds (twenty-second pass)
+    "octa_dvc_intervessel_um": {"target": 74.08, "scale": 21.68},
+    "octa_dvc_skeleton_mm_per_mm2": {"target": 9.403, "scale": 2.473},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
@@ -123,15 +130,9 @@ TARGETS = {
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
 }
 
-# Targets measured and reported but not yet scored: the mechanism they
-# judge does not exist yet, and a term 100 points off would swamp every
-# sweep table until it does. The deep plexus (ROSE-1 DVC angiograms, read
-# through metrics.angiogram_vessels and corrected by the SVC label/image
-# ratio) waits for the deep layers to become capillary beds
-PENDING_TARGETS = {
-    "octa_dvc_intervessel_um": {"target": 74.08, "scale": 21.68},
-    "octa_dvc_skeleton_mm_per_mm2": {"target": 9.403, "scale": 2.473},
-}
+# Targets measured and reported but not scored (none at present; the deep
+# plexus graduated to TARGETS in the twenty-second pass)
+PENDING_TARGETS: dict = {}
 
 # Candidate values per knob, current spec setting included. Chosen from the
 # per-feature sweeps: these are the knobs the headline metrics respond to.
@@ -428,10 +429,11 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so
     # they agree with the fundus (x-y) projection the literature reports
     # Fundus-visible junctions only: a capillary sprout leaving an arteriole
-    # wall is not a bifurcation a photograph shows
+    # wall, or a branch between vessels under half a pixel wide, is not a
+    # bifurcation a photograph shows (metrics.FUNDUS_VISIBLE_RADIUS_UNITS)
     arteriole_tree = pop[
         (pop.layer_id == 0)
-        & ~(pop.radius.between(0, metrics.CAPILLARY_RADIUS_UNITS, inclusive="neither"))
+        & ~(pop.radius.between(0, metrics.FUNDUS_VISIBLE_RADIUS_UNITS, inclusive="neither"))
     ]
     angles = metrics.bifurcation_angles(arteriole_tree)
     superficial = pop[pop.layer_id == 0]

@@ -4,6 +4,7 @@ import copy
 
 import numpy as np
 import pandas as pd
+import pytest
 from vivarium import InteractiveContext
 
 from vivarium_eye_vessels.components.boundaries import (
@@ -308,3 +309,130 @@ def test_a_capillary_tip_inside_the_fovea_is_withdrawn_not_frozen_there():
         and pop.loc[tip, "path_id"] == -1
         and pop.loc[tip, "radius"] == 0
     )
+
+
+def test_per_layer_settings_accept_a_scalar_or_a_list():
+    from vivarium_eye_vessels.components.boundaries import per_layer
+
+    assert per_layer(0.02, 3) == [0.02, 0.02, 0.02]
+    assert per_layer([0.02, 0.03, 0.03], 3) == [0.02, 0.03, 0.03]
+    with pytest.raises(ValueError):
+        per_layer([0.02, 0.03], 3)
+
+
+def test_a_diver_becomes_a_capillary_on_reaching_its_plane():
+    from vivarium_eye_vessels.components.plexus import PlexusLayers
+
+    config = copy.deepcopy(CONFIGURATION)
+    config["plexus_layers"] = {
+        "layer_z": [0.04, 0.0, -0.04],
+        "dive_radius": 0.004,
+        "min_dive_radius": 0.00095,
+        "arrival_caliber": 0.0009,
+        "plane_tolerance": 0.01,
+        "dive_probability": 0.0,
+    }
+    plexus, bed = PlexusLayers(), CapillaryBed()
+    sim = InteractiveContext(
+        components=[
+            Particle3D(),
+            PathFreezer(),
+            PathExtinction(),
+            PathSplitter(),
+            EllipsoidContainment(),
+            CylinderExclusion(),
+            FrozenRepulsion(),
+            PerfusionDemand(),
+            bed,
+            plexus,
+        ],
+        configuration=config,
+    )
+    sim.step()
+    pop = sim.get_population(plexus.required_attributes + ["x", "y"])
+    tips = pop[~pop.frozen & (pop.path_id >= 0)].index[:3]
+    # One diver at its deep plane, one still in transit, one superficial
+    bed.particles.update_particles(
+        pd.DataFrame(
+            {
+                "layer_id": [2, 2, 0],
+                "z": [-0.038, -0.02, 0.04],
+                "radius": [0.003, 0.003, 0.003],
+            },
+            index=tips,
+        )
+    )
+    plexus.on_time_step(type("E", (), {"index": pop.index})())
+    pop = sim.get_population(plexus.required_attributes)
+    assert pop.loc[tips[0], "radius"] == 0.0009  # arrived: now a capillary
+    assert pop.loc[tips[1], "radius"] == 0.003  # still diving
+    assert pop.loc[tips[2], "radius"] == 0.003  # never dove
+
+
+def test_type_scaled_dive_judges_artery_tips_on_their_own_caliber_scale():
+    from vivarium_eye_vessels.components.plexus import PlexusLayers
+
+    config = copy.deepcopy(CONFIGURATION)
+    config["particles"]["artery_caliber_ratio"] = 0.5
+    config["plexus_layers"] = {
+        "layer_z": [0.04, 0.0, -0.04],
+        "dive_radius": 0.004,
+        "min_dive_radius": 0.00095,
+        "dive_probability": 1.0,
+        "type_scaled_dive": True,
+    }
+    plexus = PlexusLayers()
+    sim = InteractiveContext(
+        components=[
+            Particle3D(),
+            PathFreezer(),
+            PathExtinction(),
+            PathSplitter(),
+            EllipsoidContainment(),
+            CylinderExclusion(),
+            FrozenRepulsion(),
+            PerfusionDemand(),
+            CapillaryBed(),
+            plexus,
+        ],
+        configuration=config,
+    )
+    sim.step()
+    pop = sim.get_population(plexus.required_attributes)
+    tips = pop[~pop.frozen & (pop.path_id >= 0)].index[:2]
+    # An artery tip and a vein tip of the same caliber, above the artery's scaled threshold
+    plexus.particles.update_particles(
+        pd.DataFrame(
+            {"vessel_type": [1, 2], "radius": [0.003, 0.003], "layer_id": [0, 0]}, index=tips
+        )
+    )
+    plexus.on_time_step(type("E", (), {"index": pop.index})())
+    pop = sim.get_population(plexus.required_attributes)
+    assert pop.loc[tips[0], "layer_id"] == 0  # the artery tip (0.003 > 0.5 x 0.004) stays
+    assert pop.loc[tips[1], "layer_id"] == 1  # the vein tip dives
+
+
+def test_capillary_tips_may_fuse_onto_their_own_tree_when_allowed():
+    from vivarium_eye_vessels.components.particles import anastomosis_targets
+
+    tips = pd.DataFrame(
+        {"x": [0.0], "y": [0.0], "z": [0.0], "vessel_type": [1], "radius": [0.0009]},
+        index=[10],
+    )
+    frozen = pd.DataFrame(
+        {
+            "x": [0.01, 0.02],
+            "y": [0.0, 0.0],
+            "z": [0.0, 0.0],
+            "vessel_type": [1, 2],
+            "radius": [0.0009, 0.0009],
+            "layer_id": [0, 0],
+        },
+        index=[20, 21],
+    )
+    strict = anastomosis_targets(tips, frozen, [[0, 1]], 0.004, capillary_radius=0.00095)
+    assert strict[10] == 21  # opposite tree only: the farther vein capillary
+    loose = anastomosis_targets(
+        tips, frozen, [[0, 1]], 0.004, capillary_radius=0.00095, capillary_any_tree=True
+    )
+    assert loose[10] == 20  # any capillary: the nearer artery capillary

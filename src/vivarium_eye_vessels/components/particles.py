@@ -1,3 +1,4 @@
+import itertools
 from typing import List
 
 import numpy as np
@@ -418,6 +419,8 @@ class PathFreezer(Component):
             self.update_tree(pop)
 
     def update_tree(self, pop):
+        # A version for consumers that cache work keyed on the frozen table
+        self.tree_version = getattr(self, "tree_version", 0) + 1
         self._current_frozen = pop[pop.frozen]
         if len(self._current_frozen) < 2:
             self._current_tree = None
@@ -543,6 +546,10 @@ class PathExtinction(Component):
         if active.empty:
             return
 
+        # Judged on the forces at the tips' post-move positions (a fresh
+        # evaluation, not the cached pre-move forces that moved them): the
+        # calibrated dynamics depend on it, and the force components are
+        # vectorized enough for the second evaluation to be cheap
         force_values = self.force_magnitude(active.index)
         to_freeze = active[force_values > self.threshold(active.index)]
 
@@ -1184,6 +1191,7 @@ def anastomosis_targets(
     max_target_radius: float,
     min_layer: int = 0,
     capillary_radius: float = 0.0,
+    capillary_any_tree: bool = False,
 ) -> pd.Series:
     """Match each tip to the nearest opposite-tree capillary within reach.
 
@@ -1198,29 +1206,54 @@ def anastomosis_targets(
     tree, the tree does not end in the bed. Returns a Series mapping tip
     index to target index for the tips that found a target.
     """
-    matches = {}
-    tip_positions = tips[["x", "y", "z"]].to_numpy(dtype=float)
-    for i, neighbors in enumerate(neighbor_lists):
-        if len(neighbors) == 0:
-            continue
-        candidates = frozen.iloc[list(neighbors)]
-        tip_type = tips.vessel_type.iloc[i]
-        candidates = candidates[
-            (candidates.vessel_type > 0)
-            & (candidates.vessel_type != tip_type)
-            & (candidates.radius > 0)
-            & (candidates.radius <= max_target_radius)
-        ]
-        if min_layer > 0:
-            candidates = candidates[candidates.layer_id >= min_layer]
-        if capillary_radius > 0 and tips.radius.iloc[i] > capillary_radius:
-            candidates = candidates[candidates.radius > capillary_radius]
-        if candidates.empty:
-            continue
-        offsets = candidates[["x", "y", "z"]].to_numpy(dtype=float) - tip_positions[i]
-        distances = np.linalg.norm(offsets, axis=1)
-        matches[tips.index[i]] = candidates.index[int(np.argmin(distances))]
-    return pd.Series(matches, dtype=int)
+    counts = np.fromiter(
+        (len(n) for n in neighbor_lists), dtype=int, count=len(neighbor_lists)
+    )
+    total = int(counts.sum())
+    if total == 0:
+        return pd.Series(dtype=int)
+    tip_idx = np.repeat(np.arange(len(tips)), counts)
+    frozen_idx = np.fromiter(
+        itertools.chain.from_iterable(neighbor_lists), dtype=int, count=total
+    )
+    frozen_type = frozen.vessel_type.to_numpy()[frozen_idx]
+    frozen_radius = frozen.radius.to_numpy(dtype=float)[frozen_idx]
+    tip_type = tips.vessel_type.to_numpy()[tip_idx]
+    other_tree = frozen_type != tip_type
+    if capillary_any_tree and capillary_radius > 0:
+        tip_radius = tips.radius.to_numpy(dtype=float)[tip_idx]
+        capillary_pair = (tip_radius <= capillary_radius) & (
+            frozen_radius <= capillary_radius
+        )
+        other_tree = other_tree | capillary_pair
+    keep = (
+        (frozen_type > 0)
+        & other_tree
+        & (frozen_radius > 0)
+        & (frozen_radius <= max_target_radius)
+    )
+    if min_layer > 0:
+        keep &= frozen.layer_id.to_numpy()[frozen_idx] >= min_layer
+    if capillary_radius > 0:
+        wide_tip = tips.radius.to_numpy(dtype=float)[tip_idx] > capillary_radius
+        keep &= ~(wide_tip & (frozen_radius <= capillary_radius))
+    if not keep.any():
+        return pd.Series(dtype=int)
+    tip_idx, frozen_idx = tip_idx[keep], frozen_idx[keep]
+    offsets = (
+        frozen[["x", "y", "z"]].to_numpy(dtype=float)[frozen_idx]
+        - tips[["x", "y", "z"]].to_numpy(dtype=float)[tip_idx]
+    )
+    distances = np.linalg.norm(offsets, axis=1)
+    order = np.lexsort((distances, tip_idx))
+    first = np.ones(len(order), dtype=bool)
+    first[1:] = tip_idx[order][1:] != tip_idx[order][:-1]
+    chosen = order[first]
+    return pd.Series(
+        frozen.index.to_numpy()[frozen_idx[chosen]],
+        index=tips.index[tip_idx[chosen]],
+        dtype=int,
+    )
 
 
 class PathAnastomosis(Component):
@@ -1248,6 +1281,18 @@ class PathAnastomosis(Component):
             # (CapillaryBed sprouts): arterioles feed the bed, they do not
             # end in it. 0 = no such rule
             "capillary_radius": 0.0,
+            # Capillary tips fuse onto capillaries of either tree: a capillary
+            # bed is one mesh, and which tree a segment descends from is
+            # decided by flow later, not by which wall the sprout left. With
+            # opposite-tree fusion only, a bed persisted only where both
+            # trees' sprouts overlapped and collapsed below a lattice spacing
+            # of 0.045. Arteriole-class tips keep the opposite-tree rule
+            "capillary_any_tree": False,
+            # A tip may fuse only after it has laid this many frozen trail
+            # particles: a sprout one step off its wall is otherwise within
+            # capture radius of the wall it left and closes a zero-length
+            # loop onto it. 0 = no minimum (legacy)
+            "min_path_particles": 0,
         }
     }
 
@@ -1286,6 +1331,12 @@ class PathAnastomosis(Component):
         if tips.empty:
             return
 
+        min_trail = int(self.config.min_path_particles)
+        if min_trail > 0:
+            trail = pop[pop.frozen & (pop.path_id >= 0)].path_id.value_counts()
+            tips = tips[trail.reindex(tips.path_id).fillna(0).to_numpy() >= min_trail]
+            if tips.empty:
+                return
         neighbor_lists = self.freezer.query_radius(tips, float(self.config.capture_radius))
         if neighbor_lists is None:
             return
@@ -1298,6 +1349,7 @@ class PathAnastomosis(Component):
             float(self.config.max_target_radius),
             int(self.config.min_layer),
             float(self.config.capillary_radius),
+            bool(self.config.capillary_any_tree),
         )
         if targets.empty:
             return

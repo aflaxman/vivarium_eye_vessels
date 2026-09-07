@@ -74,6 +74,9 @@ def main() -> None:
                 "total_pruned": (
                     int(remodeler.total_pruned) if remodeler is not None else None
                 ),
+                "total_pruned_capillary": (
+                    int(remodeler.total_pruned_capillary) if remodeler is not None else None
+                ),
                 "overrides": overrides,
                 "seed": seed,
                 "seconds": time.time() - start,

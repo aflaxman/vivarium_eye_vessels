@@ -82,6 +82,7 @@ def test_probabilities_scale_with_caliber():
     # Uncalibered tips keep the base probability
     np.testing.assert_allclose(probabilities[4], 0.9)
     # Below the floor the factor exceeds 1 and is clipped to a valid probability
+    # (a capillary sprout is excluded by capillary_radius, off by default)
     np.testing.assert_allclose(probabilities[5], 1.0)
 
 

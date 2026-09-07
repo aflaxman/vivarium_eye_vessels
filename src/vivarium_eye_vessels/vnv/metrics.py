@@ -226,6 +226,10 @@ FAZ_SMOOTH_MM = 0.04  # en-face signal is smoothed at about one capillary spacin
 FAZ_THRESHOLD_FRACTION = 0.5  # vascular at or above this fraction of the scan's mean signal
 FAZ_SEARCH_MM = 0.3  # the FAZ's clear disk is centered within this of the image center
 FAZ_SEED_MM = 0.1  # the zone must overlap a disk this size at the image center
+# The capillary class: CapillaryBed sprouts are 0.0009 units (8 um) wide, strictly
+# below the 0.001 adaptation floor of the arteriole tree. Junction and path
+# statistics compared against fundus references skip them, as a fundus does
+CAPILLARY_RADIUS_UNITS = 0.001
 
 
 def vascular_signal(signal: np.ndarray, mm_per_px: float) -> np.ndarray:
@@ -312,10 +316,47 @@ def faz_metrics(signal: np.ndarray, mm_per_px: float) -> dict[str, float]:
 def octa_window(
     edges: pd.DataFrame, fovea_center: tuple[float, float], radii: np.ndarray | None = None
 ) -> np.ndarray:
-    """The network as an OCTA en-face scan: a 3 x 3 mm window on the fovea at ROSE scale."""
+    """The network as an OCTA en-face scan: a 3 x 3 mm window on the fovea at ROSE scale.
+
+    OCTA images flow, not caliber: an 8 um capillary is as bright as a
+    pixel, so every segment is drawn at least one pixel wide here, unlike
+    the fundus raster, where vessels below half a pixel vanish.
+    """
+    units_per_px = OCTA_SCAN_MM / MM_PER_UNIT / OCTA_SIZE_PX
+    if radii is not None:
+        radii = np.maximum(np.asarray(radii, dtype=float), 0.6 * units_per_px)
     return rasterize_window(
         edges, fovea_center, OCTA_SCAN_MM / MM_PER_UNIT, OCTA_SIZE_PX, radii
     )
+
+
+def capillary_statistics(
+    skeleton: np.ndarray, excluded: np.ndarray, mm_per_px: float
+) -> dict[str, float]:
+    """Capillary-scale spacing and length density of a vessel skeleton.
+
+    Over the pixels outside ``excluded`` (the FAZ, whose emptiness is a
+    different statistic): ``octa_intervessel_um`` is twice the mean distance
+    from a non-vessel pixel to the nearest skeleton pixel (parallel vessels
+    a distance s apart read s/2), and ``octa_skeleton_mm_per_mm2`` is
+    skeleton length per tissue area. On ROSE-1 the skeleton is the expert
+    label (large vessels and capillary centerlines); on the model it is the
+    skeleton of :func:`octa_window`. The labels omit some perifoveal
+    capillaries, so the reference spacing reads a little wide and the
+    density a little low; the model is measured without that omission.
+    """
+    skeleton = np.asarray(skeleton, dtype=bool)
+    outside = ~np.asarray(excluded, dtype=bool)
+    if not skeleton.any() or not outside.any():
+        return {"octa_intervessel_um": float("nan"), "octa_skeleton_mm_per_mm2": 0.0}
+    clearance = ndimage.distance_transform_edt(~skeleton)
+    gaps = outside & ~skeleton
+    return {
+        "octa_intervessel_um": float(2 * clearance[gaps].mean() * mm_per_px * 1000),
+        "octa_skeleton_mm_per_mm2": float(
+            skeleton[outside].sum() * mm_per_px / (outside.sum() * mm_per_px**2)
+        ),
+    }
 
 
 def site_reach(

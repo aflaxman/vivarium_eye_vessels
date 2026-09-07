@@ -321,10 +321,14 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # fundus-visible (arteriolar) junctions, so measure them on the
     # superficial tree — the deep capillary plexuses form polygonal meshes
     # whose T-shaped junctions would drown the arteriolar geometry
-    superficial_pop = pop[pop.layer_id == 0]
+    # Fundus-visible junctions only: capillary sprouts (CapillaryBed) are not junctions a photograph shows
+    not_capillary = ~pop.radius.between(
+        0, metrics.CAPILLARY_RADIUS_UNITS, inclusive="neither"
+    )
+    superficial_pop = pop[(pop.layer_id == 0) & not_capillary]
     sim_angles = metrics.bifurcation_angles(superficial_pop)
-    sim_angles_all_layers = metrics.bifurcation_angles(pop)
-    sim_tortuosity_paths = metrics.path_tortuosity(pop)
+    sim_angles_all_layers = metrics.bifurcation_angles(pop[not_capillary])
+    sim_tortuosity_paths = metrics.path_tortuosity(pop[not_capillary])
     sim_tree_segment_lengths = metrics.tree_segment_lengths(pop)
     sim_n_anastomoses = int((pop.anastomosis_id >= 0).sum())
     sim_graph_cycles = metrics.graph_cycles(pop)

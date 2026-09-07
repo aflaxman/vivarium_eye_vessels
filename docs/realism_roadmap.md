@@ -1028,6 +1028,65 @@ supply 0.99/1.00/1.00/0.99; their macular clear radii (1.07/0.56/0.62/0.98
 mm) say the same thing the calibration seeds do — the fovea is now there,
 and the macula around it is not yet filled the way a real one is.
 
+*Twenty-first pass (the capillary bed)*: the twentieth pass ended on a
+measurement — the model's finest vessels are 18 µm wide and about 0.7 mm
+apart where a real superficial plexus has 8 µm capillaries 60–80 µm apart
+— and this pass acts on it. The ROSE-1 labels give the scale directly:
+intervessel distance 79 ± 20 µm and skeleton density 9.3 ± 2.4 mm/mm² in
+the macular window outside the FAZ, against the model's 330–400 µm and
+2.1–2.3 mm/mm². The mechanism is the one development uses: capillary-scale
+hypoxia. Inside a disk around the fovea, each plexus layer gets a 90 µm
+lattice of tissue sites; a site with no vessel of its layer within 90 µm
+recruits a sprout from the nearest vessel wall, an 8 µm tip aimed at it,
+which is pulled toward the unserved tissue, closes a loop by anastomosis
+when it meets the other tree, and stops when nothing near it is hypoxic;
+dead ends are pruned by flow. The bed is confined to the macula for now
+because its particle count scales with area at capillary spacing, and the
+macula is where OCTA measures it. Along the way the question of the eye's
+growth was put to the HRF masks: density falls from 5.0% near the disc to
+2.8% at 4 mm and the temporal side is 1.5× the nasal, while the model is
+flat and symmetric. Both are as consistent with the missing perifoveal
+supply as with non-uniform growth, so they stand as targets rather than a
+verdict. The bed itself worked on the first run — 71 µm spacing and 9.2
+mm/mm² in the OCTA window, a polygonal mesh that reads like the ROSE
+angiogram beside it — and everything that followed was about what a
+capillary is *not*. Treated as a vessel like any other it satisfied the
+coarse hypoxia lattice (so no arteriole was recruited into the macula),
+fenced arteriole tips out by repulsion and crowding, ended precapillary
+tips by anastomosis, and, in the flow solve, made the macula a local sink
+that stole flow from every other branch: arteriole pruning rose a quarter
+and on one seed an arcade curled around the macula and closed on itself.
+Each of those is now a rule that says so — capillaries do not perfuse the
+coarse lattice, do not repel or crowd wider tips, do not receive
+precapillary tips, stay out of the flow solve (regressing their own dead
+ends instead), are not walls an arteriole re-sprouts from, and do not
+drain the particle pool the splitter draws on — and the arteriole tree
+behaves exactly as it did before the bed when the bed is off. On eight
+seeds the bed meets the capillary-scale targets everywhere (65–81 µm
+spacing, 8.6–10.6 mm/mm²) and puts a capillary ring on the FAZ edge (0.23
+mm against 0.29). Every other term but one sums to 29.3 against 27.9 the
+round before. The one is the fundus-scale macular clear radius, and it
+taught a lesson about statistics: the largest vessel-free disk within 1.5
+mm of the window center is a maximum, and a single displaced arteriole
+moves it by half a millimeter — the same seed reads 0.64 mm under one rule
+for withdrawing capillary tips from the FAZ and 1.30 mm under the other,
+with the macula's own arterioles unchanged. Its eight-seed mean is 0.59 mm
+for the previous round, 0.69 for a bed-off control, 0.73–0.85 for the bed
+(HRF 0.53), so the bed may open the visible voids a little; eight seeds
+cannot say. A second control answers what any of these differences are
+worth: with the bed off and only the particle pool changed from 500 to 501
+— which reshuffles the arteriole tree's random draws and nothing else —
+the terms the previous round scored 29.9 on score 45.0, single seeds
+moving by 30 points and one seed's perfusion falling to 0.88. Differences
+of that size between rounds are noise, and so was part of the previous
+round's fit: eight seeds resolve a collapse mode, not a six-point shift.
+That is worth knowing before the next calibration round spends its
+effort. A whole-field bed, three hours a seed today, is the version in
+which the flow solve can carry the capillaries too. Held-out seeds 11/202/909/4242 all colonize 100%
+with arterial supply 1.00/0.99/0.93/1.00; the model is as reliable with
+the bed as without it, and for the first time its macula has capillaries
+in it.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1125,6 +1184,11 @@ the HRF masks, which is what makes the comparison apples to apples):
   angiograms and the sim's superficial plexus on a 3 × 3 mm window at the
   fovea, `metrics.octa_window`). Region-based FAZ areas are diagnostics
   only; they leak through gaps in labels and in sparse networks alike.
+- The capillary scale of the OCTA window is read outside the FAZ as twice
+  the mean distance from a non-vessel pixel to the nearest skeleton pixel
+  and as skeleton length per area (`metrics.capillary_statistics`): on the
+  ROSE-1 expert labels, and on the sim's window drawn with every segment at
+  least a pixel wide, since OCTA images flow rather than caliber.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
 - The A:V caliber ratio is read on the depth-0 arcades within a fixed zone

@@ -39,14 +39,16 @@ EDGE_COLUMNS = [
 ]
 
 
-def vessel_edges(pop: pd.DataFrame, min_length: float = 1e-6) -> pd.DataFrame:
+def vessel_edges(
+    pop: pd.DataFrame, min_length: float = 1e-6, capillary_radius: float = 0.0
+) -> pd.DataFrame:
     """The frozen vessel graph as edges with Poiseuille conductances.
 
     One edge per parent-child segment between frozen, calibered particles,
     plus one per anastomosis bridge; conductance is radius**4 / length
     (viscosity constants absorbed into the arbitrary pressure units).
     """
-    vessels = pop[pop.frozen & (pop.radius > 0)]
+    vessels = pop[pop.frozen & (pop.radius >= max(capillary_radius, 1e-12))]
     ids = vessels.index
 
     def edge_frame(children: pd.DataFrame, others: pd.Series, anastomosis: bool):
@@ -207,6 +209,15 @@ class FlowRemodeler(Component):
             # segments may still taper). The default matches max_radius,
             # which preserves the previous unlimited-growth behavior
             "max_adapted_radius": 0.02,
+            # Segments narrower than this are the capillary bed (CapillaryBed
+            # sprouts) and stay outside the flow solve altogether: they do not
+            # carry flow here, set the median shear, adapt, or count as a
+            # neighbor when a terminal is judged. A bed confined to the macula
+            # would otherwise be a local sink that steals flow from every
+            # other branch (arteriole pruning rose a quarter, seed 7's macula
+            # emptied); the bed regresses its own dead ends instead. 0 puts
+            # every segment in the solve (legacy)
+            "capillary_radius": 0.0,
         }
     }
 
@@ -234,6 +245,7 @@ class FlowRemodeler(Component):
         self.start_time = pd.Timestamp(self.config.start_time)
         self.step_count = 0
         self.total_pruned = 0
+        self.total_pruned_capillary = 0  # pruned segments below capillary_radius
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
 
     def on_time_step(self, event: Event) -> None:
@@ -250,7 +262,7 @@ class FlowRemodeler(Component):
 
     def solve_network(self, pop: pd.DataFrame) -> pd.DataFrame | None:
         """Poiseuille flow and shear per frozen segment, or None if unsolvable."""
-        edges = vessel_edges(pop)
+        edges = vessel_edges(pop, capillary_radius=float(self.config.capillary_radius))
         if edges.empty:
             return None
         roots = pop[
@@ -295,6 +307,11 @@ class FlowRemodeler(Component):
         truly the end of a branch and pruning never cuts the graph.
         """
         on_graph = pop[(pop.path_id >= 0) | pop.frozen]
+        capillary_radius = float(self.config.capillary_radius)
+        if capillary_radius > 0:  # the bed is not part of this graph
+            on_graph = on_graph[
+                ~((on_graph.radius > 0) & (on_graph.radius < capillary_radius))
+            ]
         degrees = pd.Series(0, index=pop.index)
         has_parent = on_graph[on_graph.parent_id.isin(pop.index)]
         degrees[has_parent.index] += 1
@@ -305,7 +322,9 @@ class FlowRemodeler(Component):
         return degrees
 
     def remodel(self, pop: pd.DataFrame, flows: pd.DataFrame) -> None:
-        positive = flows[flows.shear > 0]
+        positive = flows[
+            (flows.shear > 0) & (flows.radius >= float(self.config.capillary_radius))
+        ]
         if positive.empty:
             return
         # Each tree remodels toward its own median shear: arteries genuinely
@@ -331,6 +350,9 @@ class FlowRemodeler(Component):
         pruned = candidates.index
         if not pruned.empty:
             self.total_pruned += len(pruned)
+            self.total_pruned_capillary += int(
+                (candidates.radius < float(self.config.capillary_radius)).sum()
+            )
             recycled = pd.DataFrame(
                 {
                     "frozen": False,
@@ -356,7 +378,8 @@ class FlowRemodeler(Component):
         # upstream by the central retinal artery and vein (and carry the
         # seeded A:V ratio, the clinical biomarker) — so they don't adapt
         arcade = pop.loc[flows.node_a, "depth"].to_numpy() == 0
-        keep = ~flows.anastomosis & ~flows.node_a.isin(pruned) & ~arcade
+        capillary = flows.radius.to_numpy() < float(self.config.capillary_radius)
+        keep = ~flows.anastomosis & ~flows.node_a.isin(pruned) & ~arcade & ~capillary
         segments = flows[keep]
         if segments.empty:
             return

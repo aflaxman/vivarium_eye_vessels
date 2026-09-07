@@ -397,3 +397,34 @@ def test_rose_loader_explains_where_the_dataset_goes(monkeypatch, tmp_path):
     monkeypatch.setenv("VEV_DATA_DIR", str(tmp_path))
     with pytest.raises(FileNotFoundError, match="ROSE-1 SVC"):
         reference_data.fetch_rose_images("SVC")
+
+
+def test_capillary_statistics_read_spacing_and_length_density():
+    # Parallel lines every 20 px: twice the mean clearance is half the spacing,
+    # and the length density is one line per 20 px of width
+    skeleton = np.zeros((201, 200), dtype=bool)  # lines on both edges
+    skeleton[::20, :] = True
+    stats = metrics.capillary_statistics(skeleton, np.zeros_like(skeleton), mm_per_px=0.01)
+    np.testing.assert_allclose(stats["octa_intervessel_um"], 10 * 0.01 * 1000, rtol=0.1)
+    # 11 lines of 200 px in a 201 x 200 px image, at 0.01 mm per pixel
+    np.testing.assert_allclose(
+        stats["octa_skeleton_mm_per_mm2"], 11 / (201 * 0.01), rtol=0.02
+    )
+    # Excluding half the image leaves the densities unchanged and an empty skeleton is NaN
+    excluded = np.zeros_like(skeleton)
+    excluded[:, :100] = True
+    half = metrics.capillary_statistics(skeleton, excluded, mm_per_px=0.01)
+    np.testing.assert_allclose(
+        half["octa_skeleton_mm_per_mm2"], stats["octa_skeleton_mm_per_mm2"]
+    )
+    assert np.isnan(
+        metrics.capillary_statistics(np.zeros_like(skeleton), excluded, 0.01)[
+            "octa_intervessel_um"
+        ]
+    )
+
+
+def test_octa_window_draws_capillaries_at_least_one_pixel_wide():
+    edges = pd.DataFrame({"x0": [-0.2], "x1": [0.2], "y0": [0.0], "y1": [0.0]})
+    hairline = metrics.octa_window(edges, (0.0, 0.0), np.array([1e-6]))
+    assert hairline.any()  # a fundus raster would drop this vessel; OCTA shows its flow

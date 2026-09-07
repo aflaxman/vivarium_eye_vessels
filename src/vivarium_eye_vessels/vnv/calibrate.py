@@ -100,6 +100,11 @@ TARGETS = {
     # superficial plexus at ROSE scale). Target from the ROSE-1 SVC
     # angiograms, which mix healthy and Alzheimer's eyes
     "faz_radius_mm": {"target": 0.2875, "scale": 0.0653},
+    # The capillary scale of the same window (metrics.capillary_statistics
+    # outside the FAZ): spacing and length density of the ROSE-1 SVC expert
+    # labels against the model's superficial plexus drawn as OCTA sees it
+    "octa_intervessel_um": {"target": 78.72, "scale": 19.77},
+    "octa_skeleton_mm_per_mm2": {"target": 9.263, "scale": 2.385},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
@@ -293,8 +298,20 @@ def derive_hrf_targets(references: dict) -> dict:
 def rose_references() -> dict:
     """Per-angiogram OCTA statistics of the ROSE-1 SVC scans (:func:`metrics.faz_metrics`)."""
     per_image = []
+    labels = {path.name: path for path in reference_data.fetch_rose_labels("SVC", "gt")}
     for path in reference_data.fetch_rose_images("SVC"):
-        image = metrics.faz_metrics(reference_data.load_mask(path), metrics.OCTA_MM_PER_PX)
+        angiogram = reference_data.load_mask(path)
+        image = metrics.faz_metrics(angiogram, metrics.OCTA_MM_PER_PX)
+        # The FAZ is read from the angiogram (the labels leak there); the
+        # capillary scale from the expert label, outside that zone
+        label = metrics.binarize_mask(reference_data.load_mask(labels[path.name]))
+        image.update(
+            metrics.capillary_statistics(
+                metrics.vessel_skeleton(label),
+                metrics.avascular_zone(angiogram, metrics.OCTA_MM_PER_PX),
+                metrics.OCTA_MM_PER_PX,
+            )
+        )
         image["file"] = path.name
         per_image.append(image)
     return {"per_image": per_image}
@@ -302,8 +319,11 @@ def rose_references() -> dict:
 
 def derive_rose_targets(references: dict) -> dict:
     """Across-scan mean and sd of the OCTA targets."""
-    values = np.array([image["faz_radius_mm"] for image in references["per_image"]])
-    return {"faz_radius_mm": {"target": float(values.mean()), "scale": float(values.std())}}
+    targets = {}
+    for name in ("faz_radius_mm", "octa_intervessel_um", "octa_skeleton_mm_per_mm2"):
+        values = np.array([image[name] for image in references["per_image"]])
+        targets[name] = {"target": float(values.mean()), "scale": float(values.std())}
+    return targets
 
 
 def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -> dict:
@@ -335,13 +355,23 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     # resolution: the FAZ is read on a 3 x 3 mm window at ROSE scale
     octa = metrics.octa_window(fundus, geometry.fovea_center, fundus.radius.values)
     stats.update(metrics.faz_metrics(octa.astype(float), metrics.OCTA_MM_PER_PX))
-    stats["octa_skeleton_mm_per_mm2"] = float(
-        metrics.vessel_skeleton(octa).sum() * metrics.OCTA_MM_PER_PX / metrics.OCTA_SCAN_MM**2
+    stats.update(
+        metrics.capillary_statistics(
+            metrics.vessel_skeleton(octa),
+            metrics.avascular_zone(octa.astype(float), metrics.OCTA_MM_PER_PX),
+            metrics.OCTA_MM_PER_PX,
+        )
     )
     # Bifurcation geometry is judged on the superficial tree, like the raster.
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so
     # they agree with the fundus (x-y) projection the literature reports
-    angles = metrics.bifurcation_angles(pop[pop.layer_id == 0])
+    # Fundus-visible junctions only: a capillary sprout leaving an arteriole
+    # wall is not a bifurcation a photograph shows
+    arteriole_tree = pop[
+        (pop.layer_id == 0)
+        & ~(pop.radius.between(0, metrics.CAPILLARY_RADIUS_UNITS, inclusive="neither"))
+    ]
+    angles = metrics.bifurcation_angles(arteriole_tree)
     superficial = pop[pop.layer_id == 0]
 
     def perfused(vessels, vessel_type=None) -> float:

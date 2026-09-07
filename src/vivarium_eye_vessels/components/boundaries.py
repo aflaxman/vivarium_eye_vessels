@@ -9,7 +9,9 @@ from vivarium.framework.event import Event
 
 from vivarium_eye_vessels.components.particles import (
     VESSEL_TYPE_ARTERY,
+    VESSEL_TYPE_NONE,
     VESSEL_TYPE_VEIN,
+    Particle3D,
     PathFreezer,
     PathSplitter,
 )
@@ -374,6 +376,14 @@ class FrozenRepulsion(BaseForceComponent):
             "spring_constant": 0.1,
             "delay": 1.0,  # days frozen before exerting force on particles in same path
             "cross_type_factor": 1.0,  # repulsion multiplier between artery and vein
+            # Capillary sprouts (caliber at most capillary_radius) are repelled
+            # only within capillary_interaction_radius: a capillary bed is
+            # 60-80 um mesh, an order of magnitude tighter than the spacing
+            # the arteriole-scale interaction_radius enforces. Wider tips in
+            # turn ignore frozen capillaries: an arteriole grows over a
+            # capillary bed, it is not fenced out by it. 0 disables both
+            "capillary_radius": 0.0,
+            "capillary_interaction_radius": 0.0,
         }
     }
 
@@ -384,6 +394,7 @@ class FrozenRepulsion(BaseForceComponent):
             "path_id",
             "parent_id",
             "vessel_type",
+            "radius",
         ]
 
     @property
@@ -397,6 +408,8 @@ class FrozenRepulsion(BaseForceComponent):
         self.clock = builder.time.clock()
 
         self.interaction_radius = float(config.interaction_radius)
+        self.capillary_radius = float(config.capillary_radius)
+        self.capillary_interaction_radius = float(config.capillary_interaction_radius)
         self.freeze_radius = float(config.freeze_radius)
         self.delay = float(config.delay)
         self.cross_type_factor = float(config.cross_type_factor)
@@ -412,6 +425,12 @@ class FrozenRepulsion(BaseForceComponent):
         if neighbor_lists is None:
             return forces
 
+        reach = np.full(len(particles), self.interaction_radius)
+        if self.capillary_interaction_radius > 0:
+            tip_radii = particles["radius"].to_numpy(dtype=float)
+            capillary = (tip_radii > 0) & (tip_radii <= self.capillary_radius)
+            reach[capillary] = self.capillary_interaction_radius
+
         for i, frozen_neighbors in enumerate(neighbor_lists):
             # Calculate displacement vectors from frozen particles
             frozen = self.freezer.get_population(frozen_neighbors)
@@ -426,11 +445,22 @@ class FrozenRepulsion(BaseForceComponent):
                 | (frozen.path_id != particles.iloc[i].path_id)
             ]
 
+            if self.capillary_radius > 0 and reach[i] == self.interaction_radius:
+                # A wide tip is not fenced out by the capillary bed
+                frozen = frozen[
+                    ~((frozen.radius > 0) & (frozen.radius <= self.capillary_radius))
+                ]
             frozen_neighbor_positions = frozen[["x", "y", "z"]].to_numpy()
             displacements = positions[i] - frozen_neighbor_positions
 
             # Calculate distances
             distances = np.sqrt(np.sum(displacements**2, axis=1))
+            within = distances < reach[i]
+            frozen, displacements, distances = (
+                frozen[within],
+                displacements[within],
+                distances[within],
+            )
 
             # Calculate normalized direction vectors
             with np.errstate(invalid="ignore", divide="ignore"):
@@ -440,7 +470,7 @@ class FrozenRepulsion(BaseForceComponent):
             # Calculate and sum forces from all frozen neighbors, with weaker
             # repulsion from the other tree (artery vs. vein)
             force_magnitudes = self.force_calculator.calculate_force_magnitude(
-                self.interaction_radius - distances
+                reach[i] - distances
             )
             same_type = frozen.vessel_type.to_numpy() == particles.iloc[i].vessel_type
             type_factors = np.where(same_type, 1.0, self.cross_type_factor)
@@ -539,6 +569,12 @@ class PerfusionDemand(BaseForceComponent):
             # over the threshold by that frontier's repulsion before it can
             # escape into the tissue that recruited it. 1.0 = legacy
             "survival_factor": 1.0,
+            # Frozen vessels narrower than this do not perfuse a site: a
+            # capillary (CapillaryBed) carries blood only if an arteriole
+            # feeds it nearby, so the coarse lattice keeps recruiting
+            # arterioles into tissue that capillaries have already reached.
+            # 0 counts every frozen vessel (legacy)
+            "min_radius": 0.0,
         }
     }
 
@@ -559,6 +595,7 @@ class PerfusionDemand(BaseForceComponent):
         self.caliber_reference = float(config.caliber_reference)
         self.caliber_exponent = float(config.caliber_exponent)
         self.survival_factor = float(config.survival_factor)
+        self.min_radius = float(config.min_radius)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
         waves = builder.components.get_components_by_type(DevelopmentalWave)
         self.wave = waves[0] if waves else None
@@ -595,6 +632,8 @@ class PerfusionDemand(BaseForceComponent):
         frozen = self.freezer.frozen_particles()
         if frozen is not None and vessel_type is not None:
             frozen = frozen[frozen.vessel_type == vessel_type]
+        if frozen is not None and self.min_radius > 0:
+            frozen = frozen[~((frozen.radius > 0) & (frozen.radius < self.min_radius))]
         if frozen is None or frozen.empty:
             return None
         tree = cKDTree(frozen[["x", "y", "z"]].to_numpy(dtype=float))
@@ -680,6 +719,417 @@ class PerfusionDemand(BaseForceComponent):
             )
             forces = forces * attenuation[:, np.newaxis]
         return forces
+
+
+class CapillaryBed(BaseForceComponent):
+    """The capillary plexus: fine-scale hypoxia that sprouts, steers and starves capillary tips.
+
+    PerfusionDemand works at the scale of the arterioles and venules a fundus
+    photograph shows (tissue within 0.68 mm of a vessel counts as perfused).
+    Real tissue is served by capillaries about 8 um wide and 60-80 um apart,
+    which OCTA sees and the fundus does not (roadmap twenty-first pass). This
+    component adds that scale inside a region -- a disk around the fovea by
+    default, the OCTA window -- separately for each plexus layer:
+
+    - a fine lattice of tissue sites (``site_spacing``) in each layer's
+      plane; a site is hypoxic when no frozen vessel of its layer lies within
+      ``perfusion_radius`` (capillary-scale VEGF), and only sites behind the
+      developmental front count, where the arterioles already are;
+    - every ``sprout_interval`` steps, up to ``max_sprouts`` hypoxic sites
+      recruit a sprout from the nearest frozen vessel of their layer within
+      ``sprout_range``: a new tip of ``capillary_radius`` caliber aimed at
+      the site. This is angiogenic sprouting from an existing vessel wall,
+      not the splitting of a growing tip;
+    - capillary tips (caliber at most ``capillary_radius``) are pulled toward
+      the hypoxic sites of their layer (space colonization, as in
+      PerfusionDemand), tolerate ``survival_factor`` times the extinction
+      force (they are born beside the vessels that repel them), and freeze
+      where no hypoxic site remains within ``starve_radius``: a sprout with
+      nothing left to serve stops.
+
+    Loops close through PathAnastomosis (capillary tips fuse onto the other
+    tree's capillaries); a sprout that has stopped without closing a loop
+    regresses after ``regression_days``, as unperfused sprouts do. The bed
+    is kept out of the FlowRemodeler's solve (``flow_remodeler.
+    capillary_radius``): confined to the macula it would be a local sink
+    stealing flow from every other branch. Sites inside the foveal
+    exclusion make no demand. Disabled, the component is a no-op.
+    """
+
+    CONFIGURATION_DEFAULTS = {
+        "capillary_bed": {
+            "enabled": False,
+            "region_radius": 0.6,  # around the fovea; 0 = the whole field
+            "site_spacing": 0.02,  # 90 um at 4.5 mm per unit
+            "perfusion_radius": 0.02,  # a site this far from its layer's vessels is hypoxic
+            "influence_radius": 0.08,  # hypoxic sites recruit capillary tips within this
+            "magnitude": 0.5,
+            "capillary_radius": 0.0009,  # 8 um caliber: invisible to a fundus, seen by OCTA
+            "sprout_interval": 5,  # steps between sprouting rounds
+            "sprout_range": 0.05,  # a site sprouts from a vessel within this distance
+            "max_sprouts": 40,  # per round, over the whole region
+            "survival_factor": 3.0,
+            "starve_radius": 0.04,  # a capillary tip with no hypoxic site this near stops
+            # A sprout that has not closed a loop this long after it stopped
+            # regresses (is recycled), tip first back to the wall it left
+            "regression_days": 2.5,
+        }
+    }
+
+    @property
+    def required_attributes(self) -> List[str]:
+        return [
+            "x",
+            "y",
+            "z",
+            "vx",
+            "vy",
+            "vz",
+            "frozen",
+            "freeze_time",
+            "depth",
+            "path_id",
+            "parent_id",
+            "radius",
+            "vessel_type",
+            "layer_id",
+            "anastomosis_id",
+            "unfreeze_time",
+        ]
+
+    @property
+    def filter_str(self) -> str:
+        return "not frozen and path_id >= 0"
+
+    def setup(self, builder: Builder) -> None:
+        super().setup(builder)
+        config = builder.configuration.capillary_bed
+        self.config = config
+        self.enabled = bool(config.enabled)
+        self.perfusion_radius = float(config.perfusion_radius)
+        self.capillary_radius = float(config.capillary_radius)
+        self.step_count = 0
+        self.step_size = float(builder.configuration.time.step_size)
+        self.speed = float(builder.configuration.particles.terminal_velocity)
+        self.clock = builder.time.clock()
+        self.randomness = builder.randomness.get_stream("capillary_bed")
+        self.particles = builder.components.get_components_by_type(Particle3D)[0]
+        self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+        splitters = builder.components.get_components_by_type(PathSplitter)
+        self.splitter = splitters[0] if splitters else None
+        waves = builder.components.get_components_by_type(DevelopmentalWave)
+        self.wave = waves[0] if waves else None
+        builder.value.register_value_modifier(
+            "particle.extinction_threshold",
+            modifier=self.survival_relief,
+            required_resources=["radius"],
+        )
+        components = builder.components.list_components()
+        layer_z = (
+            [float(z) for z in builder.configuration.plexus_layers.layer_z]
+            if "plexus_layers" in components
+            else [0.0]
+        )
+        if "ellipsoid_containment" in components:
+            ellipsoid = builder.configuration.ellipsoid_containment
+            semi_axes = (float(ellipsoid.a), float(ellipsoid.b))
+        else:
+            semi_axes = (1.0, 1.0)
+        center, faz_radius = (0.0, 0.0), 0.0
+        if "cylinder_exclusion" in components:
+            fovea = builder.configuration.cylinder_exclusion
+            center = (float(fovea.center[0]), float(fovea.center[1]))
+            faz_radius = float(fovea.radius)
+        self.fovea_center = np.array(center)
+        self.faz_radius = faz_radius
+        # The fovea makes no VEGF: no site inside the avascular zone, and none
+        # within one perfusion radius of it either -- that margin is served
+        # by the capillary ring that forms on the zone's edge, and a site
+        # there would pull sprouts across the boundary
+        self.sites, self.site_layers = capillary_sites(
+            semi_axes,
+            float(config.site_spacing),
+            center,
+            float(config.region_radius),
+            faz_radius + self.perfusion_radius if faz_radius > 0 else 0.0,
+            layer_z,
+        )
+
+    def is_capillary(self, radii: np.ndarray) -> np.ndarray:
+        radii = np.asarray(radii, dtype=float)
+        return (radii > 0) & (radii <= self.capillary_radius * (1 + 1e-9))
+
+    def hypoxic_sites(self) -> tuple[np.ndarray, np.ndarray]:
+        """Fine sites behind the front with no frozen vessel of their layer within reach.
+
+        Returns the site positions and their layer indices.
+        """
+        sites, layers = self.sites, self.site_layers
+        if self.wave is not None and self.wave.enabled:
+            behind = self.wave.disc_distance(sites) <= self.wave.radius
+            sites, layers = sites[behind], layers[behind]
+        frozen = self.freezer.frozen_particles()
+        if frozen is None or frozen.empty or len(sites) == 0:
+            return sites, layers
+        hypoxic = np.ones(len(sites), dtype=bool)
+        for layer in np.unique(layers):
+            in_layer = layers == layer
+            vessels = frozen[(frozen.layer_id == layer) & (frozen.radius > 0)]
+            if vessels.empty:
+                continue
+            tree = cKDTree(vessels[["x", "y", "z"]].to_numpy(dtype=float))
+            distances, _ = tree.query(sites[in_layer], k=1)
+            hypoxic[in_layer] = distances > self.perfusion_radius
+        return sites[hypoxic], layers[hypoxic]
+
+    def survival_relief(self, index: pd.Index, thresholds: pd.Series) -> pd.Series:
+        """Capillary tips tolerate more force: they are born beside the walls that repel them."""
+        factor = float(self.config.survival_factor)
+        if not self.enabled or factor == 1.0 or index.empty:
+            return thresholds
+        radii = self.population_view.get(index, ["radius"]).radius.to_numpy(dtype=float)
+        return thresholds.where(~self.is_capillary(radii), thresholds * factor)
+
+    def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
+        positions = particles[["x", "y", "z"]].to_numpy(dtype=float)
+        forces = np.zeros_like(positions)
+        if not self.enabled:
+            return forces
+        capillary = self.is_capillary(particles["radius"].to_numpy())
+        if not capillary.any():
+            return forces
+        sites, layers = self.hypoxic_sites()
+        tip_layers = particles["layer_id"].to_numpy()
+        for layer in np.unique(tip_layers[capillary]):
+            selected = capillary & (tip_layers == layer)
+            forces[selected] = colonization_forces(
+                positions[selected],
+                sites[layers == layer],
+                float(self.config.influence_radius),
+                float(self.config.magnitude),
+            )
+        return forces
+
+    def on_time_step(self, event: Event) -> None:
+        if not self.enabled:
+            return
+        self.step_count += 1
+        pop = self.population_view.get(event.index, self.required_attributes)
+        sites, layers = self.hypoxic_sites()
+        self.starve(pop, sites, layers)
+        if self.step_count % int(self.config.sprout_interval) == 0:
+            self.regress(pop)
+            if len(sites):
+                self.sprout(pop, sites, layers)
+
+    def starve(self, pop: pd.DataFrame, sites: np.ndarray, layers: np.ndarray) -> None:
+        """Freeze capillary tips with no hypoxic site of their layer within starve_radius."""
+        tips = pop[~pop.frozen & (pop.path_id >= 0)]
+        tips = tips[self.is_capillary(tips.radius.to_numpy())]
+        if tips.empty:
+            return
+        starving = np.ones(len(tips), dtype=bool)
+        tip_layers = tips.layer_id.to_numpy()
+        positions = tips[["x", "y", "z"]].to_numpy(dtype=float)
+        for layer in np.unique(tip_layers):
+            selected = tip_layers == layer
+            in_layer = sites[layers == layer]
+            if len(in_layer) == 0:
+                continue
+            distances, _ = cKDTree(in_layer).query(positions[selected], k=1)
+            starving[selected] = distances > float(self.config.starve_radius)
+        # A capillary that has crossed into the avascular zone is withdrawn,
+        # not frozen there: nothing vascular lies inside the zone, and the
+        # trail it leaves outside regresses like any other dead end
+        intruding = np.zeros(len(tips), dtype=bool)
+        if self.faz_radius > 0:
+            from_fovea = np.hypot(
+                positions[:, 0] - self.fovea_center[0], positions[:, 1] - self.fovea_center[1]
+            )
+            intruding = from_fovea <= self.faz_radius
+        starving &= ~intruding
+        if intruding.any():
+            self.particles.update_particles(
+                pd.DataFrame(
+                    {
+                        "frozen": False,
+                        "freeze_time": pd.NaT,
+                        "unfreeze_time": self.clock(),
+                        "path_id": -1,
+                        "parent_id": -1,
+                        "depth": -1,
+                        "radius": 0.0,
+                        "vessel_type": VESSEL_TYPE_NONE,
+                        "anastomosis_id": -1,
+                        "layer_id": -1,
+                    },
+                    index=tips.index[intruding],
+                )
+            )
+        if not starving.any():
+            return
+        self.particles.update_particles(
+            pd.DataFrame(
+                {"frozen": True, "freeze_time": self.clock(), "path_id": -1},
+                index=tips.index[starving],
+            )
+        )
+
+    def regress(self, pop: pd.DataFrame) -> None:
+        """Recycle dead-end capillary sprouts, tip first, back to the wall they left.
+
+        A frozen capillary particle with no child on the graph and no
+        anastomosis is a dead end; once it has been frozen for
+        ``regression_days`` it is recycled, and the particle behind it becomes
+        the new end, so a whole failed sprout unwinds in one call. Sprouts
+        that closed a loop, and the arteriole walls they left, are untouched.
+        """
+        grace = pd.Timedelta(days=float(self.config.regression_days))
+        capillary = pop.frozen & self.is_capillary(pop.radius.to_numpy())
+        if not capillary.any():
+            return
+        on_graph = pop[(pop.path_id >= 0) | pop.frozen]
+        children = on_graph.parent_id.value_counts()
+        joined = set(on_graph.anastomosis_id[on_graph.anastomosis_id >= 0].to_numpy())
+        old_enough = (self.clock() - pop.freeze_time) >= grace
+        candidates = pop.index[capillary & old_enough.fillna(False)]
+        recycled: list = []
+        frontier = candidates
+        for _ in range(200):
+            leaves = [
+                idx
+                for idx in frontier
+                if children.get(idx, 0) == 0
+                and pop.at[idx, "anastomosis_id"] < 0
+                and idx not in joined
+            ]
+            if not leaves:
+                break
+            recycled.extend(leaves)
+            parents = pop.loc[leaves, "parent_id"]
+            for leaf, parent in zip(leaves, parents):
+                children[parent] = children.get(parent, 0) - 1
+                children[leaf] = 1  # never a leaf again
+            frontier = pd.Index(parents[parents.isin(candidates)].unique())
+        if not recycled:
+            return
+        self.particles.update_particles(
+            pd.DataFrame(
+                {
+                    "frozen": False,
+                    "freeze_time": pd.NaT,
+                    "unfreeze_time": self.clock(),
+                    "path_id": -1,
+                    "parent_id": -1,
+                    "depth": -1,
+                    "radius": 0.0,
+                    "vessel_type": VESSEL_TYPE_NONE,
+                    "anastomosis_id": -1,
+                    "layer_id": -1,
+                },
+                index=pd.Index(recycled),
+            )
+        )
+
+    def sprout(self, pop: pd.DataFrame, sites: np.ndarray, layers: np.ndarray) -> None:
+        """Sprout capillary tips from the frozen vessels nearest hypoxic sites, toward them."""
+        if self.splitter is None:
+            return
+        frozen = pop[pop.frozen & (pop.path_id >= 0) & (pop.radius > 0)]
+        parents, targets = [], []
+        for layer in np.unique(layers):
+            walls = frozen[frozen.layer_id == layer]
+            in_layer = sites[layers == layer]
+            if walls.empty or len(in_layer) == 0:
+                continue
+            distances, nearest = cKDTree(walls[["x", "y", "z"]].to_numpy(dtype=float)).query(
+                in_layer, k=1
+            )
+            reached = distances <= float(self.config.sprout_range)
+            parents.append(walls.index.to_numpy()[nearest[reached]])
+            targets.append(in_layer[reached])
+        if not parents:
+            return
+        parents = np.concatenate(parents)
+        targets = np.concatenate(targets)
+        if len(parents) == 0:
+            return
+        # One sprout per wall segment per round, and a random subset when
+        # more sites call than the round allows
+        parents, first = np.unique(parents, return_index=True)
+        targets = targets[first]
+        limit = int(self.config.max_sprouts)
+        if len(parents) > limit:
+            order = np.argsort(
+                self.randomness.get_draw(pd.Index(parents), "sprout_order").to_numpy()
+            )
+            parents, targets = parents[order[:limit]], targets[order[:limit]]
+        available = pop[~pop.frozen & (pop.path_id < 0)]
+        # Keep the free pool ahead of both consumers: the splitter skips a
+        # split round when the pool runs short, and the bed must never be the
+        # reason it does. Top up early, sprout with what is there now
+        if len(available) < len(parents) + self.splitter.particles_to_add:
+            self.splitter.add_particles()
+        if len(available) < len(parents):
+            parents, targets = parents[: len(available)], targets[: len(available)]
+            if len(parents) == 0:
+                return
+        origins = pop.loc[parents, ["x", "y", "z"]].to_numpy(dtype=float)
+        headings = targets - origins
+        headings /= np.maximum(np.linalg.norm(headings, axis=1), 1e-12)[:, np.newaxis]
+        velocities = headings * self.speed
+        starts = origins + velocities * self.step_size
+        sprouts = pd.DataFrame(
+            {
+                "x": starts[:, 0],
+                "y": starts[:, 1],
+                "z": starts[:, 2],
+                "vx": velocities[:, 0],
+                "vy": velocities[:, 1],
+                "vz": velocities[:, 2],
+                "frozen": False,
+                "freeze_time": pd.NaT,
+                "depth": pop.loc[parents, "depth"].to_numpy() + 1,
+                "path_id": [self.splitter.allocate_path_id() for _ in parents],
+                "parent_id": parents,
+                "radius": self.capillary_radius,
+                "vessel_type": pop.loc[parents, "vessel_type"].to_numpy(),
+                "layer_id": pop.loc[parents, "layer_id"].to_numpy(),
+            },
+            index=available.index[: len(parents)],
+        )
+        self.particles.update_particles(sprouts)
+
+
+def capillary_sites(
+    semi_axes: tuple[float, float],
+    spacing: float,
+    center: tuple[float, float],
+    region_radius: float,
+    excluded_radius: float,
+    layer_z: list[float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fine lattice of tissue sites in every plexus plane, as (positions, layer indices).
+
+    Sites lie inside the containment ellipse, within ``region_radius`` of
+    ``center`` (0 = everywhere) and outside ``excluded_radius`` of it (the
+    foveal avascular zone), one copy per plane in ``layer_z``.
+    """
+    a, b = semi_axes
+    xs = np.arange(-a, a + spacing / 2, spacing)
+    ys = np.arange(-b, b + spacing / 2, spacing)
+    grid = np.stack(np.meshgrid(xs, ys, indexing="ij"), axis=-1).reshape(-1, 2)
+    inside = ((grid[:, 0] / a) ** 2 + (grid[:, 1] / b) ** 2) <= 1.0
+    from_center = np.hypot(grid[:, 0] - center[0], grid[:, 1] - center[1])
+    if region_radius > 0:
+        inside &= from_center <= region_radius
+    inside &= from_center > excluded_radius
+    plane = grid[inside]
+    positions = np.concatenate(
+        [np.column_stack([plane, np.full(len(plane), z)]) for z in layer_z]
+    )
+    layers = np.repeat(np.arange(len(layer_z)), len(plane))
+    return positions, layers
 
 
 class DevelopmentalWave(Component):
@@ -814,6 +1264,7 @@ class DevelopmentalWave(Component):
             return
         pop = self.population_view.get(event.index, self.splitter.required_attributes)
         candidates = pop[pop.frozen & (pop.path_id >= 0) & (pop.vessel_type == vessel_type)]
+        candidates = candidates[~self.splitter.is_capillary(candidates.radius)]
         if candidates.empty:
             return
         tree = cKDTree(stall_sites)

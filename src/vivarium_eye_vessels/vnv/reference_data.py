@@ -64,19 +64,33 @@ def fetch_rose_images(projection: str = "SVC") -> list[Path]:
     directory so that ``<cache>/rose/ROSE/ROSE-1/<projection>/...`` exists.
     ``projection`` is SVC (superficial vascular complex), DVC or SVC_DVC.
     """
+    return rose_files(projection, "img")
+
+
+def rose_files(projection: str, kind: str) -> list[Path]:
+    """Sorted ROSE-1 files of one ``kind`` (``img``, ``gt``, ``thick_gt``, ``thin_gt``)."""
     root = get_cache_dir() / "rose" / "ROSE" / "ROSE-1" / projection
     paths = sorted(
         path
         for split in ("train", "test")
-        for path in (root / split / "img").glob("*")
+        for path in (root / split / kind).glob("*")
         if path.suffix.lower() in (".tif", ".tiff", ".png")
     )
     if not paths:
         raise FileNotFoundError(
-            f"No ROSE-1 {projection} angiograms under {root}. Request the dataset at "
+            f"No ROSE-1 {projection} {kind} files under {root}. Request the dataset at "
             f"{ROSE_URL} and extract ROSE.zip into {get_cache_dir() / 'rose'}."
         )
     return paths
+
+
+def fetch_rose_labels(projection: str = "SVC", kind: str = "gt") -> list[Path]:
+    """Paths of the ROSE-1 expert labels, paired by name with :func:`fetch_rose_images`.
+
+    ``gt`` is the full pixel-level label (large vessels filled, capillaries
+    as centerlines); ``thick_gt`` and ``thin_gt`` split it by class.
+    """
+    return rose_files(projection, kind)
 
 
 def load_mask(path: Path) -> np.ndarray:

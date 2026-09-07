@@ -14,6 +14,7 @@ components:
         - boundaries.ArcadeGuidance()
         - boundaries.FrozenRepulsion()
         - boundaries.PerfusionDemand()
+        - boundaries.CapillaryBed()
         - boundaries.DevelopmentalWave()
         - visualizer.ParticleVisualizer3D()
         - observers.SaveParticles()
@@ -84,7 +85,8 @@ configuration:
         max_depth: 4
         murray_exponent: 3.0   # r_parent^k = r_major^k + r_minor^k at bifurcations
         flow_asymmetry: 0.15   # Minor daughter flow fraction drawn from [0.35, 0.5]
-        min_radius: 0.002      # Caliber floor (capillary scale)
+        min_radius: 0.002      # Caliber floor of the arteriole tree (18 um)
+        capillary_radius: 0.00095  # Capillary sprouts (CapillaryBed) never split
         caliber_cadence_exponent: 0.75  # Wider tips split less often (vnv_calibrate fit)
         side_branch_flow: 0.15     # Comb mode: trunks shed side branches carrying
                                    # ~15% of the flow at near-perpendicular angles
@@ -164,6 +166,14 @@ configuration:
                                    # adaptation from hollowing out the mid calibers)
         min_radius: 0.001
         max_radius: 0.02
+        capillary_radius: 0.001    # Capillary sprouts (below the adaptation floor)
+                                   # stay outside the flow solve: a bed confined to
+                                   # the macula is otherwise a local sink that steals
+                                   # flow from every other branch (arteriole pruning
+                                   # up a quarter, seed 7's macula emptied). At 0.002
+                                   # the cutoff also dropped arterioles adaptation had
+                                   # thinned to the floor and the baseline network
+                                   # shrank by a third (spec seed 25 -> 218)
         max_adapted_radius: 0.003  # Shear-driven thickening saturates at the caliber
                                    # of a precapillary arteriole/venule (1.5 px at the
                                    # V&V raster scale); guards the anastomosis-shortcut
@@ -200,6 +210,7 @@ configuration:
                                      # superficial skeleton density 2.7% -> 3.1% (HRF
                                      # 3.7%) without hurting perfusion (multi-seed fit
                                      # with the adaptation cap, mean 27 -> 22)
+        min_dive_radius: 0.00095     # Capillary sprouts stay in their own layer's bed
         dive_probability: 0.04       # Per-step chance an eligible tip dives
                                      # (multi-seed vnv_calibrate fit: best mean
                                      # score across seeds 123456/7/42)
@@ -211,6 +222,8 @@ configuration:
         max_tip_radius: 0.004     # Only capillary-caliber tips anastomose
         max_target_radius: 0.004  # And only onto capillary-caliber segments
         probability: 0.5          # Per-step fusion probability once in range
+        capillary_radius: 0.00095 # Precapillary tips do not end in the capillary bed;
+                                  # only capillary sprouts fuse onto capillaries
 
     # Hypoxia-driven growth: space-colonization attraction toward unperfused tissue
     perfusion_demand:
@@ -219,12 +232,38 @@ configuration:
         influence_radius: 2.0    # Hypoxic sites recruit growth tips within this distance
         magnitude: 0.35          # Attraction strength, below the extinction threshold
                                  # (vnv_calibrate fit)
+        min_radius: 0.00095      # Capillary sprouts do not count as perfusing a site:
+                                 # they carry blood only when an arteriole feeds them.
+                                 # Counting them let the bed satisfy the coarse demand
+                                 # and the macula's arterioles thinned to a third
         survival_factor: 1.0     # Hypoxia as a survival signal: tips within
                                  # perfusion_radius of unserved tissue tolerate this
                                  # multiple of the extinction force threshold. OFF:
                                  # every factor 1.5-3 rescues seed 7 (168 -> 67) but
                                  # collapses seed 909 (125 -> 884, perfusion 0.47);
                                  # see the roadmap's twelfth pass
+
+    # The capillary plexus (roadmap twenty-first pass): capillary-scale
+    # hypoxia in a disk around the fovea sprouts 9 um tips from the vessel
+    # walls, pulls them toward the tissue they serve and stops them when it
+    # is served; loops close by anastomosis and dead ends are pruned. The
+    # fundus cannot see them; the OCTA window (ROSE-1) measures them
+    capillary_bed:
+        enabled: true
+        region_radius: 0.6        # 2.7 mm around the fovea: the OCTA window plus margin
+        site_spacing: 0.02        # 90 um lattice in each plexus plane
+        perfusion_radius: 0.02    # tissue farther than 90 um from its layer's vessels is hypoxic
+        influence_radius: 0.08
+        magnitude: 0.5
+        capillary_radius: 0.0009  # 8 um caliber, strictly below the remodeler's
+                                  # adaptation floor (0.001) so caliber alone tells a
+                                  # capillary sprout from a thinned arteriole
+        sprout_interval: 5
+        sprout_range: 0.05        # a site recruits a sprout from a wall within 225 um
+        max_sprouts: 40
+        survival_factor: 3.0
+        starve_radius: 0.04
+        regression_days: 2.5      # a stopped sprout that closed no loop unwinds after this
 
     # Closed-loop growth front (roadmap tenth pass): demand is exposed as an
     # expanding wave from the disc that advances only while the tissue behind
@@ -266,6 +305,8 @@ configuration:
                                   # extinction (vnv_calibrate composition fit)
         delay: 1 # days
         cross_type_factor: 0.25  # Weak artery-vein repulsion -> interdigitating arcades
+        capillary_radius: 0.00095            # Capillary sprouts (CapillaryBed) ...
+        capillary_interaction_radius: 0.02   # ... are repelled only within 90 um
 
     path_dla:
         dla_start_time: '2025-02-01'
@@ -287,11 +328,12 @@ configuration:
     # spring of 3 the zone was 1.8 mm wide and porous: 950 frozen particles
     # inside, a trunk through the fovea (roadmap twentieth pass)
     cylinder_exclusion:
-        radius: 0.05            # Capillary-free radius, 0.23 mm; tips stop about
-                                # 0.1 mm short of it, so the FAZ clear radius
-                                # reads 0.33 mm against ROSE-1's 0.29 +/- 0.07.
-                                # 0.065 left the annulus to the wide radius
-                                # empty and read 0.52 (8-seed mean 45 vs 30)
+        radius: 0.065           # Capillary-free radius, 0.29 mm: the ROSE-1 FAZ
+                                # clear radius (0.29 +/- 0.07). With the capillary
+                                # bed the ring of capillaries forms on this edge
+                                # and the zone reads 0.28 mm; before the bed, 0.05
+                                # was needed because the nearest vessels were
+                                # arterioles stopping 0.1 mm short (twentieth pass)
         wide_radius: 0.10       # Arterioles and venules stop at 0.45 mm; the
                                 # macula a fundus photograph shows clear is
                                 # 0.53 +/- 0.09 mm (HRF), and the network's own

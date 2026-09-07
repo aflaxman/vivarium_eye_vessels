@@ -53,6 +53,46 @@ def fetch_hrf_masks() -> list[Path]:
     return masks
 
 
+ROSE_URL = "https://imed.nimte.ac.cn/dataofrose.html"
+
+
+def fetch_rose_images(projection: str = "SVC") -> list[Path]:
+    """Paths of the ROSE-1 en-face angiograms (train and test) for one projection.
+
+    ROSE (Retinal OCT-Angiography vessel SEgmentation) is released on
+    request, so nothing is downloaded: extract ROSE.zip under the cache
+    directory so that ``<cache>/rose/ROSE/ROSE-1/<projection>/...`` exists.
+    ``projection`` is SVC (superficial vascular complex), DVC or SVC_DVC.
+    """
+    return rose_files(projection, "img")
+
+
+def rose_files(projection: str, kind: str) -> list[Path]:
+    """Sorted ROSE-1 files of one ``kind`` (``img``, ``gt``, ``thick_gt``, ``thin_gt``)."""
+    root = get_cache_dir() / "rose" / "ROSE" / "ROSE-1" / projection
+    paths = sorted(
+        path
+        for split in ("train", "test")
+        for path in (root / split / kind).glob("*")
+        if path.suffix.lower() in (".tif", ".tiff", ".png")
+    )
+    if not paths:
+        raise FileNotFoundError(
+            f"No ROSE-1 {projection} {kind} files under {root}. Request the dataset at "
+            f"{ROSE_URL} and extract ROSE.zip into {get_cache_dir() / 'rose'}."
+        )
+    return paths
+
+
+def fetch_rose_labels(projection: str = "SVC", kind: str = "gt") -> list[Path]:
+    """Paths of the ROSE-1 expert labels, paired by name with :func:`fetch_rose_images`.
+
+    ``gt`` is the full pixel-level label (large vessels filled, capillaries
+    as centerlines); ``thick_gt`` and ``thin_gt`` split it by class.
+    """
+    return rose_files(projection, kind)
+
+
 def load_mask(path: Path) -> np.ndarray:
     """Load a vessel mask as a binary-ish uint8 array."""
     with Image.open(path) as image:

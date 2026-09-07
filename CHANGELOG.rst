@@ -1,3 +1,204 @@
+**v0.30.0 - 09/06/26**
+
+ - The capillary bed: capillary-scale hypoxia, sprouting from vessel walls
+
+   - **Why.** The model's finest vessels were 18 um wide and about 0.7 mm
+     apart (the arteriole-scale demand lattice declares tissue within
+     0.68 mm of a vessel perfused); a real superficial plexus has 8 um
+     capillaries 60-80 um apart. That one coarse scale sat behind the
+     voids in the contact sheet, the empty perifovea of the previous
+     round, and the deep plexus's coarseness. The ROSE-1 labels measure
+     it: intervessel distance 79 +/- 20 um and skeleton density 9.3 +/-
+     2.4 mm/mm2 in the 3 x 3 mm macular window (outside the FAZ),
+     against the model's 330-400 um and 2.1-2.3 mm/mm2
+   - **Measurement.** ``metrics.capillary_statistics`` (twice the mean
+     distance from a non-vessel pixel to the nearest skeleton pixel, and
+     skeleton length per area, both outside the FAZ) on the ROSE-1 SVC
+     expert labels (``reference_data.fetch_rose_labels``) and on the
+     model's OCTA window, which now draws every segment at least a pixel
+     wide because OCTA images flow, not caliber. Two new targets,
+     ``octa_intervessel_um`` and ``octa_skeleton_mm_per_mm2``, derived by
+     ``--derive-targets``. The labels omit some perifoveal capillaries, so
+     the reference spacing reads a little wide and the density a little
+     low; the model is measured without that omission
+   - **Model.** ``CapillaryBed``: inside a disk around the fovea (2.7 mm,
+     the OCTA window with margin), for each plexus layer, a 90 um lattice
+     of tissue sites; a site with no frozen vessel of its layer within
+     90 um is hypoxic. Every 5 steps up to 40 hypoxic sites behind the
+     developmental front recruit a sprout from the nearest vessel wall of
+     their layer within 225 um: an 8 um tip aimed at the site (angiogenic
+     sprouting from a wall, not tip splitting). Capillary tips are pulled
+     toward their layer's hypoxic sites, tolerate three times the
+     extinction force, and freeze where no hypoxic site remains within
+     180 um. Loops close through PathAnastomosis; dead-end sprouts carry
+     no flow and are pruned. Hooks so the rest of the model treats them
+     as capillaries: they never split (a Murray split would hand them
+     wider daughters), never dive to another layer, feel FrozenRepulsion
+     only within 90 um instead of 540 um, and neither set a tree's median
+     shear nor adapt their caliber in the FlowRemodeler. Capillaries are
+     told from arterioles by caliber alone, so they sit strictly below the
+     remodeler's adaptation floor (a cutoff at the arteriole floor, 0.002,
+     also dropped the thinned arterioles and shrank the baseline network
+     by a third). An 8 um vessel is
+     below half a pixel at fundus scale, so the HRF comparison does not
+     see them except through what they do to the arterioles
+   - **Coupling, learned the hard way.** With the bed in, the macula's
+     arterioles thinned to a third (spec seed: 1361 -> 374 arteriole-scale
+     particles within 2.7 mm of the fovea) and the fundus-visible macular
+     clear radius grew to 1.0 mm, because the rest of the model treated
+     capillaries as vessels like any other. Three more hooks say what a
+     capillary is not: it does not perfuse a PerfusionDemand site (a
+     capillary carries blood only when an arteriole feeds it, so the coarse
+     lattice keeps recruiting arterioles into tissue the bed has reached;
+     ``perfusion_demand.min_radius``), it does not fence out an arteriole
+     tip (FrozenRepulsion ignores frozen capillaries for wider tips), and
+     it does not count as crowding at a PathSplitter branch point, and a
+     precapillary tip does not end in it (PathAnastomosis fuses only
+     capillary tips onto capillaries). The bed is also kept out of the
+     FlowRemodeler's solve (``flow_remodeler.capillary_radius``): confined
+     to the macula it was a local sink that stole flow from every other
+     branch -- arteriole pruning rose a quarter and on seed 7 an arcade
+     curled around the macula and closed on itself, leaving a 1.75 mm
+     void. The bed regresses its own dead ends instead (a stopped sprout
+     that closed no loop unwinds after 2.5 days, tip first). Junction
+     statistics compared against fundus references skip capillary sprouts,
+     as a fundus does (``metrics.CAPILLARY_RADIUS_UNITS``). Two more couplings surfaced on the seed set: the arteriole
+     trees' re-sprouting (the tip floor in PathSplitter and the wave's
+     stall response) picked frozen capillaries as walls to sprout from,
+     and the bed's churn through the shared particle pool made the
+     splitter skip split rounds -- capillary walls are now excluded and
+     the bed tops the pool up ahead of both consumers
+   - **Results.** The bed meets the capillary-scale targets on every
+     seed: intervessel distance 66-71 um (ROSE 79 +/- 20) and skeleton
+     density 9.7-10.7 mm/mm2 (9.3 +/- 2.4) in the OCTA window, with a
+     capillary ring on the FAZ edge (clear radius 0.14-0.31 mm, target
+     0.29 +/- 0.07; the foveal exclusion radius returns to 0.065 now that
+     capillaries, not arterioles, define the zone). Eight seeds
+     (7/42/909/2024/123456/31/77/5150): mean 53.9 (97/50/25/28/96/34/58/
+     45) under an objective with two new terms the previous round could
+     not score. Every term but one sums to 29.3 against 27.9 before; the
+     one is the fundus-scale macular clear radius, 22 points of the mean
+     on its own. It is the largest vessel-free disk within 1.5 mm of the
+     window center, a maximum statistic that a single displaced arteriole
+     moves by half a millimeter: the same seed reads 0.64 mm under one
+     rule for withdrawing capillary tips from the FAZ and 1.30 mm under
+     the other, with the macula's own arterioles unchanged (357 within
+     2.7 mm of the fovea against 346 before the bed). Its eight-seed mean
+     is 0.59 mm for v0.29, 0.69 for a bed-off control, 0.73 and 0.85 for
+     the two bed runs (HRF 0.53 +/- 0.09), so the bed may open the
+     macula's visible voids a little; the seed set cannot say. Paired
+     perfusion dips below 0.9 on two seeds (42: 0.885, 5150: 0.879); the
+     FAZ clear radius averages 0.23 mm (target 0.29). With the bed
+     switched off every seed reproduces the previous round exactly. A
+     control settles what the differences are worth: the bed off and only
+     the particle pool changed from 500 to 501 -- which displaces the
+     random draws the arteriole tree makes and nothing else -- scores
+     45.0 on the terms v0.29 scored 29.9 on (per seed 33/50/52/27/56/52/
+     62/28 against 44/18/42/19/25/26/29/36), paired perfusion 0.88-0.99,
+     macular clear radius up to 0.91 mm. The eight-seed mean moves by 15
+     points and single seeds by 30 under a change with no physics in it,
+     so differences of that size between rounds are noise, and so was
+     some of v0.29's fit. The seed set is large enough to find a 30-point
+     collapse mode (the twentieth pass did), not a 6-point shift.
+     A whole-field bed (``region_radius`` 0) runs about three hours a
+     seed against 25 minutes for the macular one and is the natural next
+     step once the flow solve can carry it
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 1.00/0.99/0.93/1.00 (0.99/1.00/1.00/0.99
+     in v0.29); their macular clear radii read 0.93/0.77/0.63/0.80 mm
+     (1.07/0.56/0.62/0.98 before)
+   - **Eccentricity, checked and deferred.** Whether the eye's growth
+     earns a round was tested on HRF: skeleton density falls from 5.0%
+     within 1.5 mm of the disc to 2.8% at 4 mm and the temporal side is
+     1.5x denser than the nasal, while the model is flat (3-4% at every
+     distance) and symmetric (ratio 0.9-1.1). Both gaps are as consistent
+     with the missing perifoveal supply as with non-uniform growth, so
+     they are recorded as targets for later rather than attributed
+
+**v0.29.0 - 09/05/26**
+
+ - The fovea: OCTA targets, and an exclusion that did not exclude
+
+   - **Data.** The ROSE OCTA dataset (Retinal OCT-Angiography vessel
+     SEgmentation; registration-gated, so ``reference_data.
+     fetch_rose_images`` reads it from the cache directory rather than
+     downloading it). ROSE-1 has 39 fovea-centered 3 x 3 mm scans of the
+     superficial vascular complex (304 px, 9.9 um/px) with expert labels
+     for large vessels and capillary centerlines, from a mix of healthy
+     and Alzheimer's eyes. The labels omit many perifoveal capillaries,
+     so the FAZ is read from the angiograms themselves
+   - **Scale.** One simulation unit is 4.5 mm (``metrics.MM_PER_UNIT``):
+     the model's disc-to-fovea distance (1.05 units) is the anatomical
+     4.76 mm, the root vein caliber then reads 153 um and the HRF field
+     15 mm, consistent to ~5%. The fundus raster is 17.6 um/px
+   - **Measurement.** Two macular targets, both the radius of the largest
+     vessel-free disk near the fovea (``metrics.clear_radius_px``),
+     because an inscribed disk cannot leak through a gap the way a region
+     can. At fundus scale, ``macular_clear_radius_mm`` on the skeleton
+     within 1.5 mm of the image center: HRF 0.53 +/- 0.09 mm, the macula
+     a photograph shows clear because its capillaries are too fine to
+     see. At OCTA scale, ``faz_radius_mm`` on the vascular signal (the
+     en-face image smoothed at 40 um, thresholded at half its mean --
+     the mean, so a sparse network drawn on black still has a threshold)
+     within 0.3 mm of the fovea: ROSE-1 0.29 +/- 0.07 mm. The simulation
+     is read the same way, its superficial plexus rasterized on a 3 x 3
+     mm window at the fovea (``metrics.octa_window``). The avascular
+     region's area, the OCTA literature's FAZ area, is kept as a
+     diagnostic: read from label masks it leaks into the intercapillary
+     spaces (0.9 mm2 against 0.37 from the images, no closing radius
+     repairs it), and read from the model's sparse window it is
+     meaningless (4.2 mm2 with a trunk through the fovea)
+   - **Finding.** The model had no fovea. The exclusion cylinder (radius
+     0.4 units = 1.8 mm, spring 3, and a ``height`` key the component
+     never read, so it spanned every plexus) was porous: 950 frozen
+     particles sat inside it, the network's density there was only 13%
+     below the surround, and an arcade trunk ran straight through the
+     foveal center. The macula's largest visible void was 0.93 mm in
+     radius (HRF 0.53) and lay away from the fovea; the FAZ radius read
+     0.33 mm only because a gap happened to sit beside the trunk. Spec
+     seed under the new terms: 68.6, of which the two macular terms 53.5
+   - **Model.** The exclusion made real and caliber-aware. ``cylinder_
+     exclusion`` gains ``wide_radius`` / ``wide_min_radius``: tips at or
+     above 0.0025 (arterioles and venules) are held out to 0.10 units
+     (0.45 mm), capillary tips to ``radius`` 0.05 (0.23 mm), with a
+     spring of 30 so a trunk under the arcade guidance and hypoxia pulls
+     stops within 0.02 units of the boundary (at 10 it leaks: FAZ radius
+     0.13 mm). The dead ``height`` key is gone from the spec. The demand
+     lattice no longer has sites inside the capillary radius: the fovea
+     is fed by the choroid, so no tip is recruited into it. Spec seed
+     68.6 -> 24.9 (FAZ clear radius 0.33 mm, macular clear radius 0.67
+     mm); ``vnv_compare`` now writes ``docs/vnv/macula.png``
+   - Eight seeds (7/42/909/2024/123456/31/77/5150): mean 29.9 (per seed
+     44/18/42/19/25/26/29/36); the non-macular terms sum to 25.0 against
+     25.6 in the previous round, so the fovea costs the rest of the fit
+     nothing. FAZ clear radius 0.39 mm on average (0.30-0.54: on two
+     seeds the capillary annulus stays empty and the zone reads the wide
+     radius), macular clear radius 0.59 mm (0.44-0.67), paired perfusion
+     0.96 (seed 7 falls to 0.91 with a trunk that used to feed the macula
+     now routed around it)
+   - Swept and rejected on the spec seed unless noted: radii 0.065/0.118
+     (8-seed mean 45; the annulus between the two radii stays empty and
+     the FAZ reads the wide radius, 0.45 mm on average); 0.05/0.118
+     (47.5: seed 77 collapses to 140 with a 1.2 mm macular void); a
+     single radius for every caliber (74 at 0.05, 132 at 0.065: with
+     nothing to stop them short of the zone the arcades route around
+     the whole macula and leave a 0.9-1.4 mm void); spring 10 (41.5,
+     FAZ 0.13 mm: leaks); radii 0.04/0.09 (81); a denser demand lattice
+     to fill the perifovea (``perfusion_radius`` 0.12: 43, 0.10: 127 and
+     with ``site_spacing`` 0.05: 226 -- more demand than the front can
+     serve, paired perfusion 0.85). The macular clear radius is a
+     maximum statistic and swings 0.5-1.2 mm between near-identical
+     variants on one seed; it needs the full seed set to rank anything
+   - Held-out seeds 11/202/909/4242 all colonize 100% of the tissue
+     (4/4) with arterial supply 0.99/1.00/1.00/0.99 (0.96/0.98/0.96/
+     1.00 before); their macular clear radii read 1.07/0.56/0.62/0.98
+     mm -- the network's own voids, on two of four seeds larger than
+     the fovea
+   - ``vnv_compare`` writes ``docs/vnv/macula.png`` (the macula at both
+     scales, simulation beside HRF and ROSE); the contact sheet stamps
+     each seed's macular clear radius. ``scripts/sweep/sweep_slurm.sh``
+     runs a job file as a Slurm array
+
 **v0.28.0 - 09/04/26**
 
  - Arcade geometry: the front's demand gate curled the trunks

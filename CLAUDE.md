@@ -37,7 +37,7 @@ This sim does not use artifacts, actually
 ### Core Components (src/vivarium_eye_vessels/components/)
 
 - **particles.py**: Core particle system with Particle3D base component, PathFreezer, PathSplitter, PathExtinction, and PathDLA for vessel growth dynamics
-- **boundaries.py**: Force-based boundary conditions including EllipsoidContainment, CylinderExclusion, PointRepulsion, and FrozenRepulsion using Hookean or magnetic force calculations; growth guidance (PerfusionDemand hypoxia attraction, DevelopmentalWave growth front, ArcadeGuidance radial template for arcade-caliber tips)
+- **boundaries.py**: Force-based boundary conditions including EllipsoidContainment, CylinderExclusion (the caliber-aware foveal avascular zone), PointRepulsion, and FrozenRepulsion using Hookean or magnetic force calculations; growth guidance (PerfusionDemand hypoxia attraction, DevelopmentalWave growth front, ArcadeGuidance radial template for arcade-caliber tips)
 - **visualizer.py**: 3D visualization using pygame for real-time particle rendering
 - **observers.py**: Data collection and output management
 

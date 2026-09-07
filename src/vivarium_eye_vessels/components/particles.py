@@ -576,6 +576,8 @@ class PathSplitter(Component):
             "murray_exponent": 3.0,  # r_parent^k = r_major^k + r_minor^k
             "flow_asymmetry": 0.15,  # minor daughter flow fraction in [0.5 - this, 0.5]
             "min_radius": 0.002,  # caliber floor (capillary scale)
+            # Tips at or below this caliber never split (capillary sprouts); 0 = none
+            "capillary_radius": 0.0,
             # Split probability scales as (min_radius / radius) ** this, so wide
             # trunks run long between branch points while narrow twigs branch at
             # the full split_probability; 0 restores caliber-independent cadence
@@ -672,6 +674,20 @@ class PathSplitter(Component):
     def add_particles(self):
         self.simulant_creator(self.particles_to_add)
 
+    def is_capillary(self, radii) -> np.ndarray:
+        """Mask of calibers in the capillary class (at most ``capillary_radius``; none if 0)."""
+        radii = np.asarray(radii, dtype=float)
+        capillary_max = float(self.config.capillary_radius)
+        if capillary_max <= 0:
+            return np.zeros(len(radii), dtype=bool)
+        return (radii > 0) & (radii <= capillary_max)
+
+    def allocate_path_id(self) -> int:
+        """A fresh path id for a vessel born outside this component (a capillary sprout)."""
+        path_id = self.next_path_id
+        self.next_path_id += 1
+        return path_id
+
     def on_time_step(self, event: Event) -> None:
         self.step_count += 1
         if self.step_count % self.config.split_interval == 0:
@@ -719,6 +735,9 @@ class PathSplitter(Component):
         # up from its own frozen vessels; a tree with no tips at all
         # re-sprouts unconditionally (the legacy bootstrap)
         frozen_on_path = pop[pop.frozen & (pop.path_id >= 0)]
+        # Capillary sprouts (CapillaryBed) are not walls an arteriole re-sprouts
+        # from: a Murray daughter of an 8 um parent is nonsense
+        frozen_on_path = frozen_on_path[~self.is_capillary(frozen_on_path.radius)]
         for vessel_type in np.unique(frozen_on_path.vessel_type):
             n_active = int((active.vessel_type == vessel_type).sum())
             floor = int(self.config.min_active_tips)
@@ -796,7 +815,26 @@ class PathSplitter(Component):
         )
         if neighbor_lists is None:
             return to_split
-        counts = np.array([len(neighbors) for neighbors in neighbor_lists])
+        capillary_max = float(self.config.capillary_radius)
+        if capillary_max > 0:
+            # Capillary sprouts (CapillaryBed) are not crowding: an arteriole
+            # branches over the capillary bed as it would over bare tissue
+            frozen_radii = self.freezer.frozen_particles().radius.to_numpy(dtype=float)
+            counts = np.array(
+                [
+                    int(
+                        (
+                            ~(
+                                (frozen_radii[list(neighbors)] > 0)
+                                & (frozen_radii[list(neighbors)] <= capillary_max)
+                            )
+                        ).sum()
+                    )
+                    for neighbors in neighbor_lists
+                ]
+            )
+        else:
+            counts = np.array([len(neighbors) for neighbors in neighbor_lists])
         return to_split[~gated | (counts < limit)]
 
     def resprout_at(self, pop: pd.DataFrame, to_split: pd.Index) -> None:
@@ -809,6 +847,7 @@ class PathSplitter(Component):
         Respects the depth ceiling and the crowding gate.
         """
         to_split = self.eligible(pop, to_split)
+        to_split = to_split[~self.is_capillary(pop.loc[to_split, "radius"])]
         if not to_split.empty:
             available = pop[~pop.frozen & (pop.path_id < 0)]
             self.commit(self.split_frozen(pop, to_split, available) or [])
@@ -833,6 +872,14 @@ class PathSplitter(Component):
             factors[calibered] = (
                 float(self.config.min_radius) / radii[calibered]
             ) ** exponent
+        # Capillary sprouts (CapillaryBed; caliber at most capillary_radius)
+        # anastomose or starve, they do not bifurcate -- a Murray split would
+        # hand them daughters wider than themselves. Judged by that caliber,
+        # not the min_radius floor: adaptation thins arteriole tips below the
+        # floor too, and those have always split (at the clipped probability)
+        capillary_max = float(self.config.capillary_radius)
+        if capillary_max > 0:
+            factors[(radii > 0) & (radii <= capillary_max)] = 0.0
         probabilities = np.clip(base * factors, 0.0, 1.0)
         # Side-branching trunks are exempt from the cadence damping: real
         # arcades emit side branches at short, comb-like intervals, at
@@ -1136,6 +1183,7 @@ def anastomosis_targets(
     neighbor_lists,
     max_target_radius: float,
     min_layer: int = 0,
+    capillary_radius: float = 0.0,
 ) -> pd.Series:
     """Match each tip to the nearest opposite-tree capillary within reach.
 
@@ -1144,8 +1192,11 @@ def anastomosis_targets(
     particle qualifies as a target when it belongs to the *other* tree
     (both vessel types positive and different) and its caliber is at most
     ``max_target_radius`` — capillaries join capillaries, tips don't fuse
-    into trunks. Returns a Series mapping tip index to target index for
-    the tips that found a target.
+    into trunks. With ``capillary_radius`` > 0, a tip wider than it (a
+    precapillary arteriole or venule) does not fuse onto a segment at or
+    below it (a CapillaryBed sprout): the bed grows from the arteriole
+    tree, the tree does not end in the bed. Returns a Series mapping tip
+    index to target index for the tips that found a target.
     """
     matches = {}
     tip_positions = tips[["x", "y", "z"]].to_numpy(dtype=float)
@@ -1162,6 +1213,8 @@ def anastomosis_targets(
         ]
         if min_layer > 0:
             candidates = candidates[candidates.layer_id >= min_layer]
+        if capillary_radius > 0 and tips.radius.iloc[i] > capillary_radius:
+            candidates = candidates[candidates.radius > capillary_radius]
         if candidates.empty:
             continue
         offsets = candidates[["x", "y", "z"]].to_numpy(dtype=float) - tip_positions[i]
@@ -1191,6 +1244,10 @@ class PathAnastomosis(Component):
             # loop closure lives in the deeper plexuses; superficial vessels at
             # fundus resolution read as trees. 0 fuses anywhere (legacy)
             "min_layer": 0,
+            # Tips wider than this do not fuse onto segments at or below it
+            # (CapillaryBed sprouts): arterioles feed the bed, they do not
+            # end in it. 0 = no such rule
+            "capillary_radius": 0.0,
         }
     }
 
@@ -1240,6 +1297,7 @@ class PathAnastomosis(Component):
             neighbor_lists,
             float(self.config.max_target_radius),
             int(self.config.min_layer),
+            float(self.config.capillary_radius),
         )
         if targets.empty:
             return

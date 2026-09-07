@@ -48,6 +48,9 @@ class PlexusLayers(Component):
             # don't push tips into extinction
             "max_force": 0.3,
             "dive_radius": 0.004,  # only capillary-caliber tips dive
+            # Tips narrower than this never dive: capillary sprouts belong
+            # to their own layer's bed (CapillaryBed). 0 lets every tip dive
+            "min_dive_radius": 0.0,
             "dive_probability": 0.02,  # per-step chance an eligible tip dives
         }
     }
@@ -63,6 +66,7 @@ class PlexusLayers(Component):
         self.damping = float(config.damping)
         self.max_force = float(config.max_force)
         self.dive_radius = float(config.dive_radius)
+        self.min_dive_radius = float(config.min_dive_radius)
         self.dive_probability = float(config.dive_probability)
         self.randomness = builder.randomness.get_stream("plexus_layers")
         self.particles = builder.components.get_components_by_type(Particle3D)[0]
@@ -96,6 +100,7 @@ class PlexusLayers(Component):
         eligible = tips[
             (tips.radius > 0)
             & (tips.radius <= self.dive_radius)
+            & (tips.radius >= self.min_dive_radius)
             & (tips.layer_id < len(self.layer_z) - 1)
         ]
         if eligible.empty:

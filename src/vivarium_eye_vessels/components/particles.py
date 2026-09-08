@@ -1366,6 +1366,9 @@ class PathAnastomosis(Component):
         )
         if targets.empty:
             return
+        targets = self.still_valid(targets, tips, pop)
+        if targets.empty:
+            return
 
         to_join = self.randomness.filter_for_probability(
             targets.index, self.config.probability
@@ -1383,6 +1386,31 @@ class PathAnastomosis(Component):
             index=to_join,
         )
         self.particles.update_particles(updates)
+
+    def still_valid(
+        self, targets: pd.Series, tips: pd.DataFrame, pop: pd.DataFrame
+    ) -> pd.Series:
+        """Drop matches whose target the live population no longer backs.
+
+        The freezer's snapshot is refreshed every ``freeze_interval`` steps,
+        so a neighbor it lists may have been recycled since (bed regression,
+        pruning, FAZ withdrawal) and re-sprouted elsewhere under the same
+        index; joining it would draw a chord across the field to wherever
+        that particle now is. A target must be frozen now, still a vessel of
+        target caliber, and still within ``capture_radius`` of its tip.
+        """
+        live = pop.reindex(targets.to_numpy())
+        radius = live.radius.to_numpy(dtype=float)
+        offsets = live[["x", "y", "z"]].to_numpy(dtype=float) - tips.loc[
+            targets.index, ["x", "y", "z"]
+        ].to_numpy(dtype=float)
+        valid = (
+            live.frozen.fillna(False).to_numpy(dtype=bool)
+            & (radius > 0)
+            & (radius <= float(self.config.max_target_radius))
+            & (np.linalg.norm(offsets, axis=1) <= float(self.config.capture_radius))
+        )
+        return targets[valid]
 
 
 class PathDLA(Component):

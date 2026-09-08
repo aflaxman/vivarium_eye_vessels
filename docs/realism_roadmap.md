@@ -1202,6 +1202,48 @@ The held-out seeds all colonize the field (arterial supply 0.93–0.98) and
 read artery length shares of 0.43–0.52 — the balance is now a seed-level
 vital the contact sheet stamps, beside the macular clear radius.
 
+*Twenty-fifth pass (the tree below the arcades)*: the arcades had come to
+match HRF and the vessels branching off them had not — a fundus shows a
+bushy tree of short 2–4 px branches that split two or three times and end,
+the model showed a few long constant-caliber teeth and a net of 1 px
+hairlines — and not one scored statistic could see it: densities, caliber
+composition, branch lengths, even the cycle count of the skeleton all sat
+inside the HRF range. The statistic that does is the simplest description
+of a tree: its fine vessels are its leaves. In the HRF masks 88% of skeleton
+branches at or below 2 px end at a free skeleton end, and 38% of the 2–4 px
+branches; the model read 56% and 12%. An instrumented run then logged every
+branch's birth and death. Only 57 first-order branches were born off seven
+arcades in 800 steps (branching happens at advancing tips, and the arcade
+tips stop half-way through the run), 46 of them died of crowding after
+running 230 px at constant caliber, and their 870 daughters were born at the
+Murray caliber floor, 1 px, where the split cadence is highest, and died
+within a few steps. Zoomed crops made the geometry plain: the model's thin
+vessels are long straight connectors running bifurcation to bifurcation,
+because a 2 px tip still splits at 0.7–0.95 per round; a real vessel of that
+caliber is a terminal arteriole, which runs out and tapers into
+capillaries. Every knob that kept more twigs alive made the net denser —
+forbidding visible-caliber anastomoses (0.52), letting the capillary bed
+carry flow in the Poiseuille solve (0.40), scaling a tip's repulsion reach
+with its caliber (0.23–0.33, with the skeleton density doubling). The
+mechanism that fits is the physiological one: tips at or below the terminal
+caliber (`path_splitter.terminal_radius`) never split again, and taper
+faster (`path_freezer.terminal_taper`) so they fade below the fundus raster
+within a few tens of pixels and hand over to the capillary class.
+With side branches carrying a quarter of the arcade's flow (thicker teeth,
+one more visible generation, thinner arcades) the eight-seed mean falls from
+118 to 98, the thin terminal share rises from 0.56 to 0.72 against HRF's
+0.88, and the fundus window reads as a tree with free-ending twigs. What
+remains is density: the twigs that now fade were a third of the visible
+skeleton (3.5% → 3.1%, HRF 3.7%), and the mid-caliber tree that should
+replace them is still sparser than a fundus, because arcades shed first-order
+branches only while their tips advance, which is half the run. Every knob
+that adds branch points at mid caliber lowered the terminal share again —
+more branch points make more thin connectors, not more leaves — so the next
+lever is branching *behind* the front, along established arcades, rather
+than more branching at the tips. The held-out seeds all colonize the field and read thin terminal shares of
+0.66–0.76; the fading twigs leave dotted half-pixel trails on the fundus
+raster, which the optional floor snap removes at a cost in perfusion.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1324,6 +1366,12 @@ the HRF masks, which is what makes the comparison apples to apples):
   crossing share and the median distance between the trees' skeletons. The
   raster AVR is not the clinical CRAE/CRVE and is not compared to 0.67:
   healthy eyes read 0.86 under these conventions.
+- Tree-ness is read as terminal shares (`metrics.terminal_shares`): among
+  skeleton branches at or below 2 px, and among those of 2–4 px, the share
+  that end at a free skeleton end rather than running junction to junction
+  (spurs under 5 px already pruned). A tree's fine vessels are its leaves;
+  the statistic separates a dendritic tree from a net of the same density,
+  caliber composition and branch lengths.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
 - Junction statistics compared against fundus literature (branch angles,

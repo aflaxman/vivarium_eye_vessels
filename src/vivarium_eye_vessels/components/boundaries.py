@@ -1287,6 +1287,19 @@ class DevelopmentalWave(Component):
             "advance_threshold": 0.85,  # served fraction inside the front to advance
             "hold_resprout_steps": 15,  # held steps before targeted re-sprouting
             "resprout_count": 2,  # sprouts per stalled tree per trigger
+            # Wall sprouting (twenty-sixth pass): every wall_sprout_interval
+            # steps each tree sprouts wall_sprouts_per_round new branches from
+            # established superficial vessel walls that lie within
+            # wall_sprout_reach of tissue their tree does not yet serve --
+            # angiogenic sprouting along a vessel's length, not only at its
+            # advancing tips. Before it, tissue behind a vessel could be
+            # reached only by a tip from elsewhere crossing that vessel.
+            # Walls younger than wall_sprout_age_days (the trail just behind
+            # a tip) do not sprout. 0 disables
+            "wall_sprout_interval": 0,
+            "wall_sprouts_per_round": 4,
+            "wall_sprout_reach": 0.3,
+            "wall_sprout_age_days": 1.0,
             # "combined" advances on any-vessel service of the tissue behind
             # the front; "per_type" requires every tree to serve it before
             # advancing. Combined is the validated default: the artery tree
@@ -1308,6 +1321,9 @@ class DevelopmentalWave(Component):
             builder.configuration.particles.initial_circle.center, dtype=float
         )
         self.hold_steps: Dict[int | None, int] = {}
+        self.step_count = 0
+        self.clock = builder.time.clock()
+        self.randomness = builder.randomness.get_stream("developmental_wave")
         demands = builder.components.get_components_by_type(PerfusionDemand)
         self.demand = demands[0] if demands else None
         splitters = builder.components.get_components_by_type(PathSplitter)
@@ -1367,6 +1383,48 @@ class DevelopmentalWave(Component):
             types = (VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN) if check is None else (check,)
             for vessel_type in types:
                 self.resprout_toward_stall(vessel_type, event)
+        interval = int(self.config.wall_sprout_interval)
+        self.step_count += 1
+        if interval > 0 and self.step_count % interval == 0:
+            for vessel_type in (VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN):
+                self.wall_sprout(vessel_type, event)
+
+    def wall_sprout(self, vessel_type: int, event: Event) -> None:
+        """Sprout a tree from established walls beside tissue it does not serve.
+
+        Candidate walls are frozen, non-capillary, superficial vessels of the
+        tree, frozen at least ``wall_sprout_age_days`` ago, within
+        ``wall_sprout_reach`` of a hypoxic site of their type; up to
+        ``wall_sprouts_per_round`` of them, drawn at random, side-branch
+        through the splitter (depth ceiling and crowding gate apply).
+        """
+        if self.splitter is None:
+            return
+        sites = self.demand.hypoxic_sites(vessel_type)
+        if len(sites) == 0:
+            return
+        pop = self.population_view.get(event.index, self.splitter.required_attributes)
+        walls = pop[
+            pop.frozen
+            & (pop.path_id >= 0)
+            & (pop.vessel_type == vessel_type)
+            & (pop.layer_id == 0)
+        ]
+        walls = walls[~self.splitter.is_capillary(walls.radius)]
+        age = pd.Timedelta(days=float(self.config.wall_sprout_age_days))
+        walls = walls[(self.clock() - walls.freeze_time) >= age]
+        if walls.empty:
+            return
+        distances, _ = cKDTree(sites).query(walls[["x", "y", "z"]].to_numpy(dtype=float), k=1)
+        near = walls.index[distances <= float(self.config.wall_sprout_reach)]
+        if len(near) == 0:
+            return
+        count = int(self.config.wall_sprouts_per_round)
+        draws = self.randomness.get_draw(
+            pd.Index(near), additional_key=f"wall_sprout_{vessel_type}"
+        )
+        chosen = pd.Index(near)[np.argsort(draws.to_numpy())[:count]]
+        self.splitter.resprout_at(pop, chosen)
 
     def resprout_toward_stall(self, vessel_type: int, event: Event) -> None:
         """Sprout the stalled tree from frozen vessels nearest unserved tissue.

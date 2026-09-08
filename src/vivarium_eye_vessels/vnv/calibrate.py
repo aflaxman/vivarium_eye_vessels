@@ -102,6 +102,13 @@ TARGETS = {
     # (twenty-fifth pass)
     "thin_terminal_share": {"target": 0.8827, "scale": 0.0413},
     "mid_terminal_share": {"target": 0.3818, "scale": 0.1145},
+    # Crossings (metrics.crossing_share): the share of junction clusters
+    # with four or more arms. A fundus's crossings are arteries passing
+    # over veins, a small share of its junctions; branches that pass
+    # through one another in the same plane read a larger one. One-sided:
+    # too few crossings is not a defect a photograph shows (twenty-sixth
+    # pass)
+    "crossing_share": {"target": 0.1195, "scale": 0.0218, "one_sided": "above"},
     # The foveal avascular zone as OCTA sees it: the largest capillary-free
     # disk at the fovea (metrics.faz_metrics on a 3 x 3 mm window of the
     # superficial plexus at ROSE scale). Target from the ROSE-1 SVC
@@ -224,6 +231,7 @@ HRF_IMAGE_TARGETS = (
     "macular_clear_radius_mm",
     "thin_terminal_share",
     "mid_terminal_share",
+    "crossing_share",
 )
 
 
@@ -264,6 +272,7 @@ def image_stats(image: dict, references: dict | None = None) -> dict:
         * metrics.FUNDUS_MM_PER_PX,
         "thin_terminal_share": image["thin_terminal_share"],
         "mid_terminal_share": image["mid_terminal_share"],
+        "crossing_share": image["crossing_share"],
     }
     if references is not None:
         stats["ks_log_length"] = (

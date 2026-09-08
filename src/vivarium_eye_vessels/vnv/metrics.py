@@ -680,6 +680,37 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
     return frame
 
 
+def crossing_share(skeleton: np.ndarray) -> float:
+    """The share of junction clusters that are crossings: four or more branches meet.
+
+    Two vessels crossing in projection make a junction with four arms; a
+    bifurcation has three. In a fundus the crossings are the arteries
+    passing over the veins, a small share of all junctions; a network
+    whose branches pass through one another in the same plane reads a
+    larger one. Junction clusters (connected pixels with three or more
+    skeleton neighbours) are counted once; the arms are the distinct
+    skeleton branches touching the cluster. NaN without junctions.
+    """
+    skeleton = np.asarray(skeleton, dtype=bool)
+    counts = neighbor_counts(skeleton)
+    junction = skeleton & (counts >= 3)
+    clusters, n_clusters = ndimage.label(junction, structure=np.ones((3, 3)))
+    if n_clusters == 0:
+        return float("nan")
+    branches, _ = ndimage.label(skeleton & ~junction, structure=np.ones((3, 3)))
+    # each branch pixel's label spread one pixel out, so a cluster's
+    # neighbourhood reads the labels of the branches that touch it
+    spread = ndimage.grey_dilation(branches, size=3)
+    crossings = 0
+    for slc, label in zip(ndimage.find_objects(clusters), range(1, n_clusters + 1)):
+        window = tuple(slice(max(s.start - 1, 0), s.stop + 1) for s in slc)
+        mask = ndimage.binary_dilation(clusters[window] == label, np.ones((3, 3)))
+        arms = np.unique(spread[window][mask])
+        if len(arms) - (1 if 0 in arms else 0) >= 4:
+            crossings += 1
+    return crossings / n_clusters
+
+
 def terminal_shares(branches: pd.DataFrame) -> dict[str, float]:
     """The share of thin and of mid-caliber branches that end freely.
 
@@ -988,6 +1019,7 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
             skeleton, MACULA_SEARCH_MM / FUNDUS_MM_PER_PX
         ),
         **terminal_shares(branches),
+        "crossing_share": crossing_share(skeleton),
         **arcade_geometry(binary),
     }
 

@@ -10,6 +10,8 @@ from vivarium.framework.engine import Builder
 from vivarium.framework.event import Event
 from vivarium.framework.population import SimulantData
 
+from vivarium_eye_vessels.components.collisions import CollisionGuard
+
 PARTICLE_COLUMNS = [
     # location
     "x",
@@ -137,6 +139,8 @@ class Particle3D(Component):
         )
 
         self.randomness = builder.randomness.get_stream("particle.particles_3d")
+        guards = builder.components.get_components_by_type(CollisionGuard)
+        self.collision_guard = guards[0] if guards else None
         builder.population.register_initializer(
             initializer=self.on_initialize_simulants,
             columns=PARTICLE_COLUMNS,
@@ -295,9 +299,11 @@ class Particle3D(Component):
         active_particles = pop[~pop.frozen]
 
         if not active_particles.empty:
-            self.update_positions(active_particles)
+            self.update_positions(active_particles, pop)
 
-    def update_positions(self, particles: pd.DataFrame) -> None:
+    def update_positions(
+        self, particles: pd.DataFrame, pop: pd.DataFrame | None = None
+    ) -> None:
         """Update positions and velocities based on forces and random steering."""
         columns = ["x", "y", "z", "vx", "vy", "vz"]
         if self.noise_persistence_time > 0:
@@ -307,6 +313,16 @@ class Particle3D(Component):
         # Update positions based on current velocities
         for pos, vel in [("x", "vx"), ("y", "vy"), ("z", "vz")]:
             updates[pos] = updates[pos] + self.step_size * updates[vel]
+
+        # A tip that would pass through a vessel of its own plane stops where
+        # it was and its path ends there (CollisionGuard)
+        blocked = pd.Index([])
+        if (
+            self.collision_guard is not None
+            and self.collision_guard.enabled
+            and pop is not None
+        ):
+            blocked = self.collision_guard.deflect(particles, updates, pop)
 
         # Get max velocity change from pipeline
         max_velocity_change = self.max_velocity_change(updates.index)
@@ -375,6 +391,13 @@ class Particle3D(Component):
             updates.loc[over_limit, ["vx", "vy", "vz"]] *= scale_factors[:, np.newaxis]
 
         self.update_particles(updates)
+        if len(blocked) and self.collision_guard.mode == "stop":
+            self.update_particles(
+                pd.DataFrame(
+                    {"frozen": True, "freeze_time": self.clock(), "path_id": -1},
+                    index=blocked,
+                )
+            )
 
 
 class PathFreezer(Component):

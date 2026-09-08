@@ -1,6 +1,7 @@
 components:
     vivarium_eye_vessels.components:
         - particles.Particle3D()
+        - collisions.CollisionGuard()
         - particles.PathFreezer()
         - particles.PathExtinction()
         - particles.PathSplitter()
@@ -174,6 +175,28 @@ configuration:
                                         # held-out seed reaches full perfusion
                                         # (roadmap thirteenth pass)
 
+    # Tips do not pass through vessels of their own plane (twenty-sixth pass):
+    # a move that would cross a frozen layer-0 segment stops the tip where it
+    # was and ends its path. Arteries and veins both at least
+    # crossing_min_radius wide may cross (they lie at different depths); the
+    # capillary bed is exempt
+    collision_guard:
+        enabled: true
+        layers: [0]
+        capillary_radius: 0.00095
+        crossing_min_radius: 0.005  # Arteries and veins both at least this wide
+                                  # pass over one another (different depths)
+        crossing_wide_ratio: 0.0  # A tip this many times wider than the vessel in its
+                                  # way passes over it whatever the trees; 0 = never
+        search_radius: 0.05
+        mode: stop             # A blocked tip stays where it was and its path ends,
+                               # as an extinguished tip's does. Alone this halved the
+                               # visible skeleton; with wall sprouting (below) the
+                               # tree grows around instead of through. "slide" (run
+                               # along the vessel) left trails the raster merged with
+                               # it; "reflect" (bounce) drew zigzags; both still cost
+                               # a third of the skeleton and emptied the macula
+
     path_extinction:
         force_threshold: 2.0  # Headroom over the stacked steering forces (perfusion
                               # pull, plexus layering, planar crowding repulsion) so
@@ -345,6 +368,21 @@ configuration:
                                  # service ceiling
         hold_resprout_steps: 15  # Held steps before targeted re-sprouting
         resprout_count: 2        # Sprouts per stalled tree per trigger
+        wall_sprout_interval: 10 # Wall sprouting (twenty-sixth pass): every this many
+        wall_sprouts_per_round: 4  # steps each tree sprouts this many branches from
+        wall_sprout_reach: 0.3     # established superficial walls within this of
+        wall_sprout_age_days: 0.5  # tissue it does not serve; walls younger than this
+                                   # (the trail just behind a tip) do not sprout. The
+                                   # other half of how a retina grows: before it,
+                                   # tissue behind a vessel could be reached only by a
+                                   # tip from elsewhere crossing that vessel, and the
+                                   # collision guard alone starved the field. Alone
+                                   # (guard off) it over-grows: skeleton 5.6%, one
+                                   # junction in four a crossing. 4 sprouts a round
+                                   # with walls of 0.5 days: 8-seed mean 119 -> 93,
+                                   # skeleton 3.1 -> 3.5% (HRF 3.7), macula 0.68 ->
+                                   # 0.61 mm (0.53); 8 a round over-fills (3.8%,
+                                   # thin terminal share 0.69)
         gate_caliber_max: 0.006  # Tips wider than this (the arcade class, 3 px)
                                  # see the whole hypoxic field; narrower tips only
                                  # what the front exposes. A gated trunk that has

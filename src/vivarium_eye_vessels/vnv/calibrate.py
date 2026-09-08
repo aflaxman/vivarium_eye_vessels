@@ -133,9 +133,20 @@ TARGETS = {
     # (>100 degree) junctions are rare. Judgment scales from the literature
     "bifurcation_angle_median": {"target": 77.0, "scale": 5.0},
     "bifurcation_obtuse_share": {"target": 0.05, "scale": 0.05, "one_sided": "above"},
-    # Clinical AVR, read on the depth-0 arcades within metrics.AVR_ZONE of the
-    # disc (the measurement zone), not over each trunk's whole tapering run
-    "artery_vein_caliber_ratio": {"target": 0.67, "scale": 0.05},
+    # Artery/vein balance (metrics.artery_vein_statistics), from the Hemelings
+    # labels of the same 15 HRF eyes, each tree drawn alone in the fundus
+    # window: the trees run equal lengths, arteries carry a quarter of the
+    # thick (> 6 px) skeleton, the raster AVR (top-decile calibers in the
+    # AVR zone) is 0.86 -- not the clinical 0.67, which block averaging
+    # compresses toward one on both sources alike -- the trees cross in 6%
+    # of vessel pixels, and a vessel of one tree lies 0.31 mm from the
+    # nearest of the other (twenty-fourth pass). The particle-level trunk
+    # ratio artery_vein_caliber_ratio is reported, no longer scored
+    "artery_length_share": {"target": 0.4965, "scale": 0.0134},
+    "artery_thick_share": {"target": 0.2338, "scale": 0.0508},
+    "arcade_caliber_ratio_px": {"target": 0.8551, "scale": 0.0405},
+    "av_crossing_share": {"target": 0.0606, "scale": 0.0250},
+    "av_spacing_mm": {"target": 0.3109, "scale": 0.0336},
     # Tissue within perfusion_radius of both an artery and a vein: a bed
     # with supply but no drainage (or the reverse) is colonized, not perfused
     "perfused_fraction": {"target": 0.98, "scale": 0.02, "one_sided": "below"},
@@ -282,6 +293,57 @@ def hrf_references() -> dict:
             [np.asarray(m["pixel_diameter_px"], dtype=float) for m in per_mask]
         ),
         "per_mask": per_mask,
+    }
+
+
+AV_TARGETS = (
+    "artery_length_share",
+    "artery_thick_share",
+    "arcade_caliber_ratio_px",
+    "av_crossing_share",
+    "av_spacing_mm",
+)
+
+
+def tree_windows(fundus, bounds, image_shape) -> dict[str, np.ndarray]:
+    """The artery and vein trees of the superficial network, each drawn alone.
+
+    Fundus-window rasters (:func:`metrics.fundus_window`) of the frozen
+    layer-0 segments of each type, drawn by the same majority rule as the
+    pooled raster; a pixel both cover is a crossing.
+    """
+    windows = {}
+    for name, vessel_type in (
+        ("artery", metrics.VESSEL_TYPE_ARTERY),
+        ("vein", metrics.VESSEL_TYPE_VEIN),
+    ):
+        tree = fundus[fundus.vessel_type == vessel_type]
+        raster = metrics.rasterize_network(tree, bounds, radii=tree.radius.values)
+        windows[name], _ = metrics.fundus_window(raster, image_shape)
+    return windows
+
+
+def hrf_av_references() -> list[dict]:
+    """Per-eye artery/vein statistics of the HRF healthy eyes (Hemelings labels)."""
+    per_eye = []
+    for path in reference_data.fetch_hrf_av_labels():
+        artery, vein = reference_data.load_av_label(path)
+        stats = metrics.artery_vein_statistics(
+            metrics.binarize_mask(artery), metrics.binarize_mask(vein)
+        )
+        stats["file"] = path.name
+        per_eye.append(stats)
+    return per_eye
+
+
+def derive_hrf_av_targets(per_eye: list[dict]) -> dict:
+    """Across-eye mean and sd of the artery/vein targets, under current conventions."""
+    return {
+        name: {
+            "target": float(np.mean([eye[name] for eye in per_eye])),
+            "scale": float(np.std([eye[name] for eye in per_eye])),
+        }
+        for name in AV_TARGETS
     }
 
 
@@ -438,6 +500,10 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
         metrics.vessel_skeleton(window), metrics.MACULA_SEARCH_MM / metrics.FUNDUS_MM_PER_PX
     )
     stats = image_stats(image, references)
+    # Artery/vein balance, each tree drawn alone in the same window the HRF
+    # labels are read in (metrics.artery_vein_statistics)
+    trees = tree_windows(fundus, geometry.bounds, references["image_shape"])
+    stats.update(metrics.artery_vein_statistics(trees["artery"], trees["vein"]))
     # OCTA sees the superficial plexus around the fovea at capillary
     # resolution: the FAZ is read on a 3 x 3 mm window at ROSE scale
     octa = metrics.octa_window(fundus, geometry.fovea_center, fundus.radius.values)
@@ -634,6 +700,12 @@ def main(
     references = hrf_references()
     if derive_targets:
         for name, spec in derive_hrf_targets(references).items():
+            current = TARGETS[name]
+            click.echo(
+                f"  {name:28s} target {spec['target']:.4f}  scale {spec['scale']:.4f}"
+                f"   (TARGETS: {current['target']:.4f} / {current['scale']:.4f})"
+            )
+        for name, spec in derive_hrf_av_targets(hrf_av_references()).items():
             current = TARGETS[name]
             click.echo(
                 f"  {name:28s} target {spec['target']:.4f}  scale {spec['scale']:.4f}"

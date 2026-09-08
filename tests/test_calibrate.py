@@ -67,10 +67,11 @@ def test_one_sided_targets_only_penalize_the_bad_direction():
 
 def test_missing_or_nan_stats_never_win():
     stats = on_target_stats()
-    stats["artery_vein_caliber_ratio"] = float("nan")
+    # The raster AVR is NaN when a tree is absent from the zone
+    stats["arcade_caliber_ratio_px"] = float("nan")
     del stats["fractal_dimension"]
     scores = calibration_score(stats)
-    assert scores["artery_vein_caliber_ratio"] == 25.0
+    assert scores["arcade_caliber_ratio_px"] == 25.0
     assert scores["fractal_dimension"] == 25.0
 
 

@@ -51,15 +51,27 @@ configuration:
             n_vessels: 6               # Root trunks at the disc (3 artery/vein pairs);
                                        # more superficial arcades close most of the gap
                                        # to the HRF density metrics (vnv_calibrate fit)
-        root_radius: 0.017             # Caliber of the root (vein) vessels: 8.7 px
+        root_radius: 0.016             # Caliber of the root (vein) vessels: 8.2 px
                                        # diameter at the V&V raster, where HRF's
                                        # widest 1% of skeleton is 7.5 px. At 0.02
                                        # a tenth of the superficial skeleton ran
                                        # wider than 6 px against 4% in real eyes
-                                       # (thick_share). 0.015 starves the network
-                                       # (skeleton 2.9%); alone, without the arcade
-                                       # gate, it collapses the artery tree
-        artery_caliber_ratio: 0.67     # Arteries are ~2/3 the caliber of veins (clinical AVR)
+                                       # (thick_share); 0.017 with the wider artery
+                                       # roots below read 9%, 0.016 7%. 0.015
+                                       # starves the network (skeleton 3.0%) and
+                                       # thins the arteries back out of the thick
+                                       # class (twenty-fourth pass)
+        artery_caliber_ratio: 0.8      # Artery roots relative to vein roots. The
+                                       # clinical AVR of 0.67 was the wrong target
+                                       # for a raster reading: the HRF artery/vein
+                                       # labels read 0.86 under the harness's
+                                       # conventions, and at 0.67 the artery roots
+                                       # were 5.8 px, below the 6 px thick class,
+                                       # so no artery could ever read thick (1% of
+                                       # thick skeleton vs 23% in real eyes). 0.8
+                                       # reads 0.85 / 21%; 0.75 too thin (0.76 /
+                                       # 7%), 0.85 too thick (0.91 / 32%, pooled
+                                       # thick share 9%) (twenty-fourth pass)
         noise_persistence_time: 0.0    # OU steering memory (days); 0 = white noise.
                                        # Healthy tortuosity is already on target; raising
                                        # this is the DR-like disease dial (tortuosity up,
@@ -333,7 +345,14 @@ configuration:
                                   # at 0.15 the comb teeth crowd each other into
                                   # extinction (vnv_calibrate composition fit)
         delay: 1 # days
-        cross_type_factor: 0.25  # Weak artery-vein repulsion -> interdigitating arcades
+        cross_type_factor: 0.1   # Weak artery-vein repulsion -> interdigitating arcades.
+                                 # 0.1 lets the artery tree reach the tissue the vein
+                                 # tree already holds (artery coverage 0.85 -> 0.88,
+                                 # paired perfusion 0.96 -> 0.98 on eight seeds); 0
+                                 # over-packs the trees (spacing 0.27 mm vs 0.31).
+                                 # Neither makes the trees cross as real ones do
+                                 # (2% of vessel pixels against 6%): crossings need
+                                 # depth, not tolerance (twenty-fourth pass)
         capillary_radius: 0.00095            # Capillary sprouts (CapillaryBed) ...
         capillary_interaction_radius: 0.02   # ... are repelled only within 90 um
 

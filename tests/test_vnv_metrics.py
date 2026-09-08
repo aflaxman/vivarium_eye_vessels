@@ -483,3 +483,57 @@ def test_tree_edges_flag_segments_that_end_at_growth_tips():
     )
     edges = simulation.tree_edges(pop)
     assert list(edges.frozen) == [True, False]  # the tip's own segment is flagged
+
+
+def test_artery_vein_statistics_on_parallel_bars():
+    # A 4-px artery and an 8-px vein running side by side, 21 px between
+    # their centerlines: equal lengths, no crossings, all the thick skeleton
+    # venous, raster AVR 0.5, spacing the centerline gap
+    artery = np.zeros((200, 200), dtype=bool)
+    vein = np.zeros((200, 200), dtype=bool)
+    artery[40:44, 10:190] = True
+    vein[60:68, 10:190] = True
+    stats = metrics.artery_vein_statistics(artery, vein, disc=(100.0, 100.0))
+    assert abs(stats["artery_length_share"] - 0.5) < 0.02
+    assert stats["av_crossing_share"] == 0.0
+    assert stats["artery_thick_share"] == 0.0
+    assert abs(stats["arcade_caliber_ratio_px"] - 0.5) < 0.05
+    assert abs(stats["av_spacing_mm"] / metrics.FUNDUS_MM_PER_PX - 21.5) < 1.5
+    assert stats["artery_coverage"] > 0.9 and stats["vein_coverage"] > 0.9
+
+
+def test_artery_vein_statistics_count_crossings():
+    artery = np.zeros((120, 120), dtype=bool)
+    vein = np.zeros((120, 120), dtype=bool)
+    artery[58:62, 10:110] = True
+    vein[10:110, 58:62] = True
+    stats = metrics.artery_vein_statistics(artery, vein, disc=(0.0, 0.0))
+    expected = 16 / (2 * 400 - 16)
+    assert abs(stats["av_crossing_share"] - expected) < 1e-6
+    assert abs(stats["artery_length_share"] - 0.5) < 0.02
+
+
+def test_artery_vein_statistics_with_one_tree_absent():
+    artery = np.zeros((50, 50), dtype=bool)
+    artery[20:24, 5:45] = True
+    stats = metrics.artery_vein_statistics(artery, np.zeros_like(artery))
+    assert stats["artery_length_share"] == 1.0
+    assert np.isnan(stats["av_spacing_mm"]) and np.isnan(stats["arcade_caliber_ratio_px"])
+
+
+def test_load_av_label_reads_the_three_colors(tmp_path):
+    from PIL import Image
+
+    from vivarium_eye_vessels.vnv import reference_data
+
+    rgb = np.zeros((4, 4, 3), dtype=np.uint8)
+    rgb[0, 0] = (255, 0, 0)  # artery
+    rgb[1, 1] = (0, 0, 255)  # vein
+    rgb[2, 2] = (0, 255, 0)  # crossing: both
+    path = tmp_path / "01_h_AVmanual.png"
+    Image.fromarray(rgb).save(path)
+    artery, vein = reference_data.load_av_label(path)
+    assert artery[0, 0] and not vein[0, 0]
+    assert vein[1, 1] and not artery[1, 1]
+    assert artery[2, 2] and vein[2, 2]
+    assert artery.sum() == 2 and vein.sum() == 2

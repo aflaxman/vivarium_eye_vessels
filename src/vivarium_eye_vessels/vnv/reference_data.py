@@ -2,11 +2,17 @@
 
 Currently supports the healthy subset of the HRF (High-Resolution Fundus)
 image database: 15 fundus photographs of healthy eyes with binary vessel
-segmentations hand-labeled by experts.
+segmentations hand-labeled by experts, and the artery/vein labels of the
+same 15 eyes.
 
     Budai A, Bock R, Maier A, Hornegger J, Michelson G. Robust Vessel
     Segmentation in Fundus Images. Int J Biomed Imaging, 2013.
     https://www5.cs.fau.de/research/data/fundus-images/
+
+    Hemelings R, Elen B, Stalmans I, Van Keer K, De Boever P, Blaschko MB.
+    Artery-vein segmentation in fundus images using a fully convolutional
+    network. Comput Med Imaging Graph, 2019.
+    https://github.com/rubenhx/av-segmentation
 
 The dataset is free for research use. Masks are cached locally (default
 ``~/.cache/vivarium_eye_vessels``, override with the ``VEV_DATA_DIR``
@@ -97,3 +103,42 @@ def load_mask(path: Path) -> np.ndarray:
     """Load a vessel mask as a binary-ish uint8 array."""
     with Image.open(path) as image:
         return np.array(image.convert("L"))
+
+
+HRF_AV_URL = "https://raw.githubusercontent.com/rubenhx/av-segmentation/master/HRF_AV_GT/"
+
+
+def fetch_hrf_av_labels() -> list[Path]:
+    """Download (if needed) and return the artery/vein labels of the HRF healthy eyes.
+
+    Hemelings et al. labeled every vessel pixel of the 45 HRF images as
+    artery or vein (pixels where the two cross in a third class) and
+    published the labels as supplementary material to their 2019 paper (see
+    the module docstring). The 15 healthy eyes' labels partition the HRF
+    healthy masks pixel for pixel -- same images, same vessel pixels -- so
+    the artery/vein targets are read on the very eyes the other fundus
+    targets come from. Cached beside the masks; label ``NN_h_AVmanual.png``
+    pairs with mask ``NN_h.tif``.
+    """
+    cache = get_cache_dir() / "hrf_av_gt"
+    labels = [cache / f"{number:02d}_h_AVmanual.png" for number in range(1, 16)]
+    if all(path.exists() for path in labels):
+        return labels
+    cache.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading HRF artery/vein labels to {cache} ...")
+    for path in labels:
+        if not path.exists():
+            urllib.request.urlretrieve(HRF_AV_URL + path.name, path)
+    return labels
+
+
+def load_av_label(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """An artery/vein label as two boolean masks, (artery, vein).
+
+    The labels color arteries red, veins blue and the pixels where the two
+    cross green; a crossing pixel belongs to both vessels.
+    """
+    with Image.open(path) as image:
+        rgb = np.asarray(image.convert("RGB")) > 127
+    red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    return red | green, blue | green

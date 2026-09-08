@@ -218,6 +218,14 @@ class FlowRemodeler(Component):
             # emptied); the bed regresses its own dead ends instead. 0 puts
             # every segment in the solve (legacy)
             "capillary_radius": 0.0,
+            # With solve_bed the capillary bed carries flow in the solve --
+            # the arteriole tree drains through it into the venules, as it
+            # does in a retina -- while capillary_radius still keeps the bed
+            # out of the shear medians, the pruning and the adaptation. A
+            # terminal arteriole that feeds the bed then carries real flow,
+            # rather than reading as a dead end whose only rescue was a
+            # visible-caliber anastomosis onto the other tree
+            "solve_bed": False,
         }
     }
 
@@ -262,7 +270,10 @@ class FlowRemodeler(Component):
 
     def solve_network(self, pop: pd.DataFrame) -> pd.DataFrame | None:
         """Poiseuille flow and shear per frozen segment, or None if unsolvable."""
-        edges = vessel_edges(pop, capillary_radius=float(self.config.capillary_radius))
+        solve_radius = (
+            0.0 if bool(self.config.solve_bed) else float(self.config.capillary_radius)
+        )
+        edges = vessel_edges(pop, capillary_radius=solve_radius)
         if edges.empty:
             return None
         roots = pop[

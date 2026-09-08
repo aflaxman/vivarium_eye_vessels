@@ -118,3 +118,49 @@ def test_tree_segment_lengths_on_known_tree():
     )
     lengths = metrics.tree_segment_lengths(pop)
     np.testing.assert_allclose(sorted(lengths), [1.0, 2.0, 3.0])
+
+
+def test_terminal_tips_never_split_and_taper_faster():
+    from types import SimpleNamespace
+
+    from vivarium_eye_vessels.components.particles import PathFreezer, PathSplitter
+
+    splitter = PathSplitter()
+    splitter.config = SimpleNamespace(
+        split_probability=0.9,
+        caliber_cadence_exponent=0.0,
+        min_radius=0.002,
+        capillary_radius=0.00095,
+        terminal_radius=0.004,
+        side_branch_flow=0.0,
+        side_branch_start_time="2000-01-01",
+    )
+    splitter.side_branch_start = pd.Timestamp("2000-01-01")
+    splitter.clock = lambda: pd.Timestamp("2025-01-10")
+    active = pd.DataFrame({"radius": [0.0009, 0.003, 0.004, 0.0041, 0.008], "vessel_type": 1})
+    probabilities = splitter.split_probabilities(active).to_numpy()
+    assert list(probabilities[:3]) == [0.0, 0.0, 0.0]
+    assert probabilities[3] == probabilities[4] == 0.9
+
+    freezer = PathFreezer()
+    freezer.config = SimpleNamespace(
+        radius_taper=0.998, terminal_radius=0.004, terminal_taper=0.98, terminal_floor=0.0
+    )
+    tapered = freezer.tapered(np.array([0.003, 0.004, 0.005, 0.0]))
+    np.testing.assert_allclose(tapered, [0.003 * 0.98, 0.004 * 0.98, 0.005 * 0.998, 0.0])
+    freezer.config = SimpleNamespace(
+        radius_taper=0.998, terminal_radius=0.0, terminal_taper=0.98, terminal_floor=0.0
+    )
+    np.testing.assert_allclose(freezer.tapered(np.array([0.003])), [0.003 * 0.998])
+    # Below the floor a fading terminal tip becomes a capillary at once
+    freezer.config = SimpleNamespace(
+        radius_taper=0.998,
+        terminal_radius=0.004,
+        terminal_taper=0.98,
+        terminal_floor=0.0019,
+        terminal_floor_radius=0.0009,
+    )
+    np.testing.assert_allclose(
+        freezer.tapered(np.array([0.0019, 0.0025, 0.005])),
+        [0.0009, 0.0025 * 0.98, 0.005 * 0.998],
+    )

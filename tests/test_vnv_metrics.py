@@ -537,3 +537,21 @@ def test_load_av_label_reads_the_three_colors(tmp_path):
     assert vein[1, 1] and not artery[1, 1]
     assert artery[2, 2] and vein[2, 2]
     assert artery.sum() == 2 and vein.sum() == 2
+
+
+def test_terminal_shares_tell_a_tree_from_a_ladder():
+    # A trunk with free-ending twigs: every thin branch terminates
+    tree = np.zeros((80, 120), dtype=bool)
+    tree[38:42, 5:115] = True  # 4-px trunk
+    for col in range(15, 110, 15):
+        tree[10:38, col] = True  # 1-px twigs ending in the open
+    branches = metrics.skeleton_branches(metrics.vessel_skeleton(tree), tree)
+    shares = metrics.terminal_shares(branches)
+    assert shares["thin_terminal_share"] == 1.0
+    # A ladder: the same twigs closed by a second rail run junction to junction
+    ladder = tree.copy()
+    ladder[8:12, 5:115] = True
+    branches = metrics.skeleton_branches(metrics.vessel_skeleton(ladder), ladder)
+    rungs = branches[branches.length_px > 20]
+    assert len(rungs) == 7 and not rungs.terminal.any()
+    assert "thin_terminal_share" in metrics.image_metrics(ladder)

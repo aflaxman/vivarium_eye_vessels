@@ -159,3 +159,23 @@ def test_disabled_wave_leaves_dynamics_unchanged():
     simulation.run_steps(sim_without, 45)
     attributes = ["x", "y", "z", "frozen", "path_id", "radius"]
     assert sim_off.get_population(attributes).equals(sim_without.get_population(attributes))
+
+
+def test_walls_beside_unserved_tissue_sprout_new_branches():
+    sim, wave = build_sim(
+        wall_sprout_interval=1, wall_sprouts_per_round=3, wall_sprout_age_days=0.0
+    )
+    simulation.run_steps(sim, 30)
+    pop = sim.get_population(["frozen", "path_id", "vessel_type", "parent_id"])
+    frozen = pop[pop.frozen & (pop.path_id >= 0) & (pop.vessel_type == VESSEL_TYPE_ARTERY)]
+    assert not frozen.empty
+    wave.radius = 3.0  # the whole field is exposed, so unserved tissue lies beside every wall
+    wave.wall_sprout(VESSEL_TYPE_ARTERY, SimpleNamespace(index=pop.index))
+    after = sim.get_population(["frozen", "path_id", "vessel_type", "parent_id"])
+    sprouts = after[
+        ~after.frozen
+        & (after.path_id >= 0)
+        & (after.vessel_type == VESSEL_TYPE_ARTERY)
+        & after.parent_id.isin(frozen.index)
+    ]
+    assert len(sprouts) > 0, "established walls beside unserved tissue should sprout"

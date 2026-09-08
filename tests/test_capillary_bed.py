@@ -483,3 +483,38 @@ def test_sprouts_never_take_a_recycled_capillary_as_their_wall():
     # A sprout's first frozen particle may sit a freeze interval from its wall
     # (~0.1); a chord to a reused slot is measured in units
     assert gaps.max() < 0.2
+
+
+def test_repulsion_reach_scales_with_tip_caliber():
+    sim, bed, repulsion, _ = build()
+    repulsion.reach_reference_radius = 0.008
+    repulsion.reach_exponent = 1.0
+    radii = np.array([0.0009, 0.002, 0.004, 0.008, 0.016])
+    reach = repulsion.reach_for(radii)
+    # capillary tips keep their own short reach; a 1 px twig reaches a quarter
+    # of the way; the reference caliber and anything wider get the full reach
+    assert reach[0] == repulsion.capillary_interaction_radius
+    assert np.isclose(reach[1], repulsion.interaction_radius * 0.25)
+    assert np.isclose(reach[2], repulsion.interaction_radius * 0.5)
+    assert reach[3] == reach[4] == repulsion.interaction_radius
+    # and a twig beyond its scaled reach of a wall feels nothing an arcade tip feels
+    pop = population(sim, bed)
+    wall = pop[pop.frozen & (pop.path_id >= 0)].iloc[0]
+    tips = pd.DataFrame(
+        {
+            "x": wall.x + 0.6 * repulsion.interaction_radius,
+            "y": wall.y,
+            "z": wall.z,
+            "frozen": False,
+            "path_id": [9001, 9002],
+            "parent_id": -1,
+            "freeze_time": pd.NaT,
+            "vessel_type": 1,
+            "radius": [0.002, 0.016],
+        }
+    )
+    forces = repulsion.calculate_forces_vectorized(tips)
+    assert np.linalg.norm(forces[0]) == 0.0
+    assert np.linalg.norm(forces[1]) > 0.0
+    repulsion.reach_reference_radius = 0.0
+    assert np.linalg.norm(repulsion.calculate_forces_vectorized(tips)[0]) > 0.0

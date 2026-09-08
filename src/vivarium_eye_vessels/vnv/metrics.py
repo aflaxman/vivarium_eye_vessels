@@ -633,13 +633,17 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
     Junction pixels (3+ skeleton neighbors) are removed; each remaining
     connected component of at least ``MIN_BRANCH_PIXELS`` is one branch.
     Returns per-branch arc lengths and endpoint chord distances (their ratio
-    is the tortuosity). When the ``binary`` vessel image is given, each
-    branch also gets a ``diameter_px``: twice the mean distance-transform
-    value along the branch (the medial-axis width estimate), which recovers
-    local caliber even from masks that carry no explicit radii.
+    is the tortuosity), and whether the branch is ``terminal`` -- ends at a
+    free skeleton end rather than running junction to junction. When the
+    ``binary`` vessel image is given, each branch also gets a
+    ``diameter_px``: twice the mean distance-transform value along the
+    branch (the medial-axis width estimate), which recovers local caliber
+    even from masks that carry no explicit radii.
     """
     skeleton = skeleton.astype(bool)
-    junctions = skeleton & (neighbor_counts(skeleton) >= 3)
+    counts = neighbor_counts(skeleton)
+    junctions = skeleton & (counts >= 3)
+    free_ends = skeleton & (counts == 1)
     branches = skeleton & ~junctions
 
     edt = None if binary is None else ndimage.distance_transform_edt(binary)
@@ -659,17 +663,72 @@ def skeleton_branches(skeleton: np.ndarray, binary: np.ndarray | None = None) ->
             chord = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0)))
         if chord < 1:
             continue
-        record = {"length_px": chain_arc_length(coords.astype(float)), "chord_px": chord}
+        record = {
+            "length_px": chain_arc_length(coords.astype(float)),
+            "chord_px": chord,
+            "terminal": bool((branch_img & free_ends[slc]).any()),
+        }
         if edt is not None:
             offset = np.array([s.start for s in slc])
             rows, cols = (coords + offset).T
             record["diameter_px"] = float(2.0 * edt[rows, cols].mean())
         records.append(record)
 
-    columns = ["length_px", "chord_px"] + ([] if edt is None else ["diameter_px"])
+    columns = ["length_px", "chord_px", "terminal"] + ([] if edt is None else ["diameter_px"])
     frame = pd.DataFrame(records, columns=columns)
     frame["tortuosity"] = frame.length_px / frame.chord_px
     return frame
+
+
+def crossing_share(skeleton: np.ndarray) -> float:
+    """The share of junction clusters that are crossings: four or more branches meet.
+
+    Two vessels crossing in projection make a junction with four arms; a
+    bifurcation has three. In a fundus the crossings are the arteries
+    passing over the veins, a small share of all junctions; a network
+    whose branches pass through one another in the same plane reads a
+    larger one. Junction clusters (connected pixels with three or more
+    skeleton neighbours) are counted once; the arms are the distinct
+    skeleton branches touching the cluster. NaN without junctions.
+    """
+    skeleton = np.asarray(skeleton, dtype=bool)
+    counts = neighbor_counts(skeleton)
+    junction = skeleton & (counts >= 3)
+    clusters, n_clusters = ndimage.label(junction, structure=np.ones((3, 3)))
+    if n_clusters == 0:
+        return float("nan")
+    branches, _ = ndimage.label(skeleton & ~junction, structure=np.ones((3, 3)))
+    # each branch pixel's label spread one pixel out, so a cluster's
+    # neighbourhood reads the labels of the branches that touch it
+    spread = ndimage.grey_dilation(branches, size=3)
+    crossings = 0
+    for slc, label in zip(ndimage.find_objects(clusters), range(1, n_clusters + 1)):
+        window = tuple(slice(max(s.start - 1, 0), s.stop + 1) for s in slc)
+        mask = ndimage.binary_dilation(clusters[window] == label, np.ones((3, 3)))
+        arms = np.unique(spread[window][mask])
+        if len(arms) - (1 if 0 in arms else 0) >= 4:
+            crossings += 1
+    return crossings / n_clusters
+
+
+def terminal_shares(branches: pd.DataFrame) -> dict[str, float]:
+    """The share of thin and of mid-caliber branches that end freely.
+
+    A vascular tree's fine vessels are its leaves: in a fundus mask most
+    branches at or below 2 px end at a free skeleton end (they taper out of
+    sight), and a good third of the 2-4 px branches do too. A network whose
+    thin vessels instead run junction to junction -- closing loops, or
+    joining the other tree at visible caliber -- reads as a net, however
+    well its densities and caliber composition match. ``thin`` is at most
+    2 px, ``mid`` 2-4 px (the composition classes); NaN without branches.
+    """
+    diameter = branches.diameter_px.to_numpy(dtype=float)
+    terminal = branches.terminal.to_numpy(dtype=bool)
+    thin, mid = diameter <= 2.0, (diameter > 2.0) & (diameter <= 4.0)
+    return {
+        "thin_terminal_share": float(terminal[thin].mean()) if thin.any() else float("nan"),
+        "mid_terminal_share": float(terminal[mid].mean()) if mid.any() else float("nan"),
+    }
 
 
 def skeleton_pixel_diameters(
@@ -959,6 +1018,8 @@ def image_metrics(binary: np.ndarray) -> dict[str, Any]:
         "macular_clear_radius_px": clear_radius_px(
             skeleton, MACULA_SEARCH_MM / FUNDUS_MM_PER_PX
         ),
+        **terminal_shares(branches),
+        "crossing_share": crossing_share(skeleton),
         **arcade_geometry(binary),
     }
 

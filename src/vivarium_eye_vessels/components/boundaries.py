@@ -392,6 +392,16 @@ class FrozenRepulsion(BaseForceComponent):
             # capillary bed, it is not fenced out by it. 0 disables both
             "capillary_radius": 0.0,
             "capillary_interaction_radius": 0.0,
+            # A vessel's territory scales with its caliber: with
+            # reach_reference_radius > 0 a tip's repulsion reach is
+            # interaction_radius x (radius / reference) ** reach_exponent,
+            # clipped between capillary_interaction_radius and
+            # interaction_radius. Arcade tips keep the full reach; a 1 px twig
+            # feels frozen vessels only a few pixels away, as the fine
+            # branches of a fundus pack far closer than its arcades do. 0
+            # gives every non-capillary tip the full reach (legacy)
+            "reach_reference_radius": 0.0,
+            "reach_exponent": 1.0,
         }
     }
 
@@ -421,7 +431,32 @@ class FrozenRepulsion(BaseForceComponent):
         self.freeze_radius = float(config.freeze_radius)
         self.delay = float(config.delay)
         self.cross_type_factor = float(config.cross_type_factor)
+        self.reach_reference_radius = float(config.reach_reference_radius)
+        self.reach_exponent = float(config.reach_exponent)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+
+    def reach_for(self, tip_radii: np.ndarray) -> np.ndarray:
+        """Per-tip repulsion reach: caliber-scaled between the capillary and the full reach."""
+        reach = np.full(len(tip_radii), self.interaction_radius)
+        capillary_tip = (
+            (tip_radii > 0) & (tip_radii <= self.capillary_radius)
+            if self.capillary_interaction_radius > 0
+            else np.zeros(len(tip_radii), dtype=bool)
+        )
+        if self.reach_reference_radius > 0:
+            floor = (
+                self.capillary_interaction_radius
+                if self.capillary_interaction_radius > 0
+                else 0.0
+            )
+            calibered = tip_radii > 0
+            with np.errstate(divide="ignore", invalid="ignore"):
+                scaled = self.interaction_radius * np.power(
+                    tip_radii / self.reach_reference_radius, self.reach_exponent
+                )
+            reach[calibered] = np.clip(scaled[calibered], floor, self.interaction_radius)
+        reach[capillary_tip] = self.capillary_interaction_radius
+        return reach
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
         """Repulsion of every active tip from the frozen vessels within its reach.
@@ -458,10 +493,8 @@ class FrozenRepulsion(BaseForceComponent):
         )[frozen_idx]
 
         tip_radii = particles["radius"].to_numpy(dtype=float)
-        reach_by_tip = np.full(len(particles), self.interaction_radius)
-        if self.capillary_interaction_radius > 0:
-            capillary_tip = (tip_radii > 0) & (tip_radii <= self.capillary_radius)
-            reach_by_tip[capillary_tip] = self.capillary_interaction_radius
+        reach_by_tip = self.reach_for(tip_radii)
+        not_capillary_tip = ~((tip_radii > 0) & (tip_radii <= self.capillary_radius))
         reach = reach_by_tip[tip_idx]
         tip_path = particles.path_id.to_numpy()[tip_idx]
         tip_type = particles.vessel_type.to_numpy()[tip_idx]
@@ -469,7 +502,7 @@ class FrozenRepulsion(BaseForceComponent):
         keep = (frozen_path != tip_path) | (frozen_age > self.delay)
         if self.capillary_radius > 0:
             # A wide tip is not fenced out by the capillary bed
-            wide_tip = reach == self.interaction_radius
+            wide_tip = not_capillary_tip[tip_idx]
             frozen_capillary = (frozen_radius > 0) & (frozen_radius <= self.capillary_radius)
             keep &= ~(wide_tip & frozen_capillary)
         displacements = positions[tip_idx] - frozen_positions
@@ -1254,6 +1287,19 @@ class DevelopmentalWave(Component):
             "advance_threshold": 0.85,  # served fraction inside the front to advance
             "hold_resprout_steps": 15,  # held steps before targeted re-sprouting
             "resprout_count": 2,  # sprouts per stalled tree per trigger
+            # Wall sprouting (twenty-sixth pass): every wall_sprout_interval
+            # steps each tree sprouts wall_sprouts_per_round new branches from
+            # established superficial vessel walls that lie within
+            # wall_sprout_reach of tissue their tree does not yet serve --
+            # angiogenic sprouting along a vessel's length, not only at its
+            # advancing tips. Before it, tissue behind a vessel could be
+            # reached only by a tip from elsewhere crossing that vessel.
+            # Walls younger than wall_sprout_age_days (the trail just behind
+            # a tip) do not sprout. 0 disables
+            "wall_sprout_interval": 0,
+            "wall_sprouts_per_round": 4,
+            "wall_sprout_reach": 0.3,
+            "wall_sprout_age_days": 1.0,
             # "combined" advances on any-vessel service of the tissue behind
             # the front; "per_type" requires every tree to serve it before
             # advancing. Combined is the validated default: the artery tree
@@ -1275,6 +1321,9 @@ class DevelopmentalWave(Component):
             builder.configuration.particles.initial_circle.center, dtype=float
         )
         self.hold_steps: Dict[int | None, int] = {}
+        self.step_count = 0
+        self.clock = builder.time.clock()
+        self.randomness = builder.randomness.get_stream("developmental_wave")
         demands = builder.components.get_components_by_type(PerfusionDemand)
         self.demand = demands[0] if demands else None
         splitters = builder.components.get_components_by_type(PathSplitter)
@@ -1334,6 +1383,48 @@ class DevelopmentalWave(Component):
             types = (VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN) if check is None else (check,)
             for vessel_type in types:
                 self.resprout_toward_stall(vessel_type, event)
+        interval = int(self.config.wall_sprout_interval)
+        self.step_count += 1
+        if interval > 0 and self.step_count % interval == 0:
+            for vessel_type in (VESSEL_TYPE_ARTERY, VESSEL_TYPE_VEIN):
+                self.wall_sprout(vessel_type, event)
+
+    def wall_sprout(self, vessel_type: int, event: Event) -> None:
+        """Sprout a tree from established walls beside tissue it does not serve.
+
+        Candidate walls are frozen, non-capillary, superficial vessels of the
+        tree, frozen at least ``wall_sprout_age_days`` ago, within
+        ``wall_sprout_reach`` of a hypoxic site of their type; up to
+        ``wall_sprouts_per_round`` of them, drawn at random, side-branch
+        through the splitter (depth ceiling and crowding gate apply).
+        """
+        if self.splitter is None:
+            return
+        sites = self.demand.hypoxic_sites(vessel_type)
+        if len(sites) == 0:
+            return
+        pop = self.population_view.get(event.index, self.splitter.required_attributes)
+        walls = pop[
+            pop.frozen
+            & (pop.path_id >= 0)
+            & (pop.vessel_type == vessel_type)
+            & (pop.layer_id == 0)
+        ]
+        walls = walls[~self.splitter.is_capillary(walls.radius)]
+        age = pd.Timedelta(days=float(self.config.wall_sprout_age_days))
+        walls = walls[(self.clock() - walls.freeze_time) >= age]
+        if walls.empty:
+            return
+        distances, _ = cKDTree(sites).query(walls[["x", "y", "z"]].to_numpy(dtype=float), k=1)
+        near = walls.index[distances <= float(self.config.wall_sprout_reach)]
+        if len(near) == 0:
+            return
+        count = int(self.config.wall_sprouts_per_round)
+        draws = self.randomness.get_draw(
+            pd.Index(near), additional_key=f"wall_sprout_{vessel_type}"
+        )
+        chosen = pd.Index(near)[np.argsort(draws.to_numpy())[:count]]
+        self.splitter.resprout_at(pop, chosen)
 
     def resprout_toward_stall(self, vessel_type: int, event: Event) -> None:
         """Sprout the stalled tree from frozen vessels nearest unserved tissue.

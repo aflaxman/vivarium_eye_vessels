@@ -174,6 +174,9 @@ def tree_edges(pop: pd.DataFrame) -> pd.DataFrame:
                 "z1": children.z.values,
                 "child": children.index.values,
                 "parent": other_ids.values,
+                # A segment ending at a growth tip is not yet a vessel: the
+                # V&V rasters draw frozen children only
+                "frozen": children.frozen.values,
                 "radius": children.radius.values,
                 "vessel_type": children.vessel_type.values,
                 "layer_id": children.layer_id.values,

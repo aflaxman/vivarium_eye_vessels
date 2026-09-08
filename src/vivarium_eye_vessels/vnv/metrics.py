@@ -362,6 +362,47 @@ def angiogram_vessels(image: np.ndarray, mm_per_px: float) -> np.ndarray:
     return smooth > threshold_local(smooth, block, offset=ANGIOGRAM_OFFSET)
 
 
+def capillary_morphology(
+    skeleton: np.ndarray, excluded: np.ndarray, mm_per_px: float
+) -> dict[str, float]:
+    """How a capillary skeleton is put together, outside ``excluded`` (the FAZ).
+
+    ``octa_junctions_per_mm2``: junctions per tissue area, a junction being a
+    connected cluster of skeleton pixels with three or more skeleton
+    neighbours (a crossing or a branch point spans a few such pixels) --
+    branch points and, in a projection, crossings. ``octa_segment_length_um``: median length of the skeleton
+    branches between junctions (:func:`skeleton_branches`). ``octa_segment_
+    tortuosity``: mean arc-to-chord ratio of those branches. Read the same
+    way on the ROSE-1 labels and on the model's OCTA window; a bed of long
+    straight chords reads as many crossings and low tortuosity, a honeycomb
+    as fewer junctions and more bend.
+    """
+    outside = ~np.asarray(excluded, dtype=bool)
+    skeleton = np.asarray(skeleton, dtype=bool) & outside
+    empty = {
+        "octa_junctions_per_mm2": 0.0,
+        "octa_segment_length_um": float("nan"),
+        "octa_segment_tortuosity": float("nan"),
+    }
+    if not skeleton.any() or not outside.any():
+        return empty
+    _, junctions = ndimage.label(
+        skeleton & (neighbor_counts(skeleton) >= 3), structure=np.ones((3, 3))
+    )
+    branches = skeleton_branches(skeleton)
+    result = dict(empty)
+    result["octa_junctions_per_mm2"] = junctions / (outside.sum() * mm_per_px**2)
+    if len(branches):
+        lengths = branches.length_px.to_numpy(dtype=float)
+        chords = branches.chord_px.to_numpy(dtype=float)
+        ratio = lengths[chords > 0] / chords[chords > 0]
+        result["octa_segment_length_um"] = float(np.median(lengths) * mm_per_px * 1000)
+        result["octa_segment_tortuosity"] = (
+            float(ratio.mean()) if len(ratio) else float("nan")
+        )
+    return result
+
+
 def capillary_statistics(
     skeleton: np.ndarray, excluded: np.ndarray, mm_per_px: float
 ) -> dict[str, float]:
@@ -682,6 +723,7 @@ def wide_junction_spacing(
 WIDE_DIAMETER_PX = 4.0  # the arcade class: wide_share, junction spacing, reach
 THICK_DIAMETER_PX = 6.0  # the caliber a real arcade rarely exceeds at this raster
 ARCADE_MIN_DISC_DISTANCE_PX = 100.0  # alignment is read clear of the disc's convergence
+AV_COVERAGE_MM = 0.7  # tissue within this of a tree's skeleton counts as reached by it
 
 
 def local_orientation(skeleton: np.ndarray, size: int = 7) -> np.ndarray:
@@ -781,6 +823,114 @@ def arcade_geometry(binary: np.ndarray, disc: np.ndarray | None = None) -> dict[
         "arcade_reach_px": float(distance.mean()),
         "thick_share": float((diameters[skeleton] > THICK_DIAMETER_PX).mean()),
     }
+
+
+def artery_vein_statistics(
+    artery: np.ndarray, vein: np.ndarray, disc: np.ndarray | None = None
+) -> dict[str, float]:
+    """How the two trees share a fundus-sized image, read alike on labels and rasters.
+
+    ``artery`` and ``vein`` are binary images of one eye's two trees; a
+    pixel may lie in both (a crossing). The disc is estimated from the
+    pooled image (:func:`arcade_geometry`) unless given as (row, col).
+
+    - ``artery_length_share``: artery skeleton length over the two trees'
+      total. A healthy eye's trees run equal lengths.
+    - ``artery_thick_share``: the artery share of skeleton length wider than
+      ``THICK_DIAMETER_PX`` -- the top of the caliber profile, where a model
+      whose arteries never reach arcade caliber shows first.
+    - ``arcade_caliber_ratio_px``: the raster AVR. Within ``AVR_ZONE`` of the
+      disc, the mean of the top decile of each tree's skeleton-pixel
+      diameters (the largest vessels, as CRAE/CRVE takes the widest six),
+      artery over vein. Block averaging thins every vessel by the same
+      fraction of a pixel and compresses the ratio toward one for both
+      sources alike, so this is not the clinical 0.67 and is not compared
+      to it.
+    - ``av_crossing_share``: pixels in both trees over all vessel pixels --
+      how often the trees cross in projection.
+    - ``av_spacing_mm``: the median distance from a skeleton pixel of one
+      tree to the nearest skeleton pixel of the other, averaged over the two
+      directions, in mm at the fundus scale: how finely the trees
+      interdigitate.
+    - ``artery_coverage``, ``vein_coverage``: the share of the imaged region
+      within ``AV_COVERAGE_MM`` of each tree's skeleton, the image-side
+      counterpart of the model's supply and drainage fractions.
+
+    NaN where a statistic has nothing to read (an absent tree, no thick
+    skeleton, too little skeleton in the zone).
+    """
+    artery = np.asarray(artery, dtype=bool)
+    vein = np.asarray(vein, dtype=bool)
+    both = artery | vein
+    nan = float("nan")
+    result = {
+        "artery_length_share": nan,
+        "artery_thick_share": nan,
+        "arcade_caliber_ratio_px": nan,
+        "av_crossing_share": nan,
+        "av_spacing_mm": nan,
+        "artery_coverage": nan,
+        "vein_coverage": nan,
+    }
+    if not both.any():
+        return result
+    skeletons = {"artery": vessel_skeleton(artery), "vein": vessel_skeleton(vein)}
+    diameters = {
+        "artery": 2.0 * ndimage.distance_transform_edt(artery),
+        "vein": 2.0 * ndimage.distance_transform_edt(vein),
+    }
+    lengths = {key: int(skeleton.sum()) for key, skeleton in skeletons.items()}
+    total = lengths["artery"] + lengths["vein"]
+    if total == 0:
+        return result
+    result["artery_length_share"] = lengths["artery"] / total
+    thick = {
+        key: int((diameters[key][skeletons[key]] > THICK_DIAMETER_PX).sum())
+        for key in skeletons
+    }
+    if thick["artery"] + thick["vein"]:
+        result["artery_thick_share"] = thick["artery"] / (thick["artery"] + thick["vein"])
+    result["av_crossing_share"] = float((artery & vein).sum() / both.sum())
+
+    if disc is None:
+        geometry = arcade_geometry(both)
+        disc = np.array([geometry["disc_row_px"], geometry["disc_col_px"]])
+    disc = np.asarray(disc, dtype=float)
+
+    def zone_caliber(key: str) -> float:
+        # The largest vessels of one tree in the AVR zone: the top decile of
+        # its skeleton-pixel diameters there
+        if not np.all(np.isfinite(disc)):
+            return nan
+        rows, cols = np.nonzero(skeletons[key])
+        distance = np.hypot(rows - disc[0], cols - disc[1]) / FUNDUS_PX_PER_UNIT
+        in_zone = (distance >= AVR_ZONE[0]) & (distance < AVR_ZONE[1])
+        values = np.sort(diameters[key][rows[in_zone], cols[in_zone]])
+        if len(values) < 10:
+            return nan
+        return float(values[-(len(values) // 10) :].mean())
+
+    artery_caliber, vein_caliber = zone_caliber("artery"), zone_caliber("vein")
+    if np.isfinite(artery_caliber) and np.isfinite(vein_caliber) and vein_caliber > 0:
+        result["arcade_caliber_ratio_px"] = artery_caliber / vein_caliber
+
+    if lengths["artery"] and lengths["vein"]:
+        to_artery = ndimage.distance_transform_edt(~skeletons["artery"])
+        to_vein = ndimage.distance_transform_edt(~skeletons["vein"])
+        result["av_spacing_mm"] = float(
+            np.mean(
+                [
+                    np.median(to_artery[skeletons["vein"]]),
+                    np.median(to_vein[skeletons["artery"]]),
+                ]
+            )
+            * FUNDUS_MM_PER_PX
+        )
+        region = imaged_region(both)
+        reach = AV_COVERAGE_MM / FUNDUS_MM_PER_PX
+        result["artery_coverage"] = float((to_artery[region] <= reach).mean())
+        result["vein_coverage"] = float((to_vein[region] <= reach).mean())
+    return result
 
 
 def image_metrics(binary: np.ndarray) -> dict[str, Any]:

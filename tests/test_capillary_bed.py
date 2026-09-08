@@ -436,3 +436,50 @@ def test_capillary_tips_may_fuse_onto_their_own_tree_when_allowed():
         tips, frozen, [[0, 1]], 0.004, capillary_radius=0.00095, capillary_any_tree=True
     )
     assert loose[10] == 20  # any capillary: the nearer artery capillary
+
+
+def test_regression_clears_joins_that_pointed_at_recycled_sprouts():
+    sim, bed, _, _ = build()
+    pop = population(sim, bed)
+    sites, layers = bed.hypoxic_sites()
+    bed.sprout(pop, sites, layers)
+    pop = population(sim, bed)
+    tips = pop[~pop.frozen & (pop.path_id >= 0) & (pop.radius <= 0.0009)].index[:2]
+    bed.starve(pop, np.empty((0, 3)), np.empty(0, dtype=int))  # both stop as dead ends
+    # A third particle claims to have fused onto the first tip; the first tip is
+    # not a join target in the population's eyes only if the join is on record
+    other = pop[pop.frozen & (pop.path_id >= 0) & (pop.radius > 0.001)].index[0]
+    bed.particles.update_particles(
+        pd.DataFrame({"anastomosis_id": [int(tips[0])]}, index=[other])
+    )
+    bed.particles.update_particles(
+        pd.DataFrame({"freeze_time": bed.clock() - pd.Timedelta(days=10)}, index=tips)
+    )
+    pop = population(sim, bed)
+    bed.regress(pop)
+    pop = population(sim, bed)
+    assert pop.loc[tips[0], "frozen"]  # a join target is never regressed ...
+    assert pop.loc[other, "anastomosis_id"] == tips[0]  # ... so the join stands
+    assert not pop.loc[tips[1], "frozen"]  # the unjoined dead end is recycled
+
+
+def test_sprouts_never_take_a_recycled_capillary_as_their_wall():
+    """A dead-end capillary regressed in the same step must not be a sprout's parent."""
+    sim, bed, _, _ = build()
+    for _ in range(120):  # long enough for dead ends to regress (2.5 days = 50 steps)
+        sim.step()
+    pop = population(sim, bed)
+    # Frozen capillary segments only: a growth tip legitimately runs ahead of its parent
+    sprouts = pop[
+        pop.frozen & (pop.parent_id >= 0) & (pop.radius <= 0.0009) & (pop.radius > 0)
+    ]
+    parents = pop.loc[sprouts.parent_id]
+    # Every capillary's parent is a frozen vessel next to it, never a pool particle
+    assert parents.frozen.all() and (parents.path_id >= 0).all()
+    gaps = np.sqrt(
+        (parents.x.to_numpy() - sprouts.x.to_numpy()) ** 2
+        + (parents.y.to_numpy() - sprouts.y.to_numpy()) ** 2
+    )
+    # A sprout's first frozen particle may sit a freeze interval from its wall
+    # (~0.1); a chord to a reused slot is measured in units
+    assert gaps.max() < 0.2

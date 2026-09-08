@@ -444,3 +444,96 @@ def test_angiogram_vessels_finds_bright_vessels_in_speckle():
     # ... with their one-pixel smoothing halo, and little speckle besides
     halo = ndimage.binary_dilation(truth, iterations=2)
     assert (mask & ~halo).mean() < 0.02
+
+
+def test_capillary_morphology_counts_junctions_segments_and_bend():
+    # A square lattice of straight lines 40 px apart: junctions at the
+    # crossings, segments of ~40 px, no bend
+    skeleton = np.zeros((401, 401), dtype=bool)
+    skeleton[::40, :] = True
+    skeleton[:, ::40] = True
+    stats = metrics.capillary_morphology(skeleton, np.zeros_like(skeleton), mm_per_px=0.01)
+    assert abs(stats["octa_junctions_per_mm2"] - 121 / (401 * 401 * 0.01**2)) < 1.0
+    assert 30 * 10 < stats["octa_segment_length_um"] < 40 * 10
+    assert stats["octa_segment_tortuosity"] < 1.05
+    # Nothing outside the exclusion: an empty result, not an error
+    stats = metrics.capillary_morphology(skeleton, np.ones_like(skeleton), mm_per_px=0.01)
+    assert stats["octa_junctions_per_mm2"] == 0.0 and np.isnan(
+        stats["octa_segment_length_um"]
+    )
+
+
+def test_tree_edges_flag_segments_that_end_at_growth_tips():
+    from vivarium_eye_vessels.vnv import simulation
+
+    pop = pd.DataFrame(
+        {
+            "x": [0.0, 0.1, 0.2],
+            "y": [0.0, 0.0, 0.0],
+            "z": [0.0, 0.0, 0.0],
+            "frozen": [True, True, False],
+            "path_id": [1, 1, 1],
+            "parent_id": [-1, 0, 1],
+            "radius": [0.01, 0.01, 0.01],
+            "vessel_type": [1, 1, 1],
+            "layer_id": [0, 0, 0],
+            "anastomosis_id": [-1, -1, -1],
+        },
+        index=[0, 1, 2],
+    )
+    edges = simulation.tree_edges(pop)
+    assert list(edges.frozen) == [True, False]  # the tip's own segment is flagged
+
+
+def test_artery_vein_statistics_on_parallel_bars():
+    # A 4-px artery and an 8-px vein running side by side, 21 px between
+    # their centerlines: equal lengths, no crossings, all the thick skeleton
+    # venous, raster AVR 0.5, spacing the centerline gap
+    artery = np.zeros((200, 200), dtype=bool)
+    vein = np.zeros((200, 200), dtype=bool)
+    artery[40:44, 10:190] = True
+    vein[60:68, 10:190] = True
+    stats = metrics.artery_vein_statistics(artery, vein, disc=(100.0, 100.0))
+    assert abs(stats["artery_length_share"] - 0.5) < 0.02
+    assert stats["av_crossing_share"] == 0.0
+    assert stats["artery_thick_share"] == 0.0
+    assert abs(stats["arcade_caliber_ratio_px"] - 0.5) < 0.05
+    assert abs(stats["av_spacing_mm"] / metrics.FUNDUS_MM_PER_PX - 21.5) < 1.5
+    assert stats["artery_coverage"] > 0.9 and stats["vein_coverage"] > 0.9
+
+
+def test_artery_vein_statistics_count_crossings():
+    artery = np.zeros((120, 120), dtype=bool)
+    vein = np.zeros((120, 120), dtype=bool)
+    artery[58:62, 10:110] = True
+    vein[10:110, 58:62] = True
+    stats = metrics.artery_vein_statistics(artery, vein, disc=(0.0, 0.0))
+    expected = 16 / (2 * 400 - 16)
+    assert abs(stats["av_crossing_share"] - expected) < 1e-6
+    assert abs(stats["artery_length_share"] - 0.5) < 0.02
+
+
+def test_artery_vein_statistics_with_one_tree_absent():
+    artery = np.zeros((50, 50), dtype=bool)
+    artery[20:24, 5:45] = True
+    stats = metrics.artery_vein_statistics(artery, np.zeros_like(artery))
+    assert stats["artery_length_share"] == 1.0
+    assert np.isnan(stats["av_spacing_mm"]) and np.isnan(stats["arcade_caliber_ratio_px"])
+
+
+def test_load_av_label_reads_the_three_colors(tmp_path):
+    from PIL import Image
+
+    from vivarium_eye_vessels.vnv import reference_data
+
+    rgb = np.zeros((4, 4, 3), dtype=np.uint8)
+    rgb[0, 0] = (255, 0, 0)  # artery
+    rgb[1, 1] = (0, 0, 255)  # vein
+    rgb[2, 2] = (0, 255, 0)  # crossing: both
+    path = tmp_path / "01_h_AVmanual.png"
+    Image.fromarray(rgb).save(path)
+    artery, vein = reference_data.load_av_label(path)
+    assert artery[0, 0] and not vein[0, 0]
+    assert vein[1, 1] and not artery[1, 1]
+    assert artery[2, 2] and vein[2, 2]
+    assert artery.sum() == 2 and vein.sum() == 2

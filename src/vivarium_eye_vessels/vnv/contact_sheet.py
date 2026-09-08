@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-from vivarium_eye_vessels.vnv import metrics, reference_data, simulation
+from vivarium_eye_vessels.vnv import calibrate, metrics, reference_data, simulation
 
 DEFAULT_SEEDS = "11,202,909,4242"
 DEFAULT_MASKS = "03_h.tif,06_h.tif,09_h.tif,14_h.tif"
@@ -40,8 +40,13 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
+    edges = edges[edges.frozen]  # vessels only, as the V&V rasters draw them
     fundus = edges[edges.layer_id == 0]
     raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
+    # The two trees drawn alone in the fundus window: how the artery tree
+    # keeps up with the vein tree is the balance vital of a seed
+    trees = calibrate.tree_windows(fundus, geometry.bounds, metrics.FUNDUS_WINDOW_SHAPE)
+    balance = metrics.artery_vein_statistics(trees["artery"], trees["vein"])
     return {
         "seed": seed,
         "raster": raster,
@@ -67,6 +72,8 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
         )
         * metrics.FUNDUS_MM_PER_PX,
         "n_frozen": int(pop.frozen.sum()),
+        "artery_length_share": balance["artery_length_share"],
+        "arcade_caliber_ratio_px": balance["arcade_caliber_ratio_px"],
     }
 
 
@@ -100,6 +107,8 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
             f"arterial {run['arterial_supply_fraction']:.2f}, "
             f"skeleton {run['skeleton_density']*100:.2f}%, "
             f"macula r={run['macular_clear_radius_mm']:.2f} mm, "
+            f"arteries {run['artery_length_share']:.0%} of length, "
+            f"raster AVR {run['arcade_caliber_ratio_px']:.2f}, "
             f"n_frozen {run['n_frozen']} "
             f"({(time.time() - start) / 60:.1f} min)"
         )
@@ -118,7 +127,9 @@ def main(model_spec: str, seeds: str, masks: str, steps: int, output_dir: str):
             f"(arterial {run['arterial_supply_fraction']:.0%})"
             + ("" if reliable else "  [STALLED]")
             + f"\nskeleton {run['skeleton_density']*100:.1f}%, "
-            f"macular clear radius {run['macular_clear_radius_mm']:.2f} mm",
+            f"macular clear radius {run['macular_clear_radius_mm']:.2f} mm"
+            f"\narteries {run['artery_length_share']:.0%} of length (HRF 50%), "
+            f"raster AVR {run['arcade_caliber_ratio_px']:.2f} (HRF 0.86)",
             fontsize=11,
             color="black" if reliable else "firebrick",
         )

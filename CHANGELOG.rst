@@ -1,3 +1,133 @@
+**v0.33.0 - 09/08/26**
+
+ - Artery/vein balance, from the labels of the same eyes
+
+   - **Reference.** Hemelings et al. (2019) labeled every vessel pixel of
+     the HRF images as artery or vein, crossings in a third class, and
+     published the labels as supplementary material; the 15 healthy eyes'
+     labels partition the HRF healthy masks pixel for pixel, so the
+     artery/vein targets are read on the very eyes the fundus targets come
+     from (``reference_data.fetch_hrf_av_labels``, downloaded on first use)
+   - **Measurement.** ``metrics.artery_vein_statistics`` reads the two
+     trees of a fundus-sized image, each drawn alone: the artery share of
+     skeleton length (HRF 0.50 +/- 0.01), the artery share of the thick
+     (> 6 px) skeleton (0.23 +/- 0.05), the raster AVR -- top-decile
+     skeleton-pixel diameters within the AVR zone, artery over vein (0.86
+     +/- 0.04) -- the share of vessel pixels where the trees cross (0.061
+     +/- 0.025) and the median distance from one tree's skeleton to the
+     other's (0.31 +/- 0.03 mm), plus each tree's coverage of the imaged
+     region (0.97) as an unscored vital. Five new scored targets; the
+     particle-level trunk ratio ``artery_vein_caliber_ratio`` is reported
+     but no longer scored against the clinical 0.67. Block averaging thins
+     every vessel by the same fraction of a pixel and compresses the
+     caliber ratio toward one on both sources alike: under the harness
+     conventions the healthy eyes read 0.86, and the model, built to the
+     clinical 0.67 at the roots, read 0.70 -- the clinical figure was the
+     wrong target for a raster measurement
+   - **What the labels showed.** On the v0.32 spec seed the artery tree ran
+     44% of the length (z -4), carried 1% of the thick skeleton against 23%
+     (z -4; artery roots of 0.67 x 0.017 units are 5.8 px, below the thick
+     threshold by construction, so no artery could ever read thick), crossed
+     veins in 2% of vessel pixels against 6%, and reached 84% of the imaged
+     region within 0.7 mm against the vein tree's 94% and the eyes' 97%
+   - **Model.** Three spec knobs, no new mechanism. Artery roots at 0.8 of
+     the vein roots (``particles.artery_caliber_ratio``, was the clinical
+     0.67): the raster AVR the labels ask for. The vein root at 0.016 units
+     (was 0.017): with wider arteries the pooled thick share would otherwise
+     run to 9%. Cross-type repulsion at 0.1 (``frozen_repulsion.
+     cross_type_factor``, was 0.25): the artery tree reaches tissue the
+     vein tree already holds. The comb thresholds and the artery dive
+     caliber follow the ratio as before
+   - **Results.** Eight seeds, objective with the five new terms: v0.32's
+     spec scores 109.5 (52.9 without them); the shipped spec 52.3
+     (36/43/47/59/48/73/52/61; 53.0 in the selection sweep before the chord
+     guard below), so the model matches the labels about as well as it
+     matched everything else before. Artery length share 0.48 (HRF 0.50),
+     artery thick share 0.21 (0.23), raster AVR 0.85 (0.86), paired
+     perfusion 0.97 (0.94 before), arterial supply 0.98. Unmet:
+     crossings 2.3% of vessel pixels against 6% -- cross-type repulsion at
+     0 raised them only to 2.7% while packing the trees too closely
+     (spacing 0.26 mm vs 0.31), so crossings need the trees at different
+     depths, not more tolerance in the same plane; and the pooled thick
+     share, 7% against 4%, the vein arcades still running too wide too
+     far. The sweep: ratio 0.75 leaves arteries thin (AVR 0.76, thick
+     share 7%), 0.85 makes them venous (0.91, 32%); root 0.015 starves the
+     field (skeleton 3.0%); cross-type 0 / 0.1 / 0.25 at the shipped roots
+     score 66 / 53 / 73
+   - **Held-out gate** (seeds 11/202/909/4242): 4/4 colonize 100%,
+     arterial supply 0.96/0.93/0.95/0.98, artery length share
+     0.43/0.43/0.49/0.52, raster AVR 0.97/0.89/0.90/0.80, macular clear
+     radius 0.77/0.81/0.60/0.59 mm. Spec seed: total 47.8 (v0.32's network
+     scores 97.2 under this objective, 43.2 under its own), artery length
+     share 0.49, artery thick share 0.12, raster AVR 0.81, paired perfusion
+     0.99, superficial window 71 um / 9.3 mm/mm2, DVC 72 / 9.1, FAZ clear
+     radius 0.24 mm; 63.9k frozen particles, 8-9 minutes a seed
+   - **One more chord.** Two anastomosis chords per run had survived the
+     previous round's fixes: the freezer's KD-tree snapshot is refreshed
+     every ``freeze_interval`` (2) steps, so on the step between, a
+     capillary the bed had just regressed and re-sprouted elsewhere was
+     still listed frozen at its old position under the same index, and a
+     tip fusing onto the stale entry pointed its join at the new sprout
+     across the field. ``PathAnastomosis`` now joins only targets the live
+     population still backs: frozen, of target caliber, within
+     ``capture_radius`` of the tip. The spec seed's network, three chords
+     of 1.7-2.8 units without the guard, has no edge over 0.09 units with it
+   - The contact sheet stamps each seed's artery length share and raster
+     AVR beside its macular clear radius, and ``vnv_compare`` writes
+     ``docs/vnv/artery_vein.png``: the two trees in the fundus window, red
+     and blue, beside an HRF eye's labels
+
+**v0.32.0 - 09/08/26**
+
+ - Capillary morphology from ROSE, and a chord-drawing bug
+
+   - **A bug that drew chords.** The flow remodeler prunes low-shear
+     terminal segments and recycles their particles. With capillaries
+     outside its graph it could no longer see that a capillary tip had
+     fused onto an arteriole terminal, pruned it, and left the joiner's
+     ``anastomosis_id`` pointing at a slot the next new vessel took --
+     drawn as a straight chord across the field, 69 of them up to 2.9
+     units long on the spec seed, some through the FAZ. Join targets are
+     never pruned now, and every recycle path (pruning, regression, FAZ
+     withdrawal) clears joins that pointed at the recycled particle. A
+     second source was the bed's own step: regression recycled dead-end
+     capillaries and sprouting then read the same population snapshot,
+     so a new sprout could take a just-recycled capillary as its wall
+     (445 such parent links on one seed); the population is re-read
+     between the two. The chords had been read as capillaries: with them
+     gone the beds measure half the ROSE density (superficial 125 um /
+     4.9 mm/mm2 against 78 / 9.3 at the v0.31 spacing), and the "deep bed
+     cliff" of the previous round was in part the chords vanishing
+   - **Measurement.** ``metrics.capillary_morphology``: junction density
+     (clusters of skeleton pixels with three or more neighbours, per
+     mm2), median segment length between junctions, and mean segment
+     arc-to-chord tortuosity, outside the FAZ. From the ROSE-1 SVC labels
+     43 +/- 21 junctions/mm2, 120 +/- 21 um, 1.137 +/- 0.037; from the
+     DVC angiograms with the SVC label/image correction 40, 111 um, 1.213
+     (the deep plexus bends more). Six new scored targets
+   - **Model.** ``particles.capillary_noise_factor``: capillary sprouts
+     steer with a multiple of the random kick, the knob for their meander
+   - **Results.** With the chords gone the lattices had to be re-mapped:
+     the 0.04 lattices of v0.31 read 125 um / 4.9 mm/mm2 superficially
+     and 163 / 4.2 in the DVC slab, half the ROSE density; 0.02 lattices
+     in the superficial and deep beds read, on eight seeds, 71 um / 9.5
+     mm/mm2 / 37 junctions / 127 um segments / tortuosity 1.11
+     superficially (ROSE 78 / 9.3 / 43 / 120 / 1.14) and 77 / 8.9 / 28 /
+     145 / 1.12 in the DVC slab (74 / 9.4 / 40 / 111 / 1.21), with the
+     FAZ clear radius at 0.24 mm (0.29). Eight-seed mean 52.9
+     (44/65/42/30/43/49/69/82) under an objective with six new terms;
+     paired perfusion 0.94, the cost of the denser bed to the artery
+     tree. The steering-noise factor (2, 3, 5) did not move the segment
+     tortuosity (1.07-1.10), so the deep plexus's bend (1.21) stays the
+     one morphology target out of reach; the lattice spacing sets
+     everything else. Runs take 15-20 minutes a seed at 60,000 particles
+   - **Held-out gate** (seeds 11/202/909/4242): 4/4 colonize 100%,
+     arterial supply 1.00/1.00/0.93/1.00, macular clear radius
+     1.24/0.57/0.56/0.57 mm. Spec seed: total 43.2 (v0.31's 43.8 under the
+     old objective; 97 with the six morphology terms before the chord fix),
+     superficial window 65 um / 10.5 mm/mm2, DVC 69 / 9.5, FAZ clear radius
+     0.30 mm, macular clear radius 0.76 mm, paired perfusion 0.97
+
 **v0.31.0 - 09/07/26**
 
  - The deep plexuses as capillary beds, over the whole field

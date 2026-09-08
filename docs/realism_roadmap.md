@@ -1135,6 +1135,73 @@ all colonize 100% with arterial supply 0.99/0.98/0.91/0.97; the model now
 has three plexuses OCTA would recognize as plexuses, and a full seed runs in
 twelve minutes.
 
+*Twenty-third pass (capillary morphology, and a chord-drawing bug)*: the
+round meant to teach the beds to meander began by finding why they looked
+like straight chords. They were: 69 anastomosis edges and 445 parent links
+on one seed ran 0.1–2.9 units across the field, because particles were
+being recycled while other particles still pointed at them — the remodeler
+pruned arteriole terminals that capillary tips had fused onto (its graph
+no longer saw the joiner), and the bed's own step regressed dead ends and
+then sprouted from a stale snapshot that still listed them as walls. Join
+targets are never pruned now, every recycle path clears the joins that
+pointed at it, and the bed re-reads the population between regressing and
+sprouting. The chords had been read as capillaries: without them the beds
+were half the ROSE density and the previous round's "cliff" was in part the
+chords vanishing, so the lattices were re-mapped on the fixed code and
+tightened from 0.04 to 0.02 units. The measurement side gained the
+morphology ROSE can give — junction density, segment length between
+junctions, segment tortuosity, for the SVC from the labels and for the DVC
+through the tuned threshold — and on eight seeds the beds now match ROSE
+on density, junctions and segment length in both slabs, and on superficial
+tortuosity; only the deep plexus's bend (1.12 against 1.21) resists, and a
+steering-noise factor for capillary tips did not move it. A convention
+change rides along: junction statistics are read over frozen vessels only,
+since a growth tip inside the FAZ for one step is not a vessel there.
+The held-out seeds all colonize the field (arterial supply 0.93–1.00),
+and the spec seed's FAZ ring closes at 0.30 mm against ROSE's 0.29; the
+seeds now also disagree about the macular clear radius (0.56–1.24 mm), the
+one fundus-scale statistic the denser bed left noisier.
+
+*Twenty-fourth pass (artery/vein balance, from the labels of the same
+eyes)*: the model had always been built to the clinical AVR of 0.67 at the
+roots and scored on the particle radii of its trunks, and every animation
+showed a red tree visibly smaller than the blue one. The Hemelings
+artery/vein labels for the 15 HRF healthy eyes — the very masks the fundus
+targets come from, with each vessel pixel colored artery, vein or crossing —
+let the balance be measured on rasters, the way everything else is. Under
+the harness conventions the healthy eyes read: equal artery and vein
+lengths, a quarter of the thick (> 6 px) skeleton arterial, a raster AVR of
+0.86 (block averaging thins both trees by the same fraction of a pixel and
+compresses the ratio toward one, so the clinical 0.67 was never the number
+this measurement should have been compared to), crossings in 6% of vessel
+pixels, and each tree within 0.7 mm of 97% of the imaged region. The v0.32
+model read 44% artery length, 1% of the thick skeleton (its artery roots,
+0.67 × 0.017 units, are 5.8 px wide, so no artery could read thick by
+construction), a raster AVR of 0.70, crossings in 2%, and an artery tree
+reaching 84% of the region against the vein tree's 94%.
+Three spec values close most of the gap: artery roots at 0.8 of the vein
+roots (so an artery can be thick at all), the vein root a little thinner
+(0.016, or the pooled thick share runs to 9%), and cross-type repulsion at
+0.1 so the artery tree reaches the tissue the vein tree already holds. On
+eight seeds the artery length share is 0.48, its thick share 0.21, the
+raster AVR 0.85, paired perfusion 0.97 (from 0.94), and the eight-seed mean
+under the widened objective is 52, where v0.32's spec scores 110. Two
+things did not move. Crossings: real trees cross in 6% of vessel pixels,
+the model in 2%, and turning cross-type repulsion off altogether raised
+that to 2.7% while packing the trees too closely — in one plane, tolerance
+is not crossing; real arteries cross *over* veins, and that needs depth.
+And the pooled thick share, 7% against 4%: the vein arcades still run wide
+too far from the disc, which the ratio cannot fix. The round also caught
+the last of the chords: the freezer's KD-tree snapshot is two steps old at
+worst, and a capillary the bed had regressed and re-sprouted elsewhere in
+between was still listed frozen at its old position under the same index —
+a tip fusing onto that entry joined the new sprout across the field. The
+anastomosis step now checks every match against the live population
+(frozen, capillary caliber, within reach) before it joins.
+The held-out seeds all colonize the field (arterial supply 0.93–0.98) and
+read artery length shares of 0.43–0.52 — the balance is now a seed-level
+vital the contact sheet stamps, beside the macular clear radius.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1169,7 +1236,8 @@ harness under `vivarium_eye_vessels.vnv`:
   fraction so this is tracked across versions like every other metric.
 
 The current model's outputs live in the single `docs/vnv/` folder
-(`growth.gif`, `comparison.png`, `metrics.json`, `contact_sheet.png`,
+(`growth.gif`, `comparison.png`, `plexus.png`, `macula.png`,
+`artery_vein.png`, `metrics.json`, `contact_sheet.png`,
 `contact_sheet.json`). After implementing a change, regenerate them in place
 with:
 
@@ -1237,6 +1305,25 @@ the HRF masks, which is what makes the comparison apples to apples):
   and as skeleton length per area (`metrics.capillary_statistics`): on the
   ROSE-1 expert labels, and on the sim's window drawn with every segment at
   least a pixel wide, since OCTA images flow rather than caliber.
+- Capillary morphology on the same window (`metrics.capillary_morphology`):
+  junctions are clusters of skeleton pixels with three or more neighbours,
+  counted once per cluster and per mm² of imaged area; segments are the
+  skeleton chains between junctions, read as their median arc length and as
+  the mean of arc over chord (tortuosity). The SVC is read from the ROSE-1
+  labels; the DVC has no labels, so it is read from the angiogram by a local
+  threshold tuned so the SVC angiograms reproduce their labels' skeleton
+  density, with the residual SVC label/image ratio applied as a bias
+  correction to the DVC targets. Every OCTA raster of the simulation draws
+  frozen vessels only: a growth tip that crosses the FAZ for a step is not a
+  vessel there.
+- Artery/vein balance is read on the two trees drawn alone in the fundus
+  window (`metrics.artery_vein_statistics`; layer 0, frozen segments, a
+  pixel both cover is a crossing), against the Hemelings labels of the same
+  15 HRF eyes: skeleton-length share, thick-skeleton share, the raster AVR
+  (top-decile skeleton-pixel diameters in the AVR zone, artery over vein),
+  crossing share and the median distance between the trees' skeletons. The
+  raster AVR is not the clinical CRAE/CRVE and is not compared to 0.67:
+  healthy eyes read 0.86 under these conventions.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
 - Junction statistics compared against fundus literature (branch angles,

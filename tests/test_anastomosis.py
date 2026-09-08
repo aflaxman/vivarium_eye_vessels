@@ -195,3 +195,33 @@ def test_simulation_forms_anastomoses_and_cycles():
     # two previously separate trees adds no cycle, and there are 4 root
     # trees, so at most 3 joins are merges; every other join closes a loop.
     assert metrics.graph_cycles(pop) >= len(joined) - 3
+
+
+def test_stale_snapshot_targets_are_not_joined():
+    # The freezer's snapshot can be a step old: a neighbor it lists may have
+    # been recycled and re-sprouted elsewhere under the same index. Joining
+    # it would draw a chord to wherever that particle now is
+    from types import SimpleNamespace
+
+    component = PathAnastomosis()
+    component.config = SimpleNamespace(max_target_radius=0.004, capture_radius=0.05)
+    tips = pd.DataFrame({"x": [0.0, 1.0, 2.0], "y": 0.0, "z": 0.0}, index=[10, 11, 12])
+    targets = pd.Series({10: 20, 11: 21, 12: 22})
+    live = pd.DataFrame(
+        {
+            # 20: still the frozen capillary beside tip 10
+            # 21: recycled and re-sprouted far away (not frozen, moved)
+            # 22: frozen where it was but now a trunk, not a capillary target
+            "x": [0.01, -1.5, 2.01],
+            "y": [0.0, 0.0, 0.0],
+            "z": [0.0, 0.0, 0.0],
+            "frozen": [True, False, True],
+            "radius": [0.001, 0.0009, 0.01],
+        },
+        index=[20, 21, 22],
+    )
+    kept = component.still_valid(targets, tips, live)
+    assert kept.to_dict() == {10: 20}
+    # A frozen target that has moved out of reach is dropped as well
+    live.loc[20, "x"] = 0.2
+    assert component.still_valid(targets, tips, live).empty

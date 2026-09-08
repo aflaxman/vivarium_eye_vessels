@@ -347,6 +347,55 @@ def render_macula_figure(
     return stats
 
 
+def render_av_figure(
+    trees: dict[str, np.ndarray], label_path: Path, output_path: Path
+) -> dict:
+    """The two trees side by side: the simulation's fundus window and an HRF eye's labels.
+
+    Arteries red, veins blue, crossings green, each panel titled with the
+    statistics :func:`metrics.artery_vein_statistics` scores. Returns the
+    simulation's statistics.
+    """
+    artery, vein = reference_data.load_av_label(label_path)
+    real = {"artery": metrics.binarize_mask(artery), "vein": metrics.binarize_mask(vein)}
+    panels = [
+        ("Simulation, fundus window", trees),
+        (f"HRF healthy eye ({label_path.name})", real),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6.2))
+    fig.patch.set_facecolor("white")
+    stats = {}
+    for ax, (title, pair) in zip(axes, panels):
+        ax.axis("off")
+        image = np.ones(pair["artery"].shape + (3,))
+        image[pair["artery"]] = (0.85, 0.1, 0.1)
+        image[pair["vein"]] = (0.1, 0.2, 0.85)
+        image[pair["artery"] & pair["vein"]] = (0.0, 0.6, 0.0)
+        ax.imshow(image, interpolation="nearest")
+        measured = metrics.artery_vein_statistics(pair["artery"], pair["vein"])
+        if title.startswith("Simulation"):
+            stats = measured
+        ax.set_title(
+            f"{title}\n"
+            f"artery length share {measured['artery_length_share']:.2f}, "
+            f"thick share {measured['artery_thick_share']:.2f}, "
+            f"raster AVR {measured['arcade_caliber_ratio_px']:.2f}, "
+            f"crossings {measured['av_crossing_share']:.3f}, "
+            f"spacing {measured['av_spacing_mm']:.2f} mm",
+            color=INK,
+            fontsize=10,
+        )
+    fig.suptitle(
+        "Arteries (red) and veins (blue) in the fundus window; crossings green",
+        color=INK,
+        fontsize=12,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(output_path, dpi=100, facecolor="white")
+    plt.close(fig)
+    return stats
+
+
 def plexus_metrics(pop, edges, layer_z) -> dict:
     """Per-plexus composition and stratification quality."""
     vessels = pop[(pop.layer_id >= 0) & (pop.radius > 0)]
@@ -398,7 +447,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # capillary-only plexuses are essentially invisible to them (OCTA sees
     # them instead — docs/vnv/plexus.png), so everything compared against
     # HRF uses the superficial (layer 0) projection only
-    fundus_edges = edges[edges.layer_id == 0] if "layer_id" in edges.columns else edges
+    # Vessels only: segments ending at growth tips are not drawn
+    drawn = edges[edges.frozen] if "frozen" in edges.columns else edges
+    fundus_edges = drawn[drawn.layer_id == 0] if "layer_id" in drawn.columns else drawn
     sim_raster = metrics.rasterize_network(
         fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )
@@ -465,9 +516,15 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # target, from the same statistics the calibration harness scores
     calibration_stats = calibrate.scoring_stats(pop, edges, geometry, references)
     calibration_scores = calibrate.calibration_score(calibration_stats)
+    sim_av = None
     if has_calibers:
         render_macula_figure(
             fundus_edges, geometry, sim_raster, example_binary, output_dir / "macula.png"
+        )
+        sim_av = render_av_figure(
+            calibrate.tree_windows(fundus_edges, bounds, example_binary.shape),
+            reference_data.fetch_hrf_av_labels()[0],
+            output_dir / "artery_vein.png",
         )
     sim_perfused_fraction = calibration_stats["perfused_fraction"]
     sim_arterial_supply = calibration_stats["arterial_supply_fraction"]
@@ -692,8 +749,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
         f"Perfused (artery + vein in reach): sim {sim_perfused_fraction*100:.1f}%"
         f" (colonized {calibration_stats['colonized_fraction']*100:.0f}%,"
-        f" arterial {sim_arterial_supply*100:.0f}%)     "
-        f"A:V ratio: sim {sim_avr:.2f} (clinical 0.67)     "
+        f" arterial {sim_arterial_supply*100:.0f}%)"
+    )
+    balance_line = (
+        f"A:V caliber ratio: trunks {sim_avr:.2f}, raster "
+        f"{calibration_stats['arcade_caliber_ratio_px']:.2f} (HRF 0.86)     "
+        f"Artery share of length: {calibration_stats['artery_length_share']:.2f} (HRF 0.50)     "
         f"Loops: {sim_graph_cycles}     Pruned: {sim_n_pruned}     "
         f"Score: {calibration_scores['total']:.1f}"
     )
@@ -703,9 +764,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fontsize=13,
         y=0.995,
     )
-    fig.text(0.5, 0.976, headline, ha="center", color=INK, fontsize=10)
-    fig.text(0.5, 0.963, area_line, ha="center", color=INK, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.955))
+    fig.text(0.5, 0.978, headline, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.966, area_line, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.954, balance_line, ha="center", color=INK, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.946))
     figure_path = output_dir / "comparison.png"
     fig.savefig(figure_path, dpi=110, facecolor="white")
     plt.close(fig)
@@ -765,6 +827,7 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
             "n_artery_segments": int(len(arteries)),
             "n_vein_segments": int(len(veins)),
             "artery_vein_caliber_ratio": sim_avr,
+            "artery_vein": sim_av,
             "n_anastomoses": sim_n_anastomoses,
             "graph_cycles": sim_graph_cycles,
             "n_pruned": sim_n_pruned,

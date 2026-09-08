@@ -1,3 +1,54 @@
+**v0.32.0 - 09/08/26**
+
+ - Capillary morphology from ROSE, and a chord-drawing bug
+
+   - **A bug that drew chords.** The flow remodeler prunes low-shear
+     terminal segments and recycles their particles. With capillaries
+     outside its graph it could no longer see that a capillary tip had
+     fused onto an arteriole terminal, pruned it, and left the joiner's
+     ``anastomosis_id`` pointing at a slot the next new vessel took --
+     drawn as a straight chord across the field, 69 of them up to 2.9
+     units long on the spec seed, some through the FAZ. Join targets are
+     never pruned now, and every recycle path (pruning, regression, FAZ
+     withdrawal) clears joins that pointed at the recycled particle. A
+     second source was the bed's own step: regression recycled dead-end
+     capillaries and sprouting then read the same population snapshot,
+     so a new sprout could take a just-recycled capillary as its wall
+     (445 such parent links on one seed); the population is re-read
+     between the two. The chords had been read as capillaries: with them
+     gone the beds measure half the ROSE density (superficial 125 um /
+     4.9 mm/mm2 against 78 / 9.3 at the v0.31 spacing), and the "deep bed
+     cliff" of the previous round was in part the chords vanishing
+   - **Measurement.** ``metrics.capillary_morphology``: junction density
+     (clusters of skeleton pixels with three or more neighbours, per
+     mm2), median segment length between junctions, and mean segment
+     arc-to-chord tortuosity, outside the FAZ. From the ROSE-1 SVC labels
+     43 +/- 21 junctions/mm2, 120 +/- 21 um, 1.137 +/- 0.037; from the
+     DVC angiograms with the SVC label/image correction 40, 111 um, 1.213
+     (the deep plexus bends more). Six new scored targets
+   - **Model.** ``particles.capillary_noise_factor``: capillary sprouts
+     steer with a multiple of the random kick, the knob for their meander
+   - **Results.** With the chords gone the lattices had to be re-mapped:
+     the 0.04 lattices of v0.31 read 125 um / 4.9 mm/mm2 superficially
+     and 163 / 4.2 in the DVC slab, half the ROSE density; 0.02 lattices
+     in the superficial and deep beds read, on eight seeds, 71 um / 9.5
+     mm/mm2 / 37 junctions / 127 um segments / tortuosity 1.11
+     superficially (ROSE 78 / 9.3 / 43 / 120 / 1.14) and 77 / 8.9 / 28 /
+     145 / 1.12 in the DVC slab (74 / 9.4 / 40 / 111 / 1.21), with the
+     FAZ clear radius at 0.24 mm (0.29). Eight-seed mean 52.9
+     (44/65/42/30/43/49/69/82) under an objective with six new terms;
+     paired perfusion 0.94, the cost of the denser bed to the artery
+     tree. The steering-noise factor (2, 3, 5) did not move the segment
+     tortuosity (1.07-1.10), so the deep plexus's bend (1.21) stays the
+     one morphology target out of reach; the lattice spacing sets
+     everything else. Runs take 15-20 minutes a seed at 60,000 particles
+   - **Held-out gate** (seeds 11/202/909/4242): 4/4 colonize 100%,
+     arterial supply 1.00/1.00/0.93/1.00, macular clear radius
+     1.24/0.57/0.56/0.57 mm. Spec seed: total 43.2 (v0.31's 43.8 under the
+     old objective; 97 with the six morphology terms before the chord fix),
+     superficial window 65 um / 10.5 mm/mm2, DVC 69 / 9.5, FAZ clear radius
+     0.30 mm, macular clear radius 0.76 mm, paired perfusion 0.97
+
 **v0.31.0 - 09/07/26**
 
  - The deep plexuses as capillary beds, over the whole field

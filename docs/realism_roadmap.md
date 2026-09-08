@@ -1135,6 +1135,33 @@ all colonize 100% with arterial supply 0.99/0.98/0.91/0.97; the model now
 has three plexuses OCTA would recognize as plexuses, and a full seed runs in
 twelve minutes.
 
+*Twenty-third pass (capillary morphology, and a chord-drawing bug)*: the
+round meant to teach the beds to meander began by finding why they looked
+like straight chords. They were: 69 anastomosis edges and 445 parent links
+on one seed ran 0.1–2.9 units across the field, because particles were
+being recycled while other particles still pointed at them — the remodeler
+pruned arteriole terminals that capillary tips had fused onto (its graph
+no longer saw the joiner), and the bed's own step regressed dead ends and
+then sprouted from a stale snapshot that still listed them as walls. Join
+targets are never pruned now, every recycle path clears the joins that
+pointed at it, and the bed re-reads the population between regressing and
+sprouting. The chords had been read as capillaries: without them the beds
+were half the ROSE density and the previous round's "cliff" was in part the
+chords vanishing, so the lattices were re-mapped on the fixed code and
+tightened from 0.04 to 0.02 units. The measurement side gained the
+morphology ROSE can give — junction density, segment length between
+junctions, segment tortuosity, for the SVC from the labels and for the DVC
+through the tuned threshold — and on eight seeds the beds now match ROSE
+on density, junctions and segment length in both slabs, and on superficial
+tortuosity; only the deep plexus's bend (1.12 against 1.21) resists, and a
+steering-noise factor for capillary tips did not move it. A convention
+change rides along: junction statistics are read over frozen vessels only,
+since a growth tip inside the FAZ for one step is not a vessel there.
+The held-out seeds all colonize the field (arterial supply 0.93–1.00),
+and the spec seed's FAZ ring closes at 0.30 mm against ROSE's 0.29; the
+seeds now also disagree about the macular clear radius (0.56–1.24 mm), the
+one fundus-scale statistic the denser bed left noisier.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1237,6 +1264,17 @@ the HRF masks, which is what makes the comparison apples to apples):
   and as skeleton length per area (`metrics.capillary_statistics`): on the
   ROSE-1 expert labels, and on the sim's window drawn with every segment at
   least a pixel wide, since OCTA images flow rather than caliber.
+- Capillary morphology on the same window (`metrics.capillary_morphology`):
+  junctions are clusters of skeleton pixels with three or more neighbours,
+  counted once per cluster and per mm² of imaged area; segments are the
+  skeleton chains between junctions, read as their median arc length and as
+  the mean of arc over chord (tortuosity). The SVC is read from the ROSE-1
+  labels; the DVC has no labels, so it is read from the angiogram by a local
+  threshold tuned so the SVC angiograms reproduce their labels' skeleton
+  density, with the residual SVC label/image ratio applied as a bias
+  correction to the DVC targets. Every OCTA raster of the simulation draws
+  frozen vessels only: a growth tip that crosses the FAZ for a step is not a
+  vessel there.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
 - Junction statistics compared against fundus literature (branch angles,

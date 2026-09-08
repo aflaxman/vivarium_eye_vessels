@@ -64,6 +64,9 @@ configuration:
                                        # Healthy tortuosity is already on target; raising
                                        # this is the DR-like disease dial (tortuosity up,
                                        # perfusion down) -- see realism roadmap idea 7
+        capillary_radius: 0.00095       # Capillary sprouts (CapillaryBed) ...
+        capillary_noise_factor: 1.0     # ... steer with this multiple of the random kick
+                                        # (twenty-third pass: the meander of real capillaries)
         noise_caliber_reference: 0.004  # Tips at or below capillary caliber steer freely
         noise_caliber_exponent: 1.5     # Wider tips hold their heading: random steering
                                         # is attenuated by (reference/radius)^exponent so
@@ -271,15 +274,14 @@ configuration:
         enabled: true
         region_radius: 0.0        # the whole field (twenty-second pass; 0.6 was the
                                   # macular window while the bed was superficial-only)
-        site_spacing: [0.04, 0.10, 0.04]        # 180 um lattices in the superficial and deep
-        perfusion_radius: [0.04, 0.10, 0.04]    # beds, a sparse intermediate one. The bed
-                                                # fills far denser than its lattice (sprouts
-                                                # overshoot and close loops): 0.04 reads
-                                                # 84 um / 9.3 mm/mm2 superficially (ROSE
-                                                # 78 / 9.3) and 62 / 13.7 in the DVC slab
-                                                # (74 / 9.4); 0.02 read 46 / 17. The deep
-                                                # bed has a cliff: at 0.045 it cannot close
-                                                # loops and regresses to nothing (4 mm/mm2)
+        site_spacing: [0.02, 0.10, 0.02]        # 90 um lattices in the superficial and deep
+        perfusion_radius: [0.02, 0.10, 0.02]    # beds, a sparse intermediate one. With the
+                                                # chord-drawing bug fixed (twenty-third pass)
+                                                # the beds read about half as dense as they
+                                                # had appeared: 0.02 gives 71 um / 9.5 mm/mm2
+                                                # superficially (ROSE 78 / 9.3) and 77 / 8.9
+                                                # in the DVC slab (74 / 9.4) on eight seeds;
+                                                # 0.04 read 125 / 4.9 and 163 / 4.2
         influence_radius: 0.08
         magnitude: 0.5
         capillary_radius: 0.0009  # 8 um caliber, strictly below the remodeler's

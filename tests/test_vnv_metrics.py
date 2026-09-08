@@ -444,3 +444,42 @@ def test_angiogram_vessels_finds_bright_vessels_in_speckle():
     # ... with their one-pixel smoothing halo, and little speckle besides
     halo = ndimage.binary_dilation(truth, iterations=2)
     assert (mask & ~halo).mean() < 0.02
+
+
+def test_capillary_morphology_counts_junctions_segments_and_bend():
+    # A square lattice of straight lines 40 px apart: junctions at the
+    # crossings, segments of ~40 px, no bend
+    skeleton = np.zeros((401, 401), dtype=bool)
+    skeleton[::40, :] = True
+    skeleton[:, ::40] = True
+    stats = metrics.capillary_morphology(skeleton, np.zeros_like(skeleton), mm_per_px=0.01)
+    assert abs(stats["octa_junctions_per_mm2"] - 121 / (401 * 401 * 0.01**2)) < 1.0
+    assert 30 * 10 < stats["octa_segment_length_um"] < 40 * 10
+    assert stats["octa_segment_tortuosity"] < 1.05
+    # Nothing outside the exclusion: an empty result, not an error
+    stats = metrics.capillary_morphology(skeleton, np.ones_like(skeleton), mm_per_px=0.01)
+    assert stats["octa_junctions_per_mm2"] == 0.0 and np.isnan(
+        stats["octa_segment_length_um"]
+    )
+
+
+def test_tree_edges_flag_segments_that_end_at_growth_tips():
+    from vivarium_eye_vessels.vnv import simulation
+
+    pop = pd.DataFrame(
+        {
+            "x": [0.0, 0.1, 0.2],
+            "y": [0.0, 0.0, 0.0],
+            "z": [0.0, 0.0, 0.0],
+            "frozen": [True, True, False],
+            "path_id": [1, 1, 1],
+            "parent_id": [-1, 0, 1],
+            "radius": [0.01, 0.01, 0.01],
+            "vessel_type": [1, 1, 1],
+            "layer_id": [0, 0, 0],
+            "anastomosis_id": [-1, -1, -1],
+        },
+        index=[0, 1, 2],
+    )
+    edges = simulation.tree_edges(pop)
+    assert list(edges.frozen) == [True, False]  # the tip's own segment is flagged

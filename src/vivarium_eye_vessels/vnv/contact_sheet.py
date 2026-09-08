@@ -40,6 +40,7 @@ def run_seed(spec: dict, seed: int, steps: int, workdir: Path) -> dict:
     simulation.run_steps(sim, steps)
     pop = simulation.get_network(sim)
     edges = simulation.tree_edges(pop)
+    edges = edges[edges.frozen]  # vessels only, as the V&V rasters draw them
     fundus = edges[edges.layer_id == 0]
     raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
     return {

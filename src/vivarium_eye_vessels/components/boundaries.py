@@ -968,6 +968,11 @@ class CapillaryBed(BaseForceComponent):
         if self.step_count % int(self.config.sprout_interval) == 0:
             self.regress(pop)
             if len(sites):
+                # Re-read after starving and regressing: a sprout must not be
+                # born with a just-recycled particle as its wall (the slot is
+                # reused elsewhere and the sprout's segment becomes a chord
+                # across the field), nor take a slot that was just freed
+                pop = self.population_view.get(event.index, self.required_attributes)
                 self.sprout(pop, sites, layers)
 
     def starve(self, pop: pd.DataFrame, sites: np.ndarray, layers: np.ndarray) -> None:
@@ -1014,6 +1019,14 @@ class CapillaryBed(BaseForceComponent):
                     index=tips.index[intruding],
                 )
             )
+            # No join may point at a withdrawn tip (another sprout may have
+            # fused onto it before it crossed into the zone)
+            withdrawn = tips.index[intruding]
+            dangling = pop.index[pop.anastomosis_id.isin(withdrawn)]
+            if len(dangling):
+                self.particles.update_particles(
+                    pd.DataFrame({"anastomosis_id": -1}, index=dangling)
+                )
         if not starving.any():
             return
         self.particles.update_particles(
@@ -1078,6 +1091,13 @@ class CapillaryBed(BaseForceComponent):
                 index=pd.Index(recycled),
             )
         )
+        # No join may point at a recycled particle (regression never recycles a
+        # join's target, but a dangling id would be drawn as a chord)
+        dangling = pop.index[pop.anastomosis_id.isin(recycled)]
+        if len(dangling):
+            self.particles.update_particles(
+                pd.DataFrame({"anastomosis_id": -1}, index=dangling)
+            )
 
     def sprout(self, pop: pd.DataFrame, sites: np.ndarray, layers: np.ndarray) -> None:
         """Sprout capillary tips from the frozen vessels nearest hypoxic sites, toward them."""

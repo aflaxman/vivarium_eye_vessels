@@ -362,6 +362,47 @@ def angiogram_vessels(image: np.ndarray, mm_per_px: float) -> np.ndarray:
     return smooth > threshold_local(smooth, block, offset=ANGIOGRAM_OFFSET)
 
 
+def capillary_morphology(
+    skeleton: np.ndarray, excluded: np.ndarray, mm_per_px: float
+) -> dict[str, float]:
+    """How a capillary skeleton is put together, outside ``excluded`` (the FAZ).
+
+    ``octa_junctions_per_mm2``: junctions per tissue area, a junction being a
+    connected cluster of skeleton pixels with three or more skeleton
+    neighbours (a crossing or a branch point spans a few such pixels) --
+    branch points and, in a projection, crossings. ``octa_segment_length_um``: median length of the skeleton
+    branches between junctions (:func:`skeleton_branches`). ``octa_segment_
+    tortuosity``: mean arc-to-chord ratio of those branches. Read the same
+    way on the ROSE-1 labels and on the model's OCTA window; a bed of long
+    straight chords reads as many crossings and low tortuosity, a honeycomb
+    as fewer junctions and more bend.
+    """
+    outside = ~np.asarray(excluded, dtype=bool)
+    skeleton = np.asarray(skeleton, dtype=bool) & outside
+    empty = {
+        "octa_junctions_per_mm2": 0.0,
+        "octa_segment_length_um": float("nan"),
+        "octa_segment_tortuosity": float("nan"),
+    }
+    if not skeleton.any() or not outside.any():
+        return empty
+    _, junctions = ndimage.label(
+        skeleton & (neighbor_counts(skeleton) >= 3), structure=np.ones((3, 3))
+    )
+    branches = skeleton_branches(skeleton)
+    result = dict(empty)
+    result["octa_junctions_per_mm2"] = junctions / (outside.sum() * mm_per_px**2)
+    if len(branches):
+        lengths = branches.length_px.to_numpy(dtype=float)
+        chords = branches.chord_px.to_numpy(dtype=float)
+        ratio = lengths[chords > 0] / chords[chords > 0]
+        result["octa_segment_length_um"] = float(np.median(lengths) * mm_per_px * 1000)
+        result["octa_segment_tortuosity"] = (
+            float(ratio.mean()) if len(ratio) else float("nan")
+        )
+    return result
+
+
 def capillary_statistics(
     skeleton: np.ndarray, excluded: np.ndarray, mm_per_px: float
 ) -> dict[str, float]:

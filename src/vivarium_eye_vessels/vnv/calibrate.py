@@ -112,6 +112,17 @@ TARGETS = {
     # deep layers became capillary beds (twenty-second pass)
     "octa_dvc_intervessel_um": {"target": 74.08, "scale": 21.68},
     "octa_dvc_skeleton_mm_per_mm2": {"target": 9.403, "scale": 2.473},
+    # How the capillary skeleton is put together (metrics.capillary_morphology,
+    # outside the FAZ): junction density, median segment length between
+    # junctions, and segment tortuosity, from the ROSE-1 SVC labels; the DVC
+    # through the angiogram threshold with the SVC label/image correction and
+    # the SVC labels' spread (twenty-third pass)
+    "octa_junctions_per_mm2": {"target": 42.88, "scale": 21.22},
+    "octa_segment_length_um": {"target": 120.15, "scale": 20.61},
+    "octa_segment_tortuosity": {"target": 1.1369, "scale": 0.037},
+    "octa_dvc_junctions_per_mm2": {"target": 40.22, "scale": 21.22},
+    "octa_dvc_segment_length_um": {"target": 111.28, "scale": 20.61},
+    "octa_dvc_segment_tortuosity": {"target": 1.2127, "scale": 0.037},
     # Length-weighted caliber profile: KS between the per-skeleton-pixel
     # diameter distributions (sim superficial raster vs pooled HRF) — the
     # binning-free version of the composition targets, matching
@@ -325,29 +336,35 @@ def rose_references() -> dict:
         label = metrics.binarize_mask(
             reference_data.load_mask(labels[(path.parent.parent.name, path.name)])
         )
+        label_skeleton = metrics.vessel_skeleton(label)
         image.update(
-            metrics.capillary_statistics(
-                metrics.vessel_skeleton(label), zone, metrics.OCTA_MM_PER_PX
-            )
+            metrics.capillary_statistics(label_skeleton, zone, metrics.OCTA_MM_PER_PX)
+        )
+        image.update(
+            metrics.capillary_morphology(label_skeleton, zone, metrics.OCTA_MM_PER_PX)
         )
         # The same scale read from the angiogram itself, to calibrate the
         # binarization the deep plexus (no labels) is read through
-        binarized = metrics.angiogram_vessels(angiogram, metrics.OCTA_MM_PER_PX)
-        for key, value in metrics.capillary_statistics(
-            metrics.vessel_skeleton(binarized), zone, metrics.OCTA_MM_PER_PX
-        ).items():
-            image[key.replace("octa_", "octa_image_")] = value
+        binarized_skeleton = metrics.vessel_skeleton(
+            metrics.angiogram_vessels(angiogram, metrics.OCTA_MM_PER_PX)
+        )
+        for stats in (
+            metrics.capillary_statistics(binarized_skeleton, zone, metrics.OCTA_MM_PER_PX),
+            metrics.capillary_morphology(binarized_skeleton, zone, metrics.OCTA_MM_PER_PX),
+        ):
+            for key, value in stats.items():
+                image[key.replace("octa_", "octa_image_")] = value
         image["file"] = f"{path.parent.parent.name}/{path.name}"
         per_image.append(image)
     deep = []
     for path in reference_data.fetch_rose_images("DVC"):
         angiogram = reference_data.load_mask(path)
-        binarized = metrics.angiogram_vessels(angiogram, metrics.OCTA_MM_PER_PX)
-        stats = metrics.capillary_statistics(
-            metrics.vessel_skeleton(binarized),
-            metrics.avascular_zone(angiogram, metrics.OCTA_MM_PER_PX),
-            metrics.OCTA_MM_PER_PX,
+        skeleton = metrics.vessel_skeleton(
+            metrics.angiogram_vessels(angiogram, metrics.OCTA_MM_PER_PX)
         )
+        zone = metrics.avascular_zone(angiogram, metrics.OCTA_MM_PER_PX)
+        stats = metrics.capillary_statistics(skeleton, zone, metrics.OCTA_MM_PER_PX)
+        stats.update(metrics.capillary_morphology(skeleton, zone, metrics.OCTA_MM_PER_PX))
         stats["file"] = path.name
         deep.append(stats)
     return {"per_image": per_image, "deep": deep}
@@ -356,13 +373,29 @@ def rose_references() -> dict:
 def derive_rose_targets(references: dict) -> dict:
     """Across-scan mean and sd of the OCTA targets."""
     targets = {}
-    for name in ("faz_radius_mm", "octa_intervessel_um", "octa_skeleton_mm_per_mm2"):
+    for name in (
+        "faz_radius_mm",
+        "octa_intervessel_um",
+        "octa_skeleton_mm_per_mm2",
+        "octa_junctions_per_mm2",
+        "octa_segment_length_um",
+        "octa_segment_tortuosity",
+    ):
         values = np.array([image[name] for image in references["per_image"]])
-        targets[name] = {"target": float(values.mean()), "scale": float(values.std())}
+        targets[name] = {
+            "target": float(np.nanmean(values)),
+            "scale": float(np.nanstd(values)),
+        }
     # Deep plexus: the angiogram binarization's bias is measured on the SVC,
     # where labels exist, and the DVC read is corrected by that ratio; the
     # scale is the SVC labels' spread, the only expert spread there is
-    for name in ("octa_intervessel_um", "octa_skeleton_mm_per_mm2"):
+    for name in (
+        "octa_intervessel_um",
+        "octa_skeleton_mm_per_mm2",
+        "octa_junctions_per_mm2",
+        "octa_segment_length_um",
+        "octa_segment_tortuosity",
+    ):
         label = np.array([image[name] for image in references["per_image"]])
         image = np.array(
             [image["octa_image_" + name[5:]] for image in references["per_image"]]
@@ -370,8 +403,8 @@ def derive_rose_targets(references: dict) -> dict:
         deep = np.array([stats[name] for stats in references.get("deep", [])])
         if len(deep):
             targets["octa_dvc_" + name[5:]] = {
-                "target": float(deep.mean() * label.mean() / image.mean()),
-                "scale": float(label.std()),
+                "target": float(np.nanmean(deep) * np.nanmean(label) / np.nanmean(image)),
+                "scale": float(np.nanstd(label)),
             }
     return targets
 
@@ -389,6 +422,10 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     # Fundus photographs image the superficial vasculature; the deep
     # capillary-only plexuses are essentially invisible to them (OCTA sees
     # them instead), so the HRF comparison rasterizes layer 0 only
+    # Vessels only: a segment ending at a growth tip is not drawn (a tip inside
+    # the FAZ for one step is not a vessel there)
+    if "frozen" in edges.columns:
+        edges = edges[edges.frozen]
     fundus = edges[edges.layer_id == 0]
     raster = metrics.rasterize_network(fundus, geometry.bounds, radii=fundus.radius.values)
     image = metrics.image_metrics(raster)
@@ -405,12 +442,13 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
     # resolution: the FAZ is read on a 3 x 3 mm window at ROSE scale
     octa = metrics.octa_window(fundus, geometry.fovea_center, fundus.radius.values)
     stats.update(metrics.faz_metrics(octa.astype(float), metrics.OCTA_MM_PER_PX))
+    octa_skeleton = metrics.vessel_skeleton(octa)
+    octa_zone = metrics.avascular_zone(octa.astype(float), metrics.OCTA_MM_PER_PX)
     stats.update(
-        metrics.capillary_statistics(
-            metrics.vessel_skeleton(octa),
-            metrics.avascular_zone(octa.astype(float), metrics.OCTA_MM_PER_PX),
-            metrics.OCTA_MM_PER_PX,
-        )
+        metrics.capillary_statistics(octa_skeleton, octa_zone, metrics.OCTA_MM_PER_PX)
+    )
+    stats.update(
+        metrics.capillary_morphology(octa_skeleton, octa_zone, metrics.OCTA_MM_PER_PX)
     )
     # The deep vascular complex (intermediate and deep plexuses together, as
     # OCTA slabs them): measured for the pending targets, not scored yet
@@ -419,12 +457,13 @@ def scoring_stats(pop, edges, geometry: simulation.Geometry, references: dict) -
         deep = metrics.octa_window(
             deep_edges, geometry.fovea_center, deep_edges.radius.values
         )
-        for key, value in metrics.capillary_statistics(
-            metrics.vessel_skeleton(deep),
-            metrics.avascular_zone(deep.astype(float), metrics.OCTA_MM_PER_PX),
-            metrics.OCTA_MM_PER_PX,
-        ).items():
-            stats["octa_dvc_" + key[5:]] = value
+        deep_skeleton = metrics.vessel_skeleton(deep)
+        deep_zone = metrics.avascular_zone(deep.astype(float), metrics.OCTA_MM_PER_PX)
+        for measure in (metrics.capillary_statistics, metrics.capillary_morphology):
+            for key, value in measure(
+                deep_skeleton, deep_zone, metrics.OCTA_MM_PER_PX
+            ).items():
+                stats["octa_dvc_" + key[5:]] = value
     # Bifurcation geometry is judged on the superficial tree, like the raster.
     # Angles are measured in 3D on the tree; the plexus is nearly planar, so
     # they agree with the fundus (x-y) projection the literature reports

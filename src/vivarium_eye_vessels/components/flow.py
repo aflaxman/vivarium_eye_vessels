@@ -356,6 +356,13 @@ class FlowRemodeler(Component):
                 (pop.radius > 0) & (pop.radius < capillary_radius) & (pop.parent_id >= 0)
             ]
             candidates = candidates[~candidates.index.isin(bed.parent_id.unique())]
+        # Nor is a segment another vessel has fused onto a dead end, even when
+        # the joiner is a capillary the graph does not see: pruning it would
+        # leave the joiner pointing at a recycled particle, and the next
+        # vessel to take that slot is drawn as a chord across the field
+        if "anastomosis_id" in pop.columns and not candidates.empty:
+            targets = pop.anastomosis_id[pop.anastomosis_id >= 0].unique()
+            candidates = candidates[~candidates.index.isin(targets)]
         pruned = candidates.index
         if not pruned.empty:
             self.total_pruned += len(pruned)
@@ -378,6 +385,16 @@ class FlowRemodeler(Component):
                 index=pruned,
             )
             self.particles.update_particles(recycled)
+            # Defensive: no join may point at a recycled particle
+            dangling = (
+                pop.index[pop.anastomosis_id.isin(pruned)]
+                if "anastomosis_id" in pop.columns
+                else pd.Index([])
+            )
+            if len(dangling):
+                self.particles.update_particles(
+                    pd.DataFrame({"anastomosis_id": -1}, index=dangling)
+                )
 
         # --- Adapt calibers toward the median-shear radius ---
         rate = float(self.config.adaptation_rate)

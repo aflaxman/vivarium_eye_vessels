@@ -104,6 +104,13 @@ class Particle3D(Component):
             # keeps the legacy caliber-blind steering
             "noise_caliber_reference": 0.004,
             "noise_caliber_exponent": 0.0,
+            # Capillary sprouts (caliber at most capillary_radius) have their
+            # random steering multiplied by capillary_noise_factor: real
+            # capillaries meander (arc-to-chord 1.14 superficially, 1.21 in
+            # the deep plexus on ROSE-1) where a sprout aimed at a hypoxic
+            # site runs straight. 1.0 = no difference; radius 0 disables
+            "capillary_radius": 0.0,
+            "capillary_noise_factor": 1.0,
         }
     }
 
@@ -116,6 +123,8 @@ class Particle3D(Component):
         self.noise_persistence_time = float(self.config.noise_persistence_time)
         self.noise_caliber_reference = float(self.config.noise_caliber_reference)
         self.noise_caliber_exponent = float(self.config.noise_caliber_exponent)
+        self.capillary_radius = float(self.config.capillary_radius)
+        self.capillary_noise_factor = float(self.config.capillary_noise_factor)
 
         self.clock = builder.time.clock()
 
@@ -318,6 +327,10 @@ class Particle3D(Component):
             )
         else:
             attenuation = 1.0
+        if self.capillary_radius > 0 and self.capillary_noise_factor != 1.0:
+            radii = particles["radius"].to_numpy(dtype=float)
+            capillary = (radii > 0) & (radii <= self.capillary_radius)
+            attenuation = np.where(capillary, self.capillary_noise_factor, 1.0) * attenuation
 
         # Update velocities with random steering and forces
         for i, (v, w, f) in enumerate(

@@ -398,7 +398,9 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
     # capillary-only plexuses are essentially invisible to them (OCTA sees
     # them instead — docs/vnv/plexus.png), so everything compared against
     # HRF uses the superficial (layer 0) projection only
-    fundus_edges = edges[edges.layer_id == 0] if "layer_id" in edges.columns else edges
+    # Vessels only: segments ending at growth tips are not drawn
+    drawn = edges[edges.frozen] if "frozen" in edges.columns else edges
+    fundus_edges = drawn[drawn.layer_id == 0] if "layer_id" in drawn.columns else drawn
     sim_raster = metrics.rasterize_network(
         fundus_edges, bounds, radii=fundus_edges.radius.values if has_calibers else None
     )

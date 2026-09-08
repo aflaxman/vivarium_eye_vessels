@@ -749,8 +749,12 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         f"HRF {real_area_density.mean()*100:.2f}% ± {real_area_density.std()*100:.2f}%      "
         f"Perfused (artery + vein in reach): sim {sim_perfused_fraction*100:.1f}%"
         f" (colonized {calibration_stats['colonized_fraction']*100:.0f}%,"
-        f" arterial {sim_arterial_supply*100:.0f}%)     "
-        f"A:V ratio: trunks {sim_avr:.2f}, raster {calibration_stats['arcade_caliber_ratio_px']:.2f} (HRF 0.86)     "
+        f" arterial {sim_arterial_supply*100:.0f}%)"
+    )
+    balance_line = (
+        f"A:V caliber ratio: trunks {sim_avr:.2f}, raster "
+        f"{calibration_stats['arcade_caliber_ratio_px']:.2f} (HRF 0.86)     "
+        f"Artery share of length: {calibration_stats['artery_length_share']:.2f} (HRF 0.50)     "
         f"Loops: {sim_graph_cycles}     Pruned: {sim_n_pruned}     "
         f"Score: {calibration_scores['total']:.1f}"
     )
@@ -760,9 +764,10 @@ def run_comparison(model_spec: str, output_dir: Path, steps: int) -> dict:
         fontsize=13,
         y=0.995,
     )
-    fig.text(0.5, 0.976, headline, ha="center", color=INK, fontsize=10)
-    fig.text(0.5, 0.963, area_line, ha="center", color=INK, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.955))
+    fig.text(0.5, 0.978, headline, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.966, area_line, ha="center", color=INK, fontsize=10)
+    fig.text(0.5, 0.954, balance_line, ha="center", color=INK, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.946))
     figure_path = output_dir / "comparison.png"
     fig.savefig(figure_path, dpi=110, facecolor="white")
     plt.close(fig)

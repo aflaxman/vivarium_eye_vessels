@@ -312,3 +312,49 @@ def test_adaptation_widens_shear_spread_of_calibers():
         return float(radii.quantile(0.9) / radii.quantile(0.1))
 
     assert radius_spread(0.2) > radius_spread(0.0)
+
+
+def test_solve_bed_lets_the_arteriole_drain_through_the_capillary():
+    # An artery root feeding an arteriole that ends in a capillary joined onto
+    # a venule: without the bed in the solve the arteriole is a dead end
+    # (leak flow only); with solve_bed it carries the through-flow
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from vivarium_eye_vessels.components.flow import FlowRemodeler
+
+    pop = pd.DataFrame(
+        {
+            "x": [0.0, 0.05, 0.10, 0.15, 0.20],
+            "y": 0.0,
+            "z": 0.0,
+            "frozen": True,
+            "radius": [0.004, 0.003, 0.0009, 0.003, 0.004],
+            "parent_id": [-1, 0, 1, 4, -1],
+            "anastomosis_id": [-1, -1, 3, -1, -1],
+            "vessel_type": [1, 1, 1, 2, 2],
+            "path_id": [0, 0, 5, 1, 1],
+            "depth": [0, 1, 2, 1, 0],
+        }
+    )
+    remodeler = FlowRemodeler()
+    base = dict(
+        capillary_radius=0.001,
+        artery_pressure=1.0,
+        vein_pressure=-1.0,
+        leak_fraction=0.01,
+        tissue_pressure=0.0,
+        balanced_arterial_inflow=False,
+    )
+    remodeler.config = SimpleNamespace(solve_bed=False, **base)
+    without = remodeler.solve_network(pop)
+    remodeler.config = SimpleNamespace(solve_bed=True, **base)
+    with_bed = remodeler.solve_network(pop)
+    assert 2 not in set(without.node_a) and 2 in set(with_bed.node_a)
+    arteriole = lambda flows: float(flows.loc[flows.node_a == 1, "flow"].abs().iloc[0])
+    capillary = float(with_bed.loc[with_bed.node_a == 2, "flow"].abs().iloc[0])
+    # One capillary is a thin pipe (r^4), but what it carries reaches the
+    # arteriole on top of the leak; a bed of thousands is what drains a tree
+    assert capillary > 0
+    assert arteriole(with_bed) > arteriole(without)

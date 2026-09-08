@@ -385,6 +385,19 @@ class PathFreezer(Component):
         "path_freezer": {
             "freeze_interval": 10,
             "radius_taper": 1.0,  # caliber multiplier per frozen segment along a path
+            # Terminal arterioles: a tip at or below terminal_radius tapers by
+            # terminal_taper per frozen segment instead, so the finest visible
+            # vessels fade below the fundus raster within a few tens of pixels
+            # and hand over to the capillary class, as terminal arterioles do
+            # into capillaries. 0 disables (every tip tapers by radius_taper)
+            "terminal_radius": 0.0,
+            "terminal_taper": 1.0,
+            # Once a terminal arteriole has tapered below terminal_floor it
+            # becomes a capillary at once (caliber terminal_floor_radius, the
+            # CapillaryBed class) rather than lingering in the half-pixel band
+            # where the fundus raster draws it as a dotted trail. 0 disables
+            "terminal_floor": 0.0,
+            "terminal_floor_radius": 0.0009,
         }
     }
 
@@ -467,6 +480,22 @@ class PathFreezer(Component):
         """Get frozen particles by their positional indices in the KDTree."""
         return self._current_frozen.iloc[list(indices)]
 
+    def tapered(self, radii) -> np.ndarray:
+        """Continuation calibers: the per-segment taper, steeper for terminal arterioles."""
+        radii = np.asarray(radii, dtype=float)
+        taper = np.full(len(radii), float(self.config.radius_taper))
+        terminal_radius = float(self.config.terminal_radius)
+        if terminal_radius > 0:
+            taper[(radii > 0) & (radii <= terminal_radius)] = float(
+                self.config.terminal_taper
+            )
+        tapered = radii * taper
+        floor = float(self.config.terminal_floor)
+        if terminal_radius > 0 and floor > 0:
+            fading = (radii > 0) & (radii <= terminal_radius) & (tapered < floor)
+            tapered[fading] = float(self.config.terminal_floor_radius)
+        return tapered
+
     def freeze_particles(self, pop: pd.DataFrame) -> None:
         """Create frozen path points and continue paths with new particles."""
         active = pop[~pop.frozen & (pop.path_id >= 0)]
@@ -501,7 +530,7 @@ class PathFreezer(Component):
                 "parent_id": active.index.values,
                 "frozen": False,
                 "depth": active.depth.values,
-                "radius": active.radius.values * self.config.radius_taper,
+                "radius": self.tapered(active.radius.values),
                 "vessel_type": active.vessel_type.values,
                 "layer_id": active.layer_id.values,
             },
@@ -598,6 +627,13 @@ class PathSplitter(Component):
             "min_radius": 0.002,  # caliber floor (capillary scale)
             # Tips at or below this caliber never split (capillary sprouts); 0 = none
             "capillary_radius": 0.0,
+            # Terminal arterioles: tips at or below this caliber never split
+            # either. The finest fundus-visible vessels (2 px, 0.004 units)
+            # are the leaves of a real arteriole tree -- they run out and
+            # taper into capillaries -- while a Murray split at that caliber
+            # only makes more 1 px twigs that die at once and leave a net of
+            # junctions behind. 0 = none (twenty-fifth pass)
+            "terminal_radius": 0.0,
             # Split probability scales as (min_radius / radius) ** this, so wide
             # trunks run long between branch points while narrow twigs branch at
             # the full split_probability; 0 restores caliber-independent cadence
@@ -900,6 +936,9 @@ class PathSplitter(Component):
         capillary_max = float(self.config.capillary_radius)
         if capillary_max > 0:
             factors[(radii > 0) & (radii <= capillary_max)] = 0.0
+        terminal_max = float(self.config.terminal_radius)
+        if terminal_max > 0:
+            factors[(radii > 0) & (radii <= terminal_max)] = 0.0
         probabilities = np.clip(base * factors, 0.0, 1.0)
         # Side-branching trunks are exempt from the cadence damping: real
         # arcades emit side branches at short, comb-like intervals, at

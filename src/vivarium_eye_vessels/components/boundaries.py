@@ -392,6 +392,16 @@ class FrozenRepulsion(BaseForceComponent):
             # capillary bed, it is not fenced out by it. 0 disables both
             "capillary_radius": 0.0,
             "capillary_interaction_radius": 0.0,
+            # A vessel's territory scales with its caliber: with
+            # reach_reference_radius > 0 a tip's repulsion reach is
+            # interaction_radius x (radius / reference) ** reach_exponent,
+            # clipped between capillary_interaction_radius and
+            # interaction_radius. Arcade tips keep the full reach; a 1 px twig
+            # feels frozen vessels only a few pixels away, as the fine
+            # branches of a fundus pack far closer than its arcades do. 0
+            # gives every non-capillary tip the full reach (legacy)
+            "reach_reference_radius": 0.0,
+            "reach_exponent": 1.0,
         }
     }
 
@@ -421,7 +431,32 @@ class FrozenRepulsion(BaseForceComponent):
         self.freeze_radius = float(config.freeze_radius)
         self.delay = float(config.delay)
         self.cross_type_factor = float(config.cross_type_factor)
+        self.reach_reference_radius = float(config.reach_reference_radius)
+        self.reach_exponent = float(config.reach_exponent)
         self.freezer = builder.components.get_components_by_type(PathFreezer)[0]
+
+    def reach_for(self, tip_radii: np.ndarray) -> np.ndarray:
+        """Per-tip repulsion reach: caliber-scaled between the capillary and the full reach."""
+        reach = np.full(len(tip_radii), self.interaction_radius)
+        capillary_tip = (
+            (tip_radii > 0) & (tip_radii <= self.capillary_radius)
+            if self.capillary_interaction_radius > 0
+            else np.zeros(len(tip_radii), dtype=bool)
+        )
+        if self.reach_reference_radius > 0:
+            floor = (
+                self.capillary_interaction_radius
+                if self.capillary_interaction_radius > 0
+                else 0.0
+            )
+            calibered = tip_radii > 0
+            with np.errstate(divide="ignore", invalid="ignore"):
+                scaled = self.interaction_radius * np.power(
+                    tip_radii / self.reach_reference_radius, self.reach_exponent
+                )
+            reach[calibered] = np.clip(scaled[calibered], floor, self.interaction_radius)
+        reach[capillary_tip] = self.capillary_interaction_radius
+        return reach
 
     def calculate_forces_vectorized(self, particles: pd.DataFrame) -> np.ndarray:
         """Repulsion of every active tip from the frozen vessels within its reach.
@@ -458,10 +493,8 @@ class FrozenRepulsion(BaseForceComponent):
         )[frozen_idx]
 
         tip_radii = particles["radius"].to_numpy(dtype=float)
-        reach_by_tip = np.full(len(particles), self.interaction_radius)
-        if self.capillary_interaction_radius > 0:
-            capillary_tip = (tip_radii > 0) & (tip_radii <= self.capillary_radius)
-            reach_by_tip[capillary_tip] = self.capillary_interaction_radius
+        reach_by_tip = self.reach_for(tip_radii)
+        not_capillary_tip = ~((tip_radii > 0) & (tip_radii <= self.capillary_radius))
         reach = reach_by_tip[tip_idx]
         tip_path = particles.path_id.to_numpy()[tip_idx]
         tip_type = particles.vessel_type.to_numpy()[tip_idx]
@@ -469,7 +502,7 @@ class FrozenRepulsion(BaseForceComponent):
         keep = (frozen_path != tip_path) | (frozen_age > self.delay)
         if self.capillary_radius > 0:
             # A wide tip is not fenced out by the capillary bed
-            wide_tip = reach == self.interaction_radius
+            wide_tip = not_capillary_tip[tip_idx]
             frozen_capillary = (frozen_radius > 0) & (frozen_radius <= self.capillary_radius)
             keep &= ~(wide_tip & frozen_capillary)
         displacements = positions[tip_idx] - frozen_positions

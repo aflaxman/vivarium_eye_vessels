@@ -1,3 +1,70 @@
+**v0.35.0 - 09/08/26**
+
+ - Tips do not pass through vessels of their own plane
+
+   - **The complaint.** The simulated fundus showed far more vessels
+     crossing one another than a real one. In a retina the branches of one
+     tree never cross -- two vessels in the same plane that meet fuse or
+     stop -- and the only crossings are the large arteries passing over
+     the large veins, at different depths. The model's tips, steered by
+     soft repulsion and a strong pull toward unperfused tissue, passed
+     through vessels they met head-on: 190 fundus-visible crossings on the
+     spec seed, 64 of them within one tree, and most between vessels of
+     about 2 px
+   - **Measurement.** ``metrics.crossing_share``: the share of skeleton
+     junction clusters with four or more arms (a crossing) among all
+     junction clusters (a bifurcation has three). HRF 0.12 +/- 0.02; the
+     v0.34 model 0.20-0.22. Scored one-sided (too few crossings is not a
+     defect a photograph shows)
+   - **Model, two mechanisms that only work together.** (1)
+     ``collisions.CollisionGuard``, consulted by ``Particle3D`` as it moves
+     the tips: a non-capillary tip in the superficial layer whose move
+     would cross a frozen segment of that layer (or another tip's fresh
+     trail) stays where it was and its path ends there, as an
+     extinguished tip's does, unless the two vessels belong to different
+     trees and both are at least ``crossing_min_radius`` (0.005 units, 2.5
+     px) wide -- an artery passing over a vein. The capillary bed is
+     exempt. Alone this halved the visible skeleton (3.0% -> 1.6%,
+     perfusion 0.98 -> 0.87): most tips meet a vessel at some point, and a
+     tree whose tips die on contact cannot fill the field. Letting a
+     blocked tip slide along the vessel (contact guidance) or reflect off
+     it kept more tips alive but still lost a third of the skeleton and
+     emptied the macula: the tissue behind a vessel stayed unserved
+     because, in this model, arterioles branched only at their advancing
+     tips. (2) Wall sprouting (``developmental_wave.wall_sprout_*``):
+     every 10 steps each tree sprouts branches from established
+     superficial vessel walls that lie within 0.3 units of tissue their
+     tree does not yet serve -- angiogenic sprouting along a vessel's
+     length, the mechanism a retina uses to reach tissue behind a vessel
+     without crossing it. Wall sprouting alone over-grows the field
+     (skeleton 5.6%, one junction in four a crossing); with the guard it
+     is the tree's way around
+   - **Results.** Eight seeds, objective with the crossing term: v0.34's
+     spec scores 119.3, the shipped spec 92.7 (95/104/99/69/76/143/75/82).
+     Crossing share 0.22 -> 0.15 (HRF 0.12); on the spec seed the
+     fundus-visible crossings fall from 190 to 105 and the same-tree ones
+     from 64 to 6, the rest arteries over veins both at least 2.5 px.
+     Skeleton density 3.1 -> 3.5% (HRF 3.7), area density 9.1 -> 10.3%
+     (10.8), macular clear radius 0.68 -> 0.61 mm (0.53), wide-junction
+     spacing 21.8 -> 18.3 px (20.7), mid-caliber terminal share 0.15 ->
+     0.28 (0.38), thin 0.72 -> 0.77 (0.88), paired perfusion 0.98 -> 0.94,
+     arterial supply 0.97. The costs are the arcades: a trunk that meets a
+     vessel stops, so arcade reach is short of HRF and the artery tree
+     smaller (length share 0.46). The sweep: stopping without wall
+     sprouting 925, sliding 213, reflecting 176; wall sprouting without
+     the guard 350 (skeleton 5.6%); 8 sprouts a round 133 (skeleton 3.8%,
+     thin terminal 0.69); walls of a day rather than half a day 122;
+     crossing caliber 3 px 119 and 4 px 233 (perfusion 0.91 and 0.82: the
+     wide artery/vein crossings are how the arcades pass one another)
+   - **Held-out gate** (seeds 11/202/909/4242): 4/4 colonize 100%,
+     arterial supply 0.96/0.90/0.91/0.90, skeleton 3.3/3.5/3.6/3.3%,
+     macular clear radius 0.46/0.64/0.68/0.64 mm, artery length share
+     0.48/0.44/0.44/0.44. Spec seed: total 75.6 (v0.34 read 155 on this
+     seed), crossing share 0.145, thin terminal share 0.77, mid 0.27,
+     skeleton 3.5%, area 10.4%, macular clear radius 0.63 mm, paired
+     perfusion 0.99; 59.1k frozen particles, 4 minutes a seed (stopped
+     tips are cheap tips)
+
 **v0.34.0 - 09/08/26**
 
  - The tree below the arcades: terminal twigs, not a net

@@ -3,42 +3,42 @@
     {
       "seed": 11,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9904076738609112,
-      "skeleton_density": 0.03065556945065733,
-      "macular_clear_radius_mm": 0.6242090943011028,
-      "n_frozen": 57902,
-      "artery_length_share": 0.4522660911514536,
-      "arcade_caliber_ratio_px": 0.9244576230608392
+      "arterial_supply_fraction": 0.9600319744204636,
+      "skeleton_density": 0.0328333195127593,
+      "macular_clear_radius_mm": 0.45703125,
+      "n_frozen": 57900,
+      "artery_length_share": 0.4846329692659385,
+      "arcade_caliber_ratio_px": 0.8856380067909863
     },
     {
       "seed": 202,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.947242206235012,
-      "skeleton_density": 0.027352356099334774,
-      "macular_clear_radius_mm": 1.1393283109991346,
-      "n_frozen": 57200,
-      "artery_length_share": 0.42742104894615224,
-      "arcade_caliber_ratio_px": 0.9232711617586407
+      "arterial_supply_fraction": 0.9000799360511591,
+      "skeleton_density": 0.0347551513410603,
+      "macular_clear_radius_mm": 0.6446644038594931,
+      "n_frozen": 56564,
+      "artery_length_share": 0.4414677860579191,
+      "arcade_caliber_ratio_px": 0.8158859137872053
     },
     {
       "seed": 909,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9984012789768185,
-      "skeleton_density": 0.030632607719269244,
-      "macular_clear_radius_mm": 0.5380744171293973,
-      "n_frozen": 58291,
-      "artery_length_share": 0.5612601285275216,
-      "arcade_caliber_ratio_px": 0.9330101454202611
+      "arterial_supply_fraction": 0.9136690647482014,
+      "skeleton_density": 0.035594785913426887,
+      "macular_clear_radius_mm": 0.6753295094167457,
+      "n_frozen": 56648,
+      "artery_length_share": 0.44407290538313005,
+      "arcade_caliber_ratio_px": 0.8558259184070032
     },
     {
       "seed": 4242,
       "colonized_fraction": 1.0,
-      "arterial_supply_fraction": 0.9584332533972821,
-      "skeleton_density": 0.032314877882650576,
-      "macular_clear_radius_mm": 0.66796875,
-      "n_frozen": 58165,
-      "artery_length_share": 0.4737726025863517,
-      "arcade_caliber_ratio_px": 0.8461649323785483
+      "arterial_supply_fraction": 0.9008792965627498,
+      "skeleton_density": 0.03294839034798386,
+      "macular_clear_radius_mm": 0.6398534082375456,
+      "n_frozen": 55528,
+      "artery_length_share": 0.4443889776357827,
+      "arcade_caliber_ratio_px": 0.7992219653509471
     }
   ],
   "perfusion_target": 0.95,

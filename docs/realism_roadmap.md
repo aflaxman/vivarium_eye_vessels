@@ -1244,6 +1244,56 @@ than more branching at the tips. The held-out seeds all colonize the field and r
 0.66–0.76; the fading twigs leave dotted half-pixel trails on the fundus
 raster, which the optional floor snap removes at a cost in perfusion.
 
+*Twenty-sixth pass (tips do not pass through vessels of their own plane)*:
+the simulated fundus crossed itself far more than a real one. In a retina
+the branches of one tree never cross — two vessels in the same plane that
+meet must fuse or stop — and the only crossings are the large arteries
+passing over the large veins, which lie at different depths (HRF's labels
+mark 0.03–0.5 such crossings per mm²). The model's tips, steered by a soft
+repulsion and a strong pull toward unperfused tissue, passed through the
+vessels they met head-on: 190 fundus-visible crossings on the spec seed, 64
+of them within one tree, most between vessels of about 2 px. The statistic
+that reads this on a raster is the share of junction clusters with four or
+more arms, a crossing, among all junction clusters, a bifurcation having
+three: HRF 0.12 ± 0.02, the model 0.20–0.22. A collision guard consulted by
+the particle mover checks every non-capillary superficial tip's move against
+the frozen segments (and the fresh trails) of its plane and lets a pair cross
+only when the two vessels are of opposite trees and both at least 2.5 px
+wide. What the blocked tip does turned out to matter more than the rule.
+Stopping it where it stood and ending its path put the tree-ness exactly on
+HRF — 0.95–0.98 of thin branches and 0.37–0.52 of mid-caliber branches
+ending freely — and halved the visible skeleton (3.0% → 1.6%, perfusion
+0.98 → 0.87): most tips meet a vessel at some point, and a tree whose tips
+die on contact cannot fill the field. Letting the tip slide along the vessel
+it would have crossed (contact guidance) kept the network alive but still
+lost a third of the skeleton and emptied the macula, because a tip running
+along a vessel sits inside its repulsion zone and is soon extinguished, and
+the global pull toward unperfused tissue keeps driving tips into vessels
+rather than around them. The missing piece was the other half of how a
+retina grows: in this model arterioles branched only at their advancing
+tips, so tissue behind a vessel could be reached by nothing but a tip from
+elsewhere crossing that vessel. Wall sprouting — every ten steps each tree
+sprouts branches from established superficial walls that lie within 0.3
+units of tissue it does not yet serve — is angiogenic sprouting along a
+vessel's length, and it turns the guard from a loss into a gain: alone it
+over-grows the field (skeleton 5.6%, one junction in four a crossing), and
+with the guard the tree finds its way around instead of through.
+With the guard stopping tips and four wall sprouts a tree every ten steps
+from walls at least half a day old, the eight-seed mean falls from 119 to
+93, the crossing share from 0.22 to 0.15 (HRF 0.12), the same-tree
+crossings on the spec seed from 64 to 6, and the fundus window fills to
+3.5% skeleton density (HRF 3.7%) with a macula of 0.61 mm (0.53) — the
+first network whose branches leave the arcades, branch, and end without
+passing through one another. The costs are the arcades themselves: a trunk
+that meets a vessel stops, so arcade reach falls short and the artery tree
+comes out smaller; raising the caliber both vessels need to cross lowers the
+crossing share further but stops the arcades from passing one another and
+costs perfusion (0.82 at 4 px). The held-out seeds all colonize the field at 3.3–3.6% skeleton density
+with maculae of 0.46–0.68 mm, and for the first time look like trees rather
+than nets; the crowd of first-order branches around the disc, where the
+thickest walls sprout the thickest branches, is the next thing the eye
+notices.
+
 ## Validation & verification (V&V)
 
 Idea 8 is where every other idea gets measured, so the repo carries a V&V
@@ -1372,6 +1422,11 @@ the HRF masks, which is what makes the comparison apples to apples):
   (spurs under 5 px already pruned). A tree's fine vessels are its leaves;
   the statistic separates a dendritic tree from a net of the same density,
   caliber composition and branch lengths.
+- Crossings are read as the share of skeleton junction clusters with four or
+  more arms (`metrics.crossing_share`): two vessels crossing in projection
+  make a four-armed junction, a bifurcation a three-armed one. Scored
+  one-sided against the HRF masks (0.12 ± 0.02): too few crossings is not
+  a defect a photograph shows.
 - ROSE is registration-gated and is not downloaded: extract it under the
   cache directory (`VEV_DATA_DIR`, default `~/.cache/vivarium_eye_vessels`).
 - Junction statistics compared against fundus literature (branch angles,
